@@ -26,6 +26,9 @@ def run_cmd(cmd, timeout=3):
         return -1, "", str(e)
 
 def find_ethernet_interfaces():
+    # Fast path for primary ethernet interface on this system
+    if os.path.exists("/sys/class/net/enp34s0"):
+        return ["enp34s0"]
     net_dir = "/sys/class/net"
     eth_ifaces = []
     if not os.path.exists(net_dir):

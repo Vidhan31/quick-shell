@@ -1,4 +1,5 @@
 //@ pragma UseQApplication
+//@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/plugins/topprocesses/build/imports
 // Shell.qml — Main Quickshell entrypoint for the desktop bar.
 // Docs:
 // - PanelWindow: anchors, height, color, screen
@@ -12,6 +13,15 @@ ShellRoot {
 
   property string time: ""
   property string date: ""
+
+  NotificationService {
+    id: notifService
+  }
+
+  NotificationPopups {
+    id: notifPopups
+    service: notifService
+  }
 
   Timer {
     interval: 1000
@@ -86,6 +96,7 @@ ShellRoot {
             tsPopup.visible = false;
             ethPopup.visible = false;
             privacyPopup.visible = false;
+            notifPopup.visible = false;
             procPopup.visible = !procPopup.visible;
           }
         }
@@ -105,27 +116,18 @@ ShellRoot {
         TopProcesses {
           id: topProcesses
           anchors.fill: parent
+          visible: procPopup.visible
         }
       }
 
-      // Middle: Running GUI applications (opened windows) taskbar.
-      // Implicit import: Taskbar.qml in the same directory is auto-available.
-      Taskbar {
-        id: taskbar
-        barWindow: bar
-        currentScreen: bar.screen
-        anchors.centerIn: parent
-        width: Math.min(implicitWidth, Math.max(0, bar.width - 2 * (Math.max(sysStatsHit.x + sysStatsHit.width, bar.width - (trayWidget.visible && trayWidget.width > 0 ? trayWidget.x : mediaHit.x)) + 20)))
-        height: 26
-      }
 
       // System Tray icons for background / minimized apps
       SystemTrayWidget {
         id: trayWidget
         barWindow: bar
         anchors {
-          right: mediaHit.left
-          rightMargin: (visible && width > 0) ? 8 : 0
+          right: parent.right
+          rightMargin: (visible && width > 0) ? 12 : 0
           verticalCenter: parent.verticalCenter
         }
         onRequestClosePopups: {
@@ -134,6 +136,7 @@ ShellRoot {
           tsPopup.visible = false;
           ethPopup.visible = false;
           privacyPopup.visible = false;
+          notifPopup.visible = false;
           calPopup.visible = false;
         }
       }
@@ -142,7 +145,7 @@ ShellRoot {
       Item {
         id: mediaHit
         anchors {
-          right: tsHit.left
+          right: ethHit.left
           rightMargin: 8
           verticalCenter: parent.verticalCenter
         }
@@ -184,6 +187,7 @@ ShellRoot {
               tsPopup.visible = false;
               ethPopup.visible = false;
               privacyPopup.visible = false;
+              notifPopup.visible = false;
               mediaPopup.visible = !mediaPopup.visible;
             }
           }
@@ -211,8 +215,8 @@ ShellRoot {
       Item {
         id: tsHit
         anchors {
-          right: ethHit.left
-          rightMargin: 8
+          left: sysStatsHit.right
+          leftMargin: 8
           verticalCenter: parent.verticalCenter
         }
         width: tsBarWidget.width + 16
@@ -247,6 +251,7 @@ ShellRoot {
             calPopup.visible = false;
             ethPopup.visible = false;
             privacyPopup.visible = false;
+            notifPopup.visible = false;
             tsPopup.visible = !tsPopup.visible;
           }
         }
@@ -311,6 +316,7 @@ ShellRoot {
             tsPopup.visible = false;
             calPopup.visible = false;
             privacyPopup.visible = false;
+            notifPopup.visible = false;
             ethPopup.visible = !ethPopup.visible;
           }
         }
@@ -339,7 +345,7 @@ ShellRoot {
       Item {
         id: privacyHit
         anchors {
-          right: clockHit.left
+          right: notifHit.left
           rightMargin: privacyWidget.hasActive ? 8 : 0
           verticalCenter: parent.verticalCenter
         }
@@ -362,6 +368,7 @@ ShellRoot {
             calPopup.visible = false;
             ethPopup.visible = false;
             tsPopup.visible = false;
+            notifPopup.visible = false;
             privacyPopup.visible = !privacyPopup.visible;
           }
         }
@@ -385,15 +392,97 @@ ShellRoot {
         }
       }
 
-      // Right: Clickable date / time — toggles the calendar popup below.
+      // Notification center hit button
+      Item {
+        id: notifHit
+        anchors {
+          right: (trayWidget.visible && trayWidget.width > 0) ? trayWidget.left : parent.right
+          rightMargin: (trayWidget.visible && trayWidget.width > 0) ? 8 : 12
+          verticalCenter: parent.verticalCenter
+        }
+        width: notifBarWidget.width + 16
+        height: 24
+
+        Rectangle {
+          id: notifBg
+          anchors.fill: parent
+          radius: 6
+          color: notifPopup.visible ? "#45475a" : (notifMouse.containsMouse ? "#3b3e52" : "#313244")
+          border.color: notifPopup.visible ? "#89b4fa" : (notifMouse.containsMouse ? "#585b70" : "transparent")
+          border.width: 1
+
+          Behavior on color { ColorAnimation { duration: 120 } }
+          Behavior on border.color { ColorAnimation { duration: 120 } }
+        }
+
+        NotificationWidget {
+          id: notifBarWidget
+          anchors.centerIn: parent
+          service: notifService
+        }
+
+        MouseArea {
+          id: notifMouse
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          hoverEnabled: true
+          onClicked: {
+            trayWidget.closePopup();
+            procPopup.visible = false;
+            mediaPopup.visible = false;
+            calPopup.visible = false;
+            tsPopup.visible = false;
+            ethPopup.visible = false;
+            privacyPopup.visible = false;
+            notifPopup.visible = !notifPopup.visible;
+          }
+        }
+      }
+
+      Timer {
+        id: markReadTimer
+        interval: 400
+        repeat: false
+        onTriggered: {
+          if (notifPopup.visible) {
+            notifService.markAllRead();
+          }
+        }
+      }
+
+      PopupWindow {
+        id: notifPopup
+        anchor.window: bar
+        anchor.rect.x: Math.max(8, Math.min(notifHit.x + notifHit.width / 2 - notifControlCenter.implicitWidth / 2, bar.width - notifControlCenter.implicitWidth - 12))
+        anchor.rect.y: bar.implicitHeight + 6
+        visible: false
+        grabFocus: true
+        implicitWidth: notifControlCenter.implicitWidth
+        implicitHeight: notifControlCenter.implicitHeight
+        color: "transparent"
+
+        onVisibleChanged: {
+          if (visible) {
+            markReadTimer.start();
+          } else {
+            markReadTimer.stop();
+            notifService.markAllRead();
+          }
+        }
+
+        NotificationControlCenter {
+          id: notifControlCenter
+          anchors.fill: parent
+          service: notifService
+          onCloseRequested: notifPopup.visible = false
+        }
+      }
+
+      // Center: Clickable date / time — toggles the calendar popup below.
       // PopupWindow anchored to the bar (docs: PopupWindow anchor.window + anchor.rect).
       Item {
         id: clockHit
-        anchors {
-          right: parent.right
-          rightMargin: 12
-          verticalCenter: parent.verticalCenter
-        }
+        anchors.centerIn: parent
         width: clockContent.width + 16
         height: 24
 
@@ -442,6 +531,7 @@ ShellRoot {
             tsPopup.visible = false;
             ethPopup.visible = false;
             privacyPopup.visible = false;
+            notifPopup.visible = false;
             calPopup.visible = !calPopup.visible;
           }
         }
@@ -450,7 +540,7 @@ ShellRoot {
       PopupWindow {
         id: calPopup
         anchor.window: bar
-        anchor.rect.x: Math.max(8, clockHit.x + clockHit.width - calView.implicitWidth)
+        anchor.rect.x: Math.max(8, Math.min(clockHit.x + clockHit.width / 2 - calView.implicitWidth / 2, bar.width - calView.implicitWidth - 12))
         anchor.rect.y: bar.implicitHeight + 6
         visible: false
         grabFocus: true

@@ -49,31 +49,19 @@ Item {
     if (!text)
       return;
 
-    const lines = text.split("\n");
-    let rx = 0;
-    let tx = 0;
-    // Skip 2 header lines of /proc/net/dev.
-    for (let i = 2; i < lines.length; ++i) {
-      const line = lines[i].trim();
-      if (!line)
-        continue;
-      const parts = line.split(":");
-      if (parts.length !== 2)
-        continue;
-      const iface = parts[0].trim();
-      if (root.isIgnored(iface))
-        continue;
-      const fields = parts[1].trim().split(/\s+/);
-      // rx_bytes = fields[0], tx_bytes = fields[8]
-      if (fields.length < 9)
-        continue;
-      const r = parseInt(fields[0], 10);
-      const t = parseInt(fields[8], 10);
-      if (isNaN(r) || isNaN(t))
-        continue;
-      rx += r;
-      tx += t;
-    }
+    // Hardcoded primary network interface: enp34s0
+    const idx = text.indexOf("enp34s0:");
+    if (idx === -1)
+      return;
+    const lineEnd = text.indexOf("\n", idx);
+    const line = (lineEnd !== -1) ? text.slice(idx + 8, lineEnd) : text.slice(idx + 8);
+    const fields = line.trim().split(/\s+/);
+    if (fields.length < 9)
+      return;
+    const rx = parseInt(fields[0], 10);
+    const tx = parseInt(fields[8], 10);
+    if (isNaN(rx) || isNaN(tx))
+      return;
 
     const now = Date.now();
     if (root._prevRx >= 0 && root._prevTime > 0) {

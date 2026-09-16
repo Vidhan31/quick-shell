@@ -2,4 +2,12 @@
 .qmlls.ini
 __pycache__/
 *.pyc
+plugins/**/build/
+build/
+*.so
+*.a
+*.o
+compile_commands.json
+.cache/
+CMakeUserPresets.json
 

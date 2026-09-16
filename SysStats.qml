@@ -27,66 +27,55 @@ Item {
   width: implicitWidth
   height: implicitHeight
 
+  // System specs: AMD Ryzen 3600 (12 threads), 16GB RAM (16284056 kB)
+  readonly property double totalMemKb: 16284056
+
   function updateCpu(): void {
     const text = statFile.text();
     if (!text)
       return;
-    const line = text.split("\n")[0];
-    if (!line || line.slice(0, 3) !== "cpu")
+    const nl = text.indexOf("\n");
+    const line = (nl !== -1) ? text.slice(0, nl) : text;
+    if (line.length < 4 || line.charCodeAt(0) !== 99 /* 'c' */)
       return;
-    const fields = line.trim().split(/\s+/).slice(1).map(x => parseInt(x, 10));
-    if (fields.length < 4 || fields.some(x => isNaN(x)))
+    const fields = line.trim().split(/\s+/);
+    if (fields.length < 6)
       return;
-    let total = 0;
-    for (let i = 0; i < fields.length; ++i)
-      total += fields[i];
-    const idle = fields[3] + (fields.length > 4 ? fields[4] : 0);
+    const user = parseInt(fields[1], 10);
+    const nice = parseInt(fields[2], 10);
+    const sys = parseInt(fields[3], 10);
+    const idle = parseInt(fields[4], 10);
+    const iowait = parseInt(fields[5], 10) || 0;
+    const total = user + nice + sys + idle + iowait + (parseInt(fields[6], 10) || 0) + (parseInt(fields[7], 10) || 0) + (parseInt(fields[8], 10) || 0);
+    const idleTotal = idle + iowait;
     if (root._prevTotal >= 0) {
       const dTotal = total - root._prevTotal;
-      const dIdle = idle - root._prevIdle;
+      const dIdle = idleTotal - root._prevIdle;
       if (dTotal > 0)
         root.cpuPercent = Math.max(0, Math.min(100, 100 * (1 - dIdle / dTotal)));
     }
     root._prevTotal = total;
-    root._prevIdle = idle;
+    root._prevIdle = idleTotal;
   }
 
   function updateMem(): void {
     const text = memFile.text();
     if (!text)
       return;
-    let total = -1;
-    let avail = -1;
-    let free = -1;
-    const lines = text.split("\n");
-    for (let i = 0; i < lines.length; ++i) {
-      const parts = lines[i].split(":");
-      if (parts.length !== 2)
-        continue;
-      const key = parts[0].trim();
-      const val = parseInt(parts[1].trim().split(/\s+/)[0], 10);
-      if (isNaN(val))
-        continue;
-      if (key === "MemTotal")
-        total = val;
-      else if (key === "MemAvailable")
-        avail = val;
-      else if (key === "MemFree")
-        free = val;
-    }
-    if (total <= 0)
+    const idx = text.indexOf("MemAvailable:");
+    if (idx === -1)
       return;
-    // Prefer MemAvailable (accounts for cache/buffers); fall back to MemFree.
-    const freeKb = avail >= 0 ? avail : free;
-    if (freeKb < 0)
+    const availKb = parseInt(text.slice(idx + 13), 10);
+    if (isNaN(availKb) || availKb < 0)
       return;
-    root.memPercent = Math.max(0, Math.min(100, 100 * (total - freeKb) / total));
+    root.memPercent = Math.max(0, Math.min(100, 100 * (root.totalMemKb - availKb) / root.totalMemKb));
   }
 
-  function updateGpu(text: string): void {
+  function updateGpu(): void {
+    const text = gpuFile.text();
     if (!text)
       return;
-    const v = parseInt(text.trim().split("\n")[0].trim(), 10);
+    const v = parseInt(text.trim(), 10);
     if (isNaN(v))
       return;
     root.gpuPercent = Math.max(0, Math.min(100, v));
@@ -107,12 +96,13 @@ Item {
     onLoadFailed: error => console.warn("SysStats: failed to read /proc/meminfo:", error)
   }
 
-  // GPU: AMD/Intel via sysfs, NVIDIA via nvidia-smi — first hit wins.
-  Process {
-    id: gpuProc
-    command: ["sh", "-c", "cat /sys/class/drm/card*/device/gpu_busy_percent 2>/dev/null | head -1; nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits 2>/dev/null | head -1"]
-    stdout: StdioCollector {
-      onStreamFinished: root.updateGpu(text)
+  FileView {
+    id: gpuFile
+    path: "/sys/class/drm/card1/device/gpu_busy_percent"
+    onLoaded: root.updateGpu()
+    onLoadFailed: error => {
+      root.gpuAvailable = false;
+      console.warn("SysStats: failed to read GPU busy percent:", error);
     }
   }
 
@@ -125,18 +115,8 @@ Item {
     onTriggered: {
       statFile.reload();
       memFile.reload();
-    }
-  }
-
-  Timer {
-    id: gpuPoll
-    interval: 2000
-    running: true
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: {
-      if (!gpuProc.running)
-        gpuProc.running = true;
+      if (root.gpuAvailable)
+        gpuFile.reload();
     }
   }
 

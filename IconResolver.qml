@@ -24,6 +24,8 @@ QtObject {
     "brave-browser": "brave-browser",
     "org.kde.konsole": "utilities-terminal",
     "konsole": "utilities-terminal",
+    "notify-send": "preferences-desktop-notification",
+    "org.freedesktop.Notifications": "preferences-desktop-notification",
     "org.kde.xwaylandvideobridge": "org.kde.xwaylandvideobridge"
   })
 
