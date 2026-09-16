@@ -1,0 +1,5 @@
+# Quickshell manages this file per-machine — see v0.3.1 install-setup guide.
+.qmlls.ini
+__pycache__/
+*.pyc
+
