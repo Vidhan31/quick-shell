@@ -9,6 +9,8 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
+#include <QSocketNotifier>
+
 namespace qs::plugins {
 
 class EthernetWorker : public QObject {
@@ -22,7 +24,9 @@ public slots:
     void start();
     void stop();
     void setInterval(int intervalMs);
+    void setThroughputTracking(bool tracking);
     void sample(bool forceInternetCheck = false);
+    void sampleThroughput();
     void runPing(const QString &target);
     void runCheck();
     void reconnect(const QString &iface);
@@ -35,12 +39,22 @@ signals:
 
 private slots:
     void onNmSignal();
+    void onNetlinkActivated();
 
 private:
+    void setupNetlink();
+    void closeNetlink();
     void setupDbusSubscriptions();
+    void triggerSampleDebounced();
 
     int m_intervalMs{2000};
-    QTimer *m_timer{nullptr};
+    bool m_throughputTracking{false};
+    QTimer *m_throughputTimer{nullptr};
+    QTimer *m_debounceTimer{nullptr};
+
+    int m_netlinkFd{-1};
+    QSocketNotifier *m_netlinkNotifier{nullptr};
+
     EthernetState m_lastState;
     quint64 m_prevRx{0};
     quint64 m_prevTx{0};
@@ -89,6 +103,7 @@ class EthernetMonitor : public QObject {
     // Lifecycle and timing
     Q_PROPERTY(bool running READ running WRITE setRunning NOTIFY runningChanged)
     Q_PROPERTY(int interval READ interval WRITE setInterval NOTIFY intervalChanged)
+    Q_PROPERTY(bool throughputTracking READ throughputTracking WRITE setThroughputTracking NOTIFY throughputTrackingChanged)
     Q_PROPERTY(bool isBusy READ isBusy NOTIFY busyChanged)
 
 public:
@@ -126,10 +141,12 @@ public:
 
     [[nodiscard]] bool running() const noexcept { return m_running; }
     [[nodiscard]] int interval() const noexcept { return m_interval; }
+    [[nodiscard]] bool throughputTracking() const noexcept { return m_throughputTracking; }
     [[nodiscard]] bool isBusy() const noexcept { return m_isBusy; }
 
     void setRunning(bool running);
     void setInterval(int interval);
+    void setThroughputTracking(bool tracking);
 
     // QML invokable actions
     Q_INVOKABLE void refresh();
@@ -144,6 +161,7 @@ signals:
     void pingStatusChanged();
     void runningChanged();
     void intervalChanged();
+    void throughputTrackingChanged();
     void busyChanged();
     void pingCompleted(bool ok, double latencyMs, const QString &output);
 
@@ -151,6 +169,7 @@ signals:
     void requestStart();
     void requestStop();
     void requestSetInterval(int interval);
+    void requestSetThroughputTracking(bool tracking);
     void requestSample(bool forceInternetCheck);
     void requestPing(const QString &target);
     void requestCheck();
@@ -177,6 +196,7 @@ private:
 
     bool m_running{true};
     int m_interval{2000};
+    bool m_throughputTracking{false};
     bool m_isBusy{false};
 
     QThread m_workerThread;

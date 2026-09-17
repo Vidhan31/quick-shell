@@ -1,77 +1,194 @@
 #include "EthernetMonitor.hpp"
 
 #include <QDBusConnection>
+#include <fcntl.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <cstring>
 
 namespace qs::plugins {
 
 EthernetWorker::EthernetWorker(int intervalMs, QObject *parent)
     : QObject(parent)
-    , m_intervalMs(qMax(500, intervalMs))
+    , m_intervalMs(qMax(200, intervalMs))
 {
 }
 
 EthernetWorker::~EthernetWorker() {
-    if (m_timer) {
-        m_timer->stop();
+    stop();
+}
+
+void EthernetWorker::setupNetlink() {
+    if (m_netlinkFd >= 0) return;
+
+    m_netlinkFd = ::socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC | SOCK_NONBLOCK, NETLINK_ROUTE);
+    if (m_netlinkFd < 0) return;
+
+    struct sockaddr_nl sa;
+    std::memset(&sa, 0, sizeof(sa));
+    sa.nl_family = AF_NETLINK;
+    sa.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR | RTMGRP_IPV4_ROUTE | RTMGRP_IPV6_ROUTE;
+
+    if (::bind(m_netlinkFd, reinterpret_cast<struct sockaddr*>(&sa), sizeof(sa)) < 0) {
+        ::close(m_netlinkFd);
+        m_netlinkFd = -1;
+        return;
     }
+
+    m_netlinkNotifier = new QSocketNotifier(m_netlinkFd, QSocketNotifier::Read, this);
+    connect(m_netlinkNotifier, &QSocketNotifier::activated, this, &EthernetWorker::onNetlinkActivated);
+}
+
+void EthernetWorker::closeNetlink() {
+    if (m_netlinkNotifier) {
+        m_netlinkNotifier->setEnabled(false);
+        delete m_netlinkNotifier;
+        m_netlinkNotifier = nullptr;
+    }
+    if (m_netlinkFd >= 0) {
+        ::close(m_netlinkFd);
+        m_netlinkFd = -1;
+    }
+}
+
+void EthernetWorker::onNetlinkActivated() {
+    if (m_netlinkFd < 0) return;
+
+    char buf[4096];
+    while (true) {
+        const ssize_t n = ::recv(m_netlinkFd, buf, sizeof(buf), MSG_DONTWAIT);
+        if (n <= 0) break;
+    }
+    triggerSampleDebounced();
 }
 
 void EthernetWorker::setupDbusSubscriptions() {
     auto bus = QDBusConnection::systemBus();
-    if (bus.isConnected()) {
-        bus.connect(QStringLiteral("org.freedesktop.NetworkManager"),
-                    QStringLiteral("/org/freedesktop/NetworkManager"),
-                    QStringLiteral("org.freedesktop.DBus.Properties"),
-                    QStringLiteral("PropertiesChanged"),
-                    this,
-                    SLOT(onNmSignal()));
+    if (!bus.isConnected()) return;
 
-        bus.connect(QStringLiteral("org.freedesktop.NetworkManager"),
-                    QStringLiteral("/org/freedesktop/NetworkManager"),
-                    QStringLiteral("org.freedesktop.NetworkManager"),
-                    QStringLiteral("PropertiesChanged"),
-                    this,
-                    SLOT(onNmSignal()));
+    // Listen to NetworkManager signals across any path (devices, active connections, settings)
+    bus.connect(QStringLiteral("org.freedesktop.NetworkManager"),
+                QString(),
+                QStringLiteral("org.freedesktop.DBus.Properties"),
+                QStringLiteral("PropertiesChanged"),
+                this,
+                SLOT(onNmSignal()));
 
-        bus.connect(QStringLiteral("org.freedesktop.NetworkManager"),
-                    QStringLiteral("/org/freedesktop/NetworkManager"),
-                    QStringLiteral("org.freedesktop.NetworkManager"),
-                    QStringLiteral("CheckPermissions"),
-                    this,
-                    SLOT(onNmSignal()));
+    bus.connect(QStringLiteral("org.freedesktop.NetworkManager"),
+                QStringLiteral("/org/freedesktop/NetworkManager"),
+                QStringLiteral("org.freedesktop.NetworkManager"),
+                QStringLiteral("StateChanged"),
+                this,
+                SLOT(onNmSignal()));
+
+    bus.connect(QStringLiteral("org.freedesktop.NetworkManager"),
+                QStringLiteral("/org/freedesktop/NetworkManager"),
+                QStringLiteral("org.freedesktop.NetworkManager"),
+                QStringLiteral("DeviceAdded"),
+                this,
+                SLOT(onNmSignal()));
+
+    bus.connect(QStringLiteral("org.freedesktop.NetworkManager"),
+                QStringLiteral("/org/freedesktop/NetworkManager"),
+                QStringLiteral("org.freedesktop.NetworkManager"),
+                QStringLiteral("DeviceRemoved"),
+                this,
+                SLOT(onNmSignal()));
+
+    bus.connect(QStringLiteral("org.freedesktop.NetworkManager"),
+                QStringLiteral("/org/freedesktop/NetworkManager"),
+                QStringLiteral("org.freedesktop.NetworkManager"),
+                QStringLiteral("CheckPermissions"),
+                this,
+                SLOT(onNmSignal()));
+}
+
+void EthernetWorker::triggerSampleDebounced() {
+    if (!m_debounceTimer) {
+        m_debounceTimer = new QTimer(this);
+        m_debounceTimer->setSingleShot(true);
+        connect(m_debounceTimer, &QTimer::timeout, this, [this]() {
+            sample(false);
+        });
+    }
+    if (!m_debounceTimer->isActive()) {
+        m_debounceTimer->start(60);
     }
 }
 
 void EthernetWorker::start() {
-    if (!m_timer) {
-        m_timer = new QTimer(this);
-        connect(m_timer, &QTimer::timeout, this, [this]() {
-            sample(false);
-        });
-        setupDbusSubscriptions();
-    }
+    setupNetlink();
+    setupDbusSubscriptions();
     sample(true);
-    m_timer->start(m_intervalMs);
 }
 
 void EthernetWorker::stop() {
-    if (m_timer) {
-        m_timer->stop();
+    if (m_debounceTimer) {
+        m_debounceTimer->stop();
     }
+    if (m_throughputTimer) {
+        m_throughputTimer->stop();
+    }
+    closeNetlink();
 }
 
 void EthernetWorker::setInterval(int intervalMs) {
-    m_intervalMs = qMax(500, intervalMs);
-    if (m_timer && m_timer->isActive()) {
-        m_timer->start(m_intervalMs);
+    m_intervalMs = qMax(200, intervalMs);
+    if (m_throughputTimer && m_throughputTimer->isActive()) {
+        m_throughputTimer->start(m_intervalMs);
     }
+}
+
+void EthernetWorker::setThroughputTracking(bool tracking) {
+    if (m_throughputTracking == tracking) return;
+    m_throughputTracking = tracking;
+
+    if (m_throughputTracking) {
+        if (!m_throughputTimer) {
+            m_throughputTimer = new QTimer(this);
+            connect(m_throughputTimer, &QTimer::timeout, this, &EthernetWorker::sampleThroughput);
+        }
+        EthernetProbe::readRxTxBytes(m_lastState.iface, m_prevRx, m_prevTx);
+        m_prevTime = std::chrono::steady_clock::now();
+        m_throughputTimer->start(m_intervalMs > 0 ? m_intervalMs : 1000);
+        sampleThroughput();
+    } else {
+        if (m_throughputTimer) {
+            m_throughputTimer->stop();
+        }
+        emit throughputUpdated(m_prevRx, m_prevTx, 0.0, 0.0);
+    }
+}
+
+void EthernetWorker::sampleThroughput() {
+    quint64 rx = 0;
+    quint64 tx = 0;
+    const QString iface = m_lastState.iface.isEmpty() ? QStringLiteral("enp34s0") : m_lastState.iface;
+    if (!EthernetProbe::readRxTxBytes(iface, rx, tx)) {
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (m_prevTime.time_since_epoch().count() > 0) {
+        const double dtSec = std::chrono::duration<double>(now - m_prevTime).count();
+        if (dtSec > 0.05) {
+            const double rxBps = (rx >= m_prevRx) ? static_cast<double>(rx - m_prevRx) / dtSec : 0.0;
+            const double txBps = (tx >= m_prevTx) ? static_cast<double>(tx - m_prevTx) / dtSec : 0.0;
+            emit throughputUpdated(rx, tx, rxBps, txBps);
+        }
+    }
+    m_prevRx = rx;
+    m_prevTx = tx;
+    m_prevTime = now;
 }
 
 void EthernetWorker::sample(bool forceInternetCheck) {
     const auto state = EthernetProbe::probe(forceInternetCheck);
     const auto now = std::chrono::steady_clock::now();
 
-    if (m_initialized && m_prevTime.time_since_epoch().count() > 0) {
+    if (m_throughputTracking && m_initialized && m_prevTime.time_since_epoch().count() > 0) {
         const double dtSec = std::chrono::duration<double>(now - m_prevTime).count();
         if (dtSec > 0.05) {
             const double rxBps = (state.rxBytes >= m_prevRx) ? static_cast<double>(state.rxBytes - m_prevRx) / dtSec : 0.0;
@@ -92,7 +209,7 @@ void EthernetWorker::sample(bool forceInternetCheck) {
 }
 
 void EthernetWorker::onNmSignal() {
-    sample(false);
+    triggerSampleDebounced();
 }
 
 void EthernetWorker::runPing(const QString &target) {
@@ -130,6 +247,7 @@ EthernetMonitor::EthernetMonitor(QObject *parent)
     connect(this, &EthernetMonitor::requestStart, m_worker, &EthernetWorker::start);
     connect(this, &EthernetMonitor::requestStop, m_worker, &EthernetWorker::stop);
     connect(this, &EthernetMonitor::requestSetInterval, m_worker, &EthernetWorker::setInterval);
+    connect(this, &EthernetMonitor::requestSetThroughputTracking, m_worker, &EthernetWorker::setThroughputTracking);
     connect(this, &EthernetMonitor::requestSample, m_worker, &EthernetWorker::sample);
     connect(this, &EthernetMonitor::requestPing, m_worker, &EthernetWorker::runPing);
     connect(this, &EthernetMonitor::requestCheck, m_worker, &EthernetWorker::runCheck);
@@ -168,6 +286,13 @@ void EthernetMonitor::setInterval(int interval) {
     m_interval = interval;
     emit requestSetInterval(interval);
     emit intervalChanged();
+}
+
+void EthernetMonitor::setThroughputTracking(bool tracking) {
+    if (m_throughputTracking == tracking) return;
+    m_throughputTracking = tracking;
+    emit requestSetThroughputTracking(tracking);
+    emit throughputTrackingChanged();
 }
 
 void EthernetMonitor::refresh() {

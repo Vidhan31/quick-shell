@@ -9,6 +9,12 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
+#include <QByteArray>
+#include <QHash>
+#include <QJsonObject>
+#include <QProcess>
+#include <QSocketNotifier>
+
 namespace qs::plugins {
 
 class PrivacyWorker : public QObject {
@@ -27,12 +33,40 @@ public slots:
 signals:
     void stateChanged(const qs::plugins::PrivacyState &state);
 
+private slots:
+    void onPwStdoutReady();
+    void onPwError(QProcess::ProcessError error);
+    void onPwFinished(int exitCode, QProcess::ExitStatus exitStatus);
+    void onInotifyActivated();
+
 private:
-    int m_intervalMs;
-    int m_tickCount{0};
-    QTimer *m_timer{nullptr};
+    void setupPwProcess();
+    void stopPwProcess();
+    void processPwBuffer();
+    bool handleJsonArray(const QByteArray &chunk);
+    void evaluatePrivacyState();
+    void setupInotify();
+    void closeInotify();
+
+    int m_intervalMs{800};
     PrivacyState m_lastState;
     bool m_initialized{false};
+
+    QProcess *m_pwProcess{nullptr};
+    QByteArray m_pwBuffer;
+    int m_bracketDepth{0};
+    bool m_inString{false};
+    bool m_escape{false};
+
+    QHash<int, QJsonObject> m_nodes;
+    QHash<int, QJsonObject> m_links;
+
+    int m_inotifyFd{-1};
+    QSocketNotifier *m_inotifyNotifier{nullptr};
+    QHash<int, QString> m_inotifyWatches;
+
+    QTimer *m_restartTimer{nullptr};
+    QTimer *m_debounceTimer{nullptr};
 };
 
 class PrivacyMonitor : public QObject {

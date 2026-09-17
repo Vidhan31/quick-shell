@@ -14,6 +14,14 @@ Item {
   }
   readonly property EthernetMonitor activeMonitor: root.monitor ? root.monitor : fallbackMonitor
 
+  // Throughput tracking: enable live throughput metrics only when popup is visible
+  Binding {
+    target: root.activeMonitor
+    property: "throughputTracking"
+    value: root.visible
+    when: root.activeMonitor !== null
+  }
+
   property var ethData: activeMonitor ? activeMonitor.ethData : null
   signal triggerRefresh()
 
