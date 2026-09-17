@@ -419,10 +419,6 @@ void MediaPlayer::updateInterpolatedPosition() {
     emit positionChanged();
 }
 
-void MediaPlayer::positionChanged() {
-    emit positionChangedSignal();
-}
-
 void MediaPlayer::play() {
     auto msg = QDBusMessage::createMethodCall(
         m_service,

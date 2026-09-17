@@ -103,13 +103,12 @@ public slots:
     void setShuffle(bool enable);
     void setLoopState(int state);
     void setVolume(double vol);
-    void positionChanged();
 
 signals:
     void identityChanged();
     void playbackStateChanged();
     void metadataChanged();
-    void positionChangedSignal();
+    void positionChanged();
     void positionSupportedChanged();
     void capabilitiesChanged();
     void shuffleChanged();

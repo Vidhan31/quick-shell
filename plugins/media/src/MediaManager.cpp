@@ -326,7 +326,7 @@ private:
         connect(player, &MediaPlayer::metadataChanged, this, &MediaManagerCore::onPlayerMetadataChanged);
         connect(player, &MediaPlayer::identityChanged, this, &MediaManagerCore::onPlayerIdentityChanged);
         connect(player, &MediaPlayer::capabilitiesChanged, this, &MediaManagerCore::onPlayerCapabilitiesChanged);
-        connect(player, &MediaPlayer::positionChangedSignal, this, &MediaManagerCore::onPlayerPositionChanged);
+        connect(player, &MediaPlayer::positionChanged, this, &MediaManagerCore::onPlayerPositionChanged);
         connect(player, &MediaPlayer::shuffleChanged, this, &MediaManagerCore::shuffleChanged);
         connect(player, &MediaPlayer::loopStateChanged, this, &MediaManagerCore::loopStateChanged);
 

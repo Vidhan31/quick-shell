@@ -629,7 +629,7 @@ Item {
 
                 // Reset All button
                 Rectangle {
-                  visible: root.tsData.serve_items && root.tsData.serve_items.length > 0
+                  visible: Boolean(root.tsData.serve_items && root.tsData.serve_items.length > 0)
                   width: resetText.width + 12
                   height: 22
                   radius: 4
@@ -1448,7 +1448,7 @@ Item {
                   Column {
                     width: parent.width
                     spacing: 4
-                    visible: root.tsData.ssh_enabled
+                    visible: Boolean(root.tsData.ssh_enabled)
 
                     Text {
                       text: "Click to copy SSH connection command:"
