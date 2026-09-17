@@ -1,7 +1,8 @@
-// TailscaleControlCenter.qml — Control center for Tailscale SSH, Serve, Funnel, Peers & Diagnostics.
+// TailscaleControlCenter.qml — Quiet control surface for Tailscale.
+// Grouped rows with hairlines, one segmented switcher, words instead of badges.
+// Every pressable surface shares the same hover/pressed wash so clicks feel native.
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
 import Quickshell
 import Quickshell.Plugins.Tailscale
 
@@ -15,10 +16,11 @@ Item {
   }
   readonly property TailscaleMonitor activeMonitor: root.monitor ? root.monitor : fallbackMonitor
 
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
-
   implicitWidth: 440
-  implicitHeight: 520
+  // Hug the Sharing tab content (chrome 266 + tab chrome 70 + list + composer),
+  // capped so long share lists scroll inside the card instead. Other tabs keep
+  // a fixed height since they scroll. Popover resizing per tab is native behavior.
+  implicitHeight: root.currentTab === 0 ? Math.min(660, 336 + (root.serveItems.length > 0 ? sharesCol.height : 44) + composerRect.height) : 620
   width: implicitWidth
   height: implicitHeight
 
@@ -42,21 +44,41 @@ Item {
 
   signal triggerRefresh()
 
-  property int currentTab: 0 // 0: Serve & Funnel, 1: SSH Access, 2: Peers, 3: Settings & Diag
+  property int currentTab: 0 // 0: Sharing, 1: Devices, 2: Settings
   property string toastMessage: ""
-  property bool isBusy: false
-  property string pingResult: ""
-  property string pingTargetIp: ""
-  property string netcheckReport: ""
-  property bool isRunningNetcheck: false
+  property string pingingIp: ""
 
-  // Launcher input properties
+  // Launcher state
   property string launchTarget: "https+insecure://localhost:5137"
   property string launchPort: "443"
   property string launchPath: "/"
   property string launchMode: "serve" // "serve" or "funnel"
   property bool initialTargetSynced: false
 
+  // ---- Derived state (all read from tsData, same schema as before) ----
+  readonly property bool connected: Boolean(root.tsData && root.tsData.connected)
+  readonly property var serveItems: (root.tsData && root.tsData.serve_items) ? root.tsData.serve_items : []
+  readonly property var peers: (root.tsData && root.tsData.peers) ? root.tsData.peers : []
+  readonly property var health: (root.tsData && root.tsData.health) ? root.tsData.health : []
+  readonly property bool busy: root.activeMonitor ? root.activeMonitor.isBusy : false
+  readonly property bool netBusy: root.activeMonitor ? root.activeMonitor.isRunningNetcheck : false
+  readonly property string netReport: root.activeMonitor ? root.activeMonitor.netcheckReport : ""
+  readonly property string pingResult: root.activeMonitor ? root.activeMonitor.pingResult : ""
+  readonly property string pingTargetIp: root.activeMonitor ? root.activeMonitor.pingTargetIp : ""
+
+  readonly property var segItems: [
+    { icon: "󰖟", label: "Sharing", count: root.serveItems.length, alert: false },
+    { icon: "󰀲", label: "Devices", count: root.peers.length, alert: false },
+    { icon: "󰒢", label: "Settings", count: root.health.length, alert: root.health.length > 0 }
+  ]
+
+  readonly property var suggestions: [
+    { name: "Frontend", addr: "https+insecure://localhost:5137" },
+    { name: "API", addr: "8080" },
+    { name: "API · alt", addr: "3000" }
+  ]
+
+  // ---- Logic (unchanged semantics) ----
   function normalizeTarget(str: string): string {
     if (!str) return "";
     const s = str.trim().toLowerCase();
@@ -98,9 +120,8 @@ Item {
   }
 
   function findActiveEndpoint(target: string, port: string): var {
-    if (!target) return null;
-    const items = (root.tsData && root.tsData.serve_items) ? root.tsData.serve_items : [];
-    if (!items || items.length === 0) return null;
+    const items = root.serveItems;
+    if (!target || !items || items.length === 0) return null;
 
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
@@ -111,10 +132,10 @@ Item {
       }
     }
 
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      if (root.targetsMatch(target, it.target) || root.targetsMatch(target, it.url)) {
-        return it;
+    for (let j = 0; j < items.length; j++) {
+      const it2 = items[j];
+      if (root.targetsMatch(target, it2.target) || root.targetsMatch(target, it2.url)) {
+        return it2;
       }
     }
 
@@ -129,6 +150,8 @@ Item {
       if (ep.port) root.launchPort = ep.port;
       if (ep.path) root.launchPath = ep.path;
     }
+    targetField.setText(root.launchTarget);
+    portField.setText(root.launchPort);
   }
 
   readonly property var activeEndpoint: {
@@ -159,22 +182,47 @@ Item {
 
   readonly property string launchButtonText: {
     if (root.launchButtonAction === "empty") {
-      return "Enter URL or Port to Start";
+      return "Enter a target to begin";
     }
     if (root.launchButtonAction === "stop") {
-      return "Stop " + (root.launchMode === "funnel" ? "Funnel Service" : "Serve Service");
+      return "Stop sharing · :" + ((root.activeEndpoint && root.activeEndpoint.port) ? root.activeEndpoint.port : root.launchPort);
     }
     if (root.launchButtonAction === "switch") {
-      return root.launchMode === "funnel" ? "Switch to Public (Funnel)" : "Switch to Tailnet (Serve)";
+      return root.launchMode === "funnel" ? "Switch to Public" : "Switch to Tailnet";
     }
-    return "Start " + (root.launchMode === "funnel" ? "Funnel Service" : "Serve Service");
+    return root.launchMode === "funnel" ? "Share Publicly" : "Share on Tailnet";
   }
 
-  readonly property string launchButtonIcon: {
-    if (root.launchButtonAction === "empty") return "✎";
-    if (root.launchButtonAction === "stop") return "⏹";
-    if (root.launchButtonAction === "switch") return root.launchMode === "funnel" ? "󱂛" : "󰈡";
-    return "▶";
+  readonly property string launchButtonGlyph: {
+    if (root.launchButtonAction === "empty") return "";
+    if (root.launchButtonAction === "stop") return "✕";
+    if (root.launchButtonAction === "switch") return "⇄";
+    return "󰐊";
+  }
+
+  function osIcon(os: string): string {
+    const s = (os || "").toLowerCase();
+    if (s.includes("android")) return "󰀲";
+    if (s.includes("linux")) return "󰌽";
+    if (s.includes("mac") || s.includes("ios")) return "󰀵";
+    if (s.includes("win")) return "󰖳";
+    return "󰛳";
+  }
+
+  function pingDisplay(ip: string): string {
+    if (!ip || root.pingTargetIp !== ip) return "";
+    if (root.pingResult && root.pingResult.length > 0) return root.pingResult;
+    if (root.pingingIp === ip) return "…";
+    return "";
+  }
+
+  function sshCommands(): var {
+    const self = (root.tsData && root.tsData.self) ? root.tsData.self : {};
+    return [
+      "ssh dev@" + (self.hostname || "fedora"),
+      "ssh dev@" + (self.ipv4 || "100.72.40.125"),
+      "ssh dev@" + (self.dns_name || "fedora.ts.net")
+    ];
   }
 
   function showToast(msg: string): void {
@@ -217,20 +265,57 @@ Item {
     }
   }
 
+  function toggleConnection(): void {
+    const action = root.connected ? "down" : "up";
+    root.runAction(["up-down", action], root.connected ? "Disconnecting…" : "Connecting…");
+  }
+
   function pingPeer(ip: string): void {
     if (!ip) return;
-    root.pingTargetIp = ip;
-    root.pingResult = "Pinging…";
+    root.pingingIp = ip;
     if (root.activeMonitor) {
       root.activeMonitor.ping(ip);
     }
   }
 
   function runNetcheck(): void {
-    root.isRunningNetcheck = true;
-    root.netcheckReport = "Running diagnostic netcheck…";
     if (root.activeMonitor) {
       root.activeMonitor.netcheck();
+    }
+  }
+
+  function stopEndpoint(port: string): void {
+    root.runAction(["serve-stop", port], "Stopped port " + port);
+  }
+
+  function flipScope(item: var): void {
+    const makeFunnel = !item.is_funnel;
+    root.runAction(["funnel-toggle", item.port, item.target, makeFunnel ? "true" : "false", item.path || "/"],
+                   makeFunnel ? "Switched to Public Funnel" : "Switched to Tailnet Only");
+  }
+
+  function launchPrimary(): void {
+    if (root.launchButtonAction === "stop") {
+      const stopPort = (root.activeEndpoint && root.activeEndpoint.port) ? root.activeEndpoint.port : (root.launchPort || "443");
+      const stopPath = (root.activeEndpoint && root.activeEndpoint.path) ? root.activeEndpoint.path : (root.launchPath || "/");
+      root.runAction(
+        ["serve-stop", stopPort, stopPath],
+        "Stopped " + (root.launchMode === "funnel" ? "funnel" : "serve") + " on port " + stopPort
+      );
+    } else if (root.launchButtonAction === "switch") {
+      const port = (root.activeEndpoint && root.activeEndpoint.port) ? root.activeEndpoint.port : (root.launchPort || "443");
+      const target = (root.activeEndpoint && root.activeEndpoint.target) ? root.activeEndpoint.target : root.launchTarget;
+      const path = (root.activeEndpoint && root.activeEndpoint.path) ? root.activeEndpoint.path : (root.launchPath || "/");
+      const makeFunnel = root.launchMode === "funnel";
+      root.runAction(
+        ["funnel-toggle", port, target, makeFunnel ? "true" : "false", path],
+        makeFunnel ? ("Switched " + target + " to Public Funnel") : ("Switched " + target + " to Tailnet Only")
+      );
+    } else if (root.launchButtonAction === "start") {
+      root.runAction(
+        ["serve-start", root.launchTarget, root.launchMode, root.launchPort, root.launchPath],
+        "Started " + root.launchMode + " for " + root.launchTarget
+      );
     }
   }
 
@@ -244,1712 +329,1353 @@ Item {
       }
     }
     function onPingFinished(ok, targetIp, latency) {
-      if (root.pingTargetIp === targetIp) {
-        root.pingResult = ok ? latency : (latency ? latency : "No reply");
-      }
-    }
-    function onNetcheckStatusChanged() {
-      if (root.activeMonitor) {
-        root.isRunningNetcheck = root.activeMonitor.isRunningNetcheck;
-        root.netcheckReport = root.activeMonitor.netcheckReport;
+      if (root.pingingIp === targetIp) {
+        root.pingingIp = "";
       }
     }
     function onStateChanged() {
-      if (!root.initialTargetSynced && root.tsData && root.tsData.serve_items && root.tsData.serve_items.length > 0) {
+      if (!root.initialTargetSynced && root.serveItems.length > 0) {
         root.initialTargetSynced = true;
         root.selectTarget(root.launchTarget);
       }
     }
   }
 
+  // ================= Design tokens =================
+  QtObject {
+    id: t
+    readonly property color bg: "#17171E"
+    readonly property color surface: "#1F202B"
+    readonly property color inset: "#121217"
+    readonly property color line: "#2B2C3A"
+    readonly property color ink1: "#F1F1F6"
+    readonly property color ink2: "#A6A6B8"
+    readonly property color ink3: "#6F6F84"
+    readonly property color accent: "#5E9DFF"
+    readonly property color green: "#46C786"
+    readonly property color amber: "#E2A63B"
+    readonly property color red: "#DF6363"
+    readonly property color violet: "#AE8CFF"
+    readonly property color darkInk: "#101018"
+    readonly property string mono: "JetBrainsMono Nerd Font Mono"
+  }
+
+  // ================= Reusable quiet components =================
+  component Hairline: Rectangle {
+    color: t.line
+    height: 1
+  }
+
+  // Small caps section label with an optional trailing quiet action.
+  component SectionHead: Item {
+    property string label: ""
+    property string actionText: ""
+    property color actionColor: t.ink2
+    signal actionClicked
+    implicitHeight: 20
+    Text {
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      text: label
+      font.pixelSize: 11
+      font.bold: true
+      font.capitalization: Font.AllUppercase
+      font.letterSpacing: 0.8
+      color: t.ink3
+    }
+    TextBtn {
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      visible: actionText.length > 0
+      text: parent.actionText
+      fg: parent.actionColor
+      fs: 11
+      onClicked: parent.actionClicked()
+    }
+  }
+
+  // Base for every clickable row: same wash everywhere, no borders.
+  // Set actionable: false when there is nothing to do — the row then
+  // stays inert (no wash, no pointer cursor) instead of faking affordance.
+  component RowBase: Rectangle {
+    id: rb
+    signal clicked
+    property color base: "transparent"
+    property color hover: "#0FFFFFFF"
+    property color press: "#1AFFFFFF"
+    property real rad: 0
+    property bool actionable: true
+    radius: rb.rad
+    color: (!rb.actionable || (!ma.containsMouse && !ma.pressed)) ? base : (ma.pressed ? press : hover)
+    Behavior on color { ColorAnimation { duration: 90 } }
+    MouseArea {
+      id: ma
+      anchors.fill: parent
+      hoverEnabled: rb.actionable
+      cursorShape: rb.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onClicked: {
+        if (rb.actionable) rb.clicked();
+      }
+    }
+  }
+
+  // Borderless text button.
+  component TextBtn: Rectangle {
+    id: tb
+    signal clicked
+    property string text: ""
+    property color fg: t.ink2
+    property int fs: 12
+    property bool bold: false
+    implicitWidth: lbl.implicitWidth + 18
+    implicitHeight: 26
+    radius: 7
+    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
+    Behavior on color { ColorAnimation { duration: 90 } }
+    Text {
+      id: lbl
+      anchors.centerIn: parent
+      text: tb.text
+      font.pixelSize: tb.fs
+      font.bold: tb.bold
+      color: (ma.containsMouse || ma.pressed) ? t.ink1 : tb.fg
+      Behavior on color { ColorAnimation { duration: 90 } }
+    }
+    MouseArea {
+      id: ma
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: tb.clicked()
+    }
+  }
+
+  // Borderless square icon button.
+  component IconBtn: Rectangle {
+    id: ib
+    signal clicked
+    property string glyph: ""
+    property int fs: 14
+    property color fg: t.ink2
+    property bool spinning: false
+    width: 30
+    height: 30
+    radius: 8
+    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
+    Behavior on color { ColorAnimation { duration: 90 } }
+    Text {
+      id: ibGlyph
+      anchors.centerIn: parent
+      text: ib.glyph
+      font.family: t.mono
+      font.pixelSize: ib.fs
+      color: (ma.containsMouse || ma.pressed) ? t.ink1 : ib.fg
+      Behavior on color { ColorAnimation { duration: 90 } }
+      NumberAnimation on rotation {
+        running: ib.spinning
+        from: 0
+        to: 360
+        loops: Animation.Infinite
+        duration: 800
+      }
+    }
+    onSpinningChanged: {
+      if (!spinning) ibGlyph.rotation = 0;
+    }
+    MouseArea {
+      id: ma
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: ib.clicked()
+    }
+  }
+
+  // macOS-style switch. Track carries the color, thumb just slides.
+  component TSwitch: Item {
+    id: sw
+    signal toggled
+    property bool on: false
+    property color onColor: t.green
+    width: 42
+    height: 24
+    Rectangle {
+      anchors.fill: parent
+      radius: 12
+      color: sw.on ? sw.onColor : "#3B3C4C"
+      Behavior on color { ColorAnimation { duration: 140 } }
+      Rectangle {
+        width: 20
+        height: 20
+        radius: 10
+        y: 2
+        x: sw.on ? parent.width - width - 2 : 2
+        color: "#F4F4F8"
+        Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+      }
+    }
+    MouseArea {
+      anchors.fill: parent
+      cursorShape: Qt.PointingHandCursor
+      onClicked: sw.toggled()
+    }
+  }
+
+  // One inset track, segments share it — not separate pills.
+  component Segments: Item {
+    id: sg
+    property var items: []
+    property int current: 0
+    signal selected(int index)
+    implicitHeight: 34
+    Rectangle {
+      anchors.fill: parent
+      radius: 10
+      color: t.inset
+    }
+    Row {
+      anchors.fill: parent
+      anchors.margins: 3
+      spacing: 2
+      Repeater {
+        model: sg.items
+        Item {
+          required property var modelData
+          required property int index
+          width: (parent.width - 2 * (sg.items.length - 1)) / sg.items.length
+          height: parent.height
+          Rectangle {
+            anchors.fill: parent
+            radius: 7
+            color: sg.current === index ? "#2E2F42" : (segMa.containsMouse || segMa.pressed ? "#22232F" : "transparent")
+            Behavior on color { ColorAnimation { duration: 110 } }
+          }
+          Row {
+            anchors.centerIn: parent
+            spacing: 6
+            Text {
+              visible: modelData.icon && modelData.icon.length > 0
+              anchors.verticalCenter: parent.verticalCenter
+              text: modelData.icon
+              font.family: t.mono
+              font.pixelSize: 12
+              color: sg.current === index ? t.ink1 : t.ink3
+            }
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: modelData.label
+              font.pixelSize: 12
+              font.weight: sg.current === index ? Font.DemiBold : Font.Normal
+              color: sg.current === index ? t.ink1 : t.ink2
+            }
+            Text {
+              visible: modelData.count > 0
+              anchors.verticalCenter: parent.verticalCenter
+              text: modelData.count
+              font.pixelSize: 11
+              color: (modelData.alert && sg.current !== index) ? t.amber : t.ink3
+            }
+          }
+          MouseArea {
+            id: segMa
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: sg.selected(index)
+          }
+        }
+      }
+    }
+  }
+
+  // Inset field with a soft focus ring and an optional clear key.
+  component Field: Rectangle {
+    id: fd
+    signal edited(string text)
+    property string placeholder: ""
+    property string initial: ""
+    property bool clearable: false
+    implicitHeight: 32
+    radius: 8
+    color: t.inset
+    border.color: Qt.rgba(0.37, 0.62, 1.0, 0.55)
+    border.width: input.activeFocus ? 1 : 0
+    function setText(v: string): void {
+      if (input.text !== v) input.text = v;
+    }
+    Component.onCompleted: input.text = fd.initial
+    TextInput {
+      id: input
+      anchors.fill: parent
+      anchors.leftMargin: 10
+      anchors.rightMargin: fd.clearable && text.length > 0 ? 26 : 10
+      verticalAlignment: TextInput.AlignVCenter
+      font.family: t.mono
+      font.pixelSize: 12
+      color: t.ink1
+      selectByMouse: true
+      onTextEdited: fd.edited(text)
+    }
+    Text {
+      anchors.fill: parent
+      anchors.leftMargin: 10
+      anchors.rightMargin: 10
+      verticalAlignment: Text.AlignVCenter
+      visible: input.text.length === 0 && !input.activeFocus
+      text: fd.placeholder
+      font.pixelSize: 12
+      color: t.ink3
+      elide: Text.ElideRight
+    }
+    Rectangle {
+      visible: fd.clearable && input.text.length > 0
+      anchors.right: parent.right
+      anchors.rightMargin: 5
+      anchors.verticalCenter: parent.verticalCenter
+      width: 18
+      height: 18
+      radius: 9
+      color: clearMa.containsMouse ? "#1CFFFFFF" : "transparent"
+      Text {
+        anchors.centerIn: parent
+        text: "✕"
+        font.pixelSize: 9
+        color: t.ink3
+      }
+      MouseArea {
+        id: clearMa
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: {
+          input.text = "";
+          fd.edited("");
+        }
+      }
+    }
+  }
+
+  // Single solid primary action. Fill darkens on press like a native button.
+  component PrimaryBtn: Rectangle {
+    id: pb
+    signal clicked
+    property string text: ""
+    property string glyph: ""
+    property color fill: t.accent
+    property color ink: t.darkInk
+    property bool enabledBtn: true
+    implicitHeight: 34
+    radius: 9
+    scale: (ma.pressed && pb.enabledBtn) ? 0.985 : 1.0
+    Behavior on scale { NumberAnimation { duration: 80 } }
+    color: !pb.enabledBtn ? "#24252F" : ma.pressed ? Qt.darker(fill, 1.2) : ma.containsMouse ? Qt.lighter(fill, 1.07) : fill
+    Behavior on color { ColorAnimation { duration: 90 } }
+    Row {
+      anchors.centerIn: parent
+      spacing: 7
+      Text {
+        visible: pb.glyph.length > 0
+        anchors.verticalCenter: parent.verticalCenter
+        text: pb.glyph
+        font.family: t.mono
+        font.pixelSize: 12
+        color: pb.enabledBtn ? pb.ink : t.ink3
+      }
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: pb.text
+        font.pixelSize: 13
+        font.weight: Font.DemiBold
+        color: pb.enabledBtn ? pb.ink : t.ink3
+      }
+    }
+    MouseArea {
+      id: ma
+      anchors.fill: parent
+      hoverEnabled: pb.enabledBtn
+      cursorShape: pb.enabledBtn ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onClicked: {
+        if (pb.enabledBtn) pb.clicked();
+      }
+    }
+  }
+
+  // ================= Card =================
   Rectangle {
     id: card
     anchors.fill: parent
-    radius: 16
-    color: "#1e1e2e"
-    border.color: "#313244"
+    radius: 14
+    color: t.bg
+    border.color: "#26272F"
     border.width: 1
 
     ColumnLayout {
       anchors.fill: parent
-      anchors.margins: 14
-      spacing: 10
+      anchors.margins: 16
+      spacing: 0
 
-      // Header row: Logo, Title, Status pill, Refresh button
+      // ---- Header: identity left, refresh + connection switch right ----
       RowLayout {
         Layout.fillWidth: true
-        Layout.preferredHeight: 28
-
-        Row {
-          spacing: 8
-          Layout.alignment: Qt.AlignVCenter
-
-          Text {
-            text: "󰖩"
-            font.family: root.monoFont
-            font.pixelSize: 18
-            color: root.tsData.connected ? "#89b4fa" : "#f38ba8"
-          }
-
-          Text {
-            text: "Tailscale"
-            font.family: root.monoFont
-            font.pixelSize: 15
-            font.bold: true
-            color: "#cdd6f4"
-          }
-        }
-
-        Item { Layout.fillWidth: true }
-
-        // Up/Down connect toggle pill
-        Rectangle {
-          id: connectPill
-          width: connectPillRow.width + 16
-          height: 26
-          radius: 13
-          color: root.tsData.connected ? "#1e382b" : "#3b2229"
-          border.color: root.tsData.connected ? "#a6e3a1" : "#f38ba8"
-          border.width: 1
-
-          Row {
-            id: connectPillRow
-            anchors.centerIn: parent
-            spacing: 6
-
-            Rectangle {
-              width: 7
-              height: 7
-              radius: 3.5
-              anchors.verticalCenter: parent.verticalCenter
-              color: root.tsData.connected ? "#a6e3a1" : "#f38ba8"
-            }
-
-            Text {
-              text: root.tsData.connected ? "Connected" : "Disconnected"
-              font.family: root.monoFont
-              font.pixelSize: 11
-              font.bold: true
-              color: root.tsData.connected ? "#a6e3a1" : "#f38ba8"
-            }
-          }
-
-          MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            hoverEnabled: true
-            onClicked: {
-              const action = root.tsData.connected ? "down" : "up";
-              root.runAction(["up-down", action], root.tsData.connected ? "Disconnecting…" : "Connecting…");
-            }
-          }
-        }
-
-        // Refresh button
-        Rectangle {
-          width: 26
-          height: 26
-          radius: 6
-          color: refreshMouse.containsMouse ? "#45475a" : "#313244"
-
-          Text {
-            anchors.centerIn: parent
-            text: "󰑓"
-            font.family: root.monoFont
-            font.pixelSize: 13
-            color: root.isBusy ? "#89b4fa" : "#cdd6f4"
-            rotation: root.isBusy ? 360 : 0
-            Behavior on rotation { NumberAnimation { duration: 600; loops: Animation.Infinite } }
-          }
-
-          MouseArea {
-            id: refreshMouse
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            hoverEnabled: true
-            onClicked: root.refresh()
-          }
-        }
-      }
-
-      // Self device banner
-      Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: selfInfoCol.height + 16
-        radius: 10
-        color: "#181825"
-        border.color: "#313244"
-        border.width: 1
-
-        Column {
-          id: selfInfoCol
-          anchors {
-            left: parent.left
-            right: parent.right
-            top: parent.top
-            margins: 8
-          }
-          spacing: 8
-
-          // Node host + User + Tailnet
-          RowLayout {
-            width: parent.width
-
-            Row {
-              spacing: 6
-              Text {
-                text: "󰌽"
-                font.family: root.monoFont
-                font.pixelSize: 12
-                color: "#89b4fa"
-              }
-              Text {
-                text: (root.tsData.self && root.tsData.self.hostname) ? root.tsData.self.hostname : "This Device"
-                font.family: root.monoFont
-                font.pixelSize: 12
-                font.bold: true
-                color: "#cdd6f4"
-              }
-            }
-
-            Item { Layout.fillWidth: true }
-
-            Text {
-              text: (root.tsData.tailnet ? root.tsData.tailnet : "") + (root.tsData.self && root.tsData.self.relay ? " (" + root.tsData.self.relay + ")" : "")
-              font.family: root.monoFont
-              font.pixelSize: 11
-              color: "#a6adc8"
-            }
-          }
-
-          // IP and DNS row with copy buttons
-          RowLayout {
-            width: parent.width
-            spacing: 8
-
-            // IPv4 chip
-            Rectangle {
-              Layout.preferredWidth: 150
-              Layout.fillWidth: false
-              height: 26
-              radius: 6
-              color: ipMouse.containsMouse ? "#3b3e52" : "#313244"
-
-              RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-
-                Text {
-                  text: "IP: " + ((root.tsData.self && root.tsData.self.ipv4) ? root.tsData.self.ipv4 : "—")
-                  font.family: root.monoFont
-                  font.pixelSize: 11
-                  color: "#a6e3a1"
-                  Layout.fillWidth: true
-                  elide: Text.ElideRight
-                }
-
-                Text {
-                  text: "󰆏"
-                  font.family: root.monoFont
-                  font.pixelSize: 10
-                  color: "#a6adc8"
-                }
-              }
-
-              MouseArea {
-                id: ipMouse
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                hoverEnabled: true
-                onClicked: root.copyText(root.tsData.self.ipv4, "IP Address")
-              }
-            }
-
-            // MagicDNS domain chip
-            Rectangle {
-              Layout.fillWidth: true
-              height: 26
-              radius: 6
-              color: dnsMouse.containsMouse ? "#3b3e52" : "#313244"
-
-              RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-
-                Text {
-                  text: (root.tsData.self && root.tsData.self.dns_name) ? root.tsData.self.dns_name : "MagicDNS"
-                  elide: Text.ElideMiddle
-                  Layout.fillWidth: true
-                  font.family: root.monoFont
-                  font.pixelSize: 11
-                  color: "#89b4fa"
-                }
-
-                Text {
-                  text: "󰆏"
-                  font.family: root.monoFont
-                  font.pixelSize: 10
-                  color: "#a6adc8"
-                }
-              }
-
-              MouseArea {
-                id: dnsMouse
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                hoverEnabled: true
-                onClicked: root.copyText(root.tsData.self.dns_name, "Domain")
-              }
-            }
-          }
-        }
-      }
-
-      // Toast feedback banner
-      Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 24
-        radius: 6
-        color: "#1e382b"
-        border.color: "#a6e3a1"
-        border.width: 1
-        visible: root.toastMessage.length > 0
+        Layout.preferredHeight: 40
+        spacing: 10
 
         Text {
-          anchors.centerIn: parent
-          text: "✓ " + root.toastMessage
-          font.family: root.monoFont
-          font.pixelSize: 11
-          font.bold: true
-          color: "#a6e3a1"
+          text: "󰖩"
+          font.family: t.mono
+          font.pixelSize: 19
+          color: root.connected ? t.accent : t.ink3
+        }
+
+        Column {
+          Layout.fillWidth: true
+          spacing: 1
+          Text {
+            text: "Tailscale"
+            font.pixelSize: 14
+            font.weight: Font.DemiBold
+            color: t.ink1
+          }
+          Text {
+            text: {
+              if (!root.connected) return (root.tsData && root.tsData.backend_state) ? root.tsData.backend_state : "Not connected";
+              let s = (root.tsData && root.tsData.tailnet) ? root.tsData.tailnet : "";
+              const relay = (root.tsData && root.tsData.self && root.tsData.self.relay) ? root.tsData.self.relay : "";
+              if (relay.length > 0) s += " · " + relay;
+              return s.length > 0 ? s : "Connected";
+            }
+            font.pixelSize: 11
+            color: t.ink3
+            elide: Text.ElideRight
+          }
+        }
+
+        IconBtn {
+          glyph: "󰑓"
+          fs: 14
+          spinning: root.busy
+          onClicked: root.refresh()
+        }
+
+        TSwitch {
+          on: root.connected
+          onToggled: root.toggleConnection()
         }
       }
 
-      // Tab selector row
-      RowLayout {
+      Item { Layout.preferredHeight: 14; Layout.fillWidth: true }
+
+      // ---- This device: grouped rows, tap a value to copy it ----
+      Rectangle {
         Layout.fillWidth: true
-        Layout.preferredHeight: 28
-        spacing: 6
+        Layout.preferredHeight: deviceCol.height
+        radius: 12
+        color: t.surface
 
-        Repeater {
-          model: [
-            { name: "Serve", icon: "󰖟", count: root.tsData.serve_items ? root.tsData.serve_items.length : 0 },
-            { name: "SSH", icon: "󰒍", count: root.tsData.ssh_enabled ? 1 : 0 },
-            { name: "Peers", icon: "󰀲", count: root.tsData.peers ? root.tsData.peers.length : 0 },
-            { name: "Settings", icon: "󰒢", count: 0 }
-          ]
+        Column {
+          id: deviceCol
+          width: parent.width
 
-          Rectangle {
-            required property var modelData
-            required property int index
-
-            Layout.fillWidth: true
-            Layout.preferredHeight: 28
-            radius: 6
-            color: root.currentTab === index ? "#45475a" : (tabMouse.containsMouse ? "#3b3e52" : "#313244")
-            border.color: root.currentTab === index ? "#89b4fa" : "transparent"
-            border.width: 1
-
-            Row {
-              anchors.centerIn: parent
-              spacing: 5
-
+          RowBase {
+            width: parent.width
+            height: 42
+            rad: 12
+            actionable: Boolean(root.tsData.self && root.tsData.self.hostname)
+            onClicked: root.copyText((root.tsData.self && root.tsData.self.hostname) || "", "Hostname")
+            RowLayout {
+              anchors.fill: parent
+              anchors.leftMargin: 12
+              anchors.rightMargin: 12
+              spacing: 10
               Text {
-                text: modelData.icon
-                font.family: root.monoFont
-                font.pixelSize: 12
-                color: root.currentTab === index ? "#89b4fa" : "#a6adc8"
+                text: "󰌽"
+                font.family: t.mono
+                font.pixelSize: 14
+                color: t.ink2
               }
-
               Text {
-                text: modelData.name + (modelData.count > 0 ? " (" + modelData.count + ")" : "")
-                font.family: root.monoFont
+                Layout.fillWidth: true
+                text: (root.tsData.self && root.tsData.self.hostname) ? root.tsData.self.hostname : "This device"
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                color: t.ink1
+                elide: Text.ElideRight
+              }
+              Text {
+                text: (root.tsData.self && root.tsData.self.os) ? root.tsData.self.os : ""
                 font.pixelSize: 11
-                font.bold: root.currentTab === index
-                color: root.currentTab === index ? "#cdd6f4" : "#a6adc8"
+                color: t.ink3
               }
             }
+          }
 
-            MouseArea {
-              id: tabMouse
+          Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
+
+          RowBase {
+            width: parent.width
+            height: 38
+            actionable: Boolean(root.tsData.self && root.tsData.self.ipv4)
+            onClicked: root.copyText((root.tsData.self && root.tsData.self.ipv4) || "", "IP address")
+            RowLayout {
               anchors.fill: parent
-              cursorShape: Qt.PointingHandCursor
-              hoverEnabled: true
-              onClicked: root.currentTab = index
+              anchors.leftMargin: 12
+              anchors.rightMargin: 12
+              Text {
+                text: "IP address"
+                font.pixelSize: 12
+                color: t.ink2
+              }
+              Item { Layout.fillWidth: true }
+              Text {
+                text: (root.tsData.self && root.tsData.self.ipv4) ? root.tsData.self.ipv4 : "—"
+                font.family: t.mono
+                font.pixelSize: 12
+                color: t.ink1
+              }
+            }
+          }
+
+          Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
+
+          RowBase {
+            width: parent.width
+            height: 38
+            rad: 12
+            actionable: Boolean(root.tsData.self && root.tsData.self.dns_name)
+            onClicked: root.copyText((root.tsData.self && root.tsData.self.dns_name) || "", "Domain")
+            RowLayout {
+              anchors.fill: parent
+              anchors.leftMargin: 12
+              anchors.rightMargin: 12
+              Text {
+                text: "MagicDNS"
+                font.pixelSize: 12
+                color: t.ink2
+              }
+              Item { Layout.fillWidth: true }
+              Text {
+                Layout.maximumWidth: 220
+                text: (root.tsData.self && root.tsData.self.dns_name) ? root.tsData.self.dns_name : "—"
+                font.family: t.mono
+                font.pixelSize: 12
+                color: t.ink1
+                elide: Text.ElideMiddle
+              }
             }
           }
         }
       }
 
-      Rectangle {
+      Item { Layout.preferredHeight: 14; Layout.fillWidth: true }
+
+      Segments {
         Layout.fillWidth: true
-        height: 1
-        color: "#313244"
+        items: root.segItems
+        current: root.currentTab
+        onSelected: index => root.currentTab = index
       }
 
-      // STACK OF TABS
+      Item { Layout.preferredHeight: 12; Layout.fillWidth: true }
+
       StackLayout {
         id: tabStack
         Layout.fillWidth: true
         Layout.fillHeight: true
         currentIndex: root.currentTab
 
-        // TAB 0: SERVE & FUNNEL
+        // ============ TAB 0: SHARING ============
+        // No outer scroll: the shares list flexes, the composer stays pinned.
         Item {
-          id: tab0
           Layout.fillWidth: true
           Layout.fillHeight: true
+          opacity: root.currentTab === 0 ? 1 : 0
+          Behavior on opacity { NumberAnimation { duration: 110 } }
 
-          Flickable {
+          ColumnLayout {
             anchors.fill: parent
-            contentWidth: width
-            contentHeight: tab0Col.height
-            clip: true
-
-            Column {
-              id: tab0Col
-              width: parent.width
-              spacing: 10
-
-              // Active Endpoints Section Header
-              RowLayout {
-                width: parent.width
-
-                Text {
-                  text: "Active Endpoints (" + (root.tsData.serve_items ? root.tsData.serve_items.length : 0) + ")"
-                  font.family: root.monoFont
-                  font.pixelSize: 12
-                  font.bold: true
-                  color: "#cdd6f4"
-                }
-
-                Item { Layout.fillWidth: true }
-
-                // Reset All button
-                Rectangle {
-                  visible: Boolean(root.tsData.serve_items && root.tsData.serve_items.length > 0)
-                  width: resetText.width + 12
-                  height: 22
-                  radius: 4
-                  color: resetMouse.containsMouse ? "#585b70" : "#313244"
-
-                  Text {
-                    id: resetText
-                    anchors.centerIn: parent
-                    text: "Reset All"
-                    font.family: root.monoFont
-                    font.pixelSize: 10
-                    color: "#f38ba8"
-                  }
-
-                  MouseArea {
-                    id: resetMouse
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    hoverEnabled: true
-                    onClicked: root.runAction(["serve-reset"], "Reset all serve endpoints")
-                  }
-                }
-              }
-
-              // List of Active Serve / Funnel Endpoints
-              Repeater {
-                model: root.tsData.serve_items || []
-
-                Rectangle {
-                  required property var modelData
-                  required property int index
-
-                  readonly property bool isSelected: root.targetsMatch(root.launchTarget, modelData.target) || root.targetsMatch(root.launchTarget, modelData.url)
-
-                  width: tab0Col.width
-                  height: itemCol.height + 16
-                  radius: 8
-                  color: isSelected ? "#212234" : "#181825"
-                  border.color: isSelected
-                    ? (modelData.is_funnel ? "#f5c2e7" : "#b4befe")
-                    : (modelData.is_funnel ? "#cba6f7" : "#89b4fa")
-                  border.width: isSelected ? 2 : 1
-
-                  MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    z: 0
-                    onClicked: root.selectTarget(modelData.target || modelData.url)
-                  }
-
-                  Column {
-                    id: itemCol
-                    z: 1
-                    anchors {
-                      left: parent.left
-                      right: parent.right
-                      top: parent.top
-                      margins: 8
-                    }
-                    spacing: 6
-
-                    // Top row: Scope badge, Port badge, Target info
-                    RowLayout {
-                      width: parent.width
-
-                      // Scope badge
-                      Rectangle {
-                        width: scopeLabel.width + 10
-                        height: 18
-                        radius: 4
-                        color: modelData.is_funnel ? "#4a2958" : "#22384f"
-                        border.color: modelData.is_funnel ? "#cba6f7" : "#89b4fa"
-                        border.width: 1
-
-                        Text {
-                          id: scopeLabel
-                          anchors.centerIn: parent
-                          text: modelData.is_funnel ? "🌍 FUNNEL (PUBLIC)" : "🔒 TAILNET ONLY"
-                          font.family: root.monoFont
-                          font.pixelSize: 9
-                          font.bold: true
-                          color: modelData.is_funnel ? "#cba6f7" : "#89b4fa"
-                        }
-                      }
-
-                      // Port badge
-                      Rectangle {
-                        width: portLabel.width + 8
-                        height: 18
-                        radius: 4
-                        color: "#313244"
-
-                        Text {
-                          id: portLabel
-                          anchors.centerIn: parent
-                          text: ":" + modelData.port + " HTTPS"
-                          font.family: root.monoFont
-                          font.pixelSize: 9
-                          color: "#a6adc8"
-                        }
-                      }
-
-                      Item { Layout.fillWidth: true }
-
-                      // Stop endpoint button
-                      Rectangle {
-                        width: 22
-                        height: 22
-                        radius: 4
-                        color: stopMouse.containsMouse ? "#f38ba8" : "#313244"
-
-                        Text {
-                          anchors.centerIn: parent
-                          text: "✕"
-                          font.family: root.monoFont
-                          font.pixelSize: 11
-                          color: stopMouse.containsMouse ? "#11111b" : "#f38ba8"
-                        }
-
-                        MouseArea {
-                          id: stopMouse
-                          anchors.fill: parent
-                          cursorShape: Qt.PointingHandCursor
-                          hoverEnabled: true
-                          onClicked: root.runAction(["serve-stop", modelData.port], "Stopped port " + modelData.port)
-                        }
-                      }
-                    }
-
-                    // Endpoint URL & Target info
-                    Column {
-                      width: parent.width
-                      spacing: 2
-
-                      Text {
-                        text: modelData.url
-                        font.family: root.monoFont
-                        font.pixelSize: 12
-                        font.bold: true
-                        color: "#cdd6f4"
-                        elide: Text.ElideRight
-                        width: parent.width
-                      }
-
-                      Text {
-                        text: "↳ Proxying to " + modelData.target + (modelData.path && modelData.path !== "/" ? " (path " + modelData.path + ")" : "")
-                        font.family: root.monoFont
-                        font.pixelSize: 11
-                        color: "#a6adc8"
-                        elide: Text.ElideRight
-                        width: parent.width
-                      }
-                    }
-
-                    // Action buttons row: Copy URL, Open browser, Switch to Funnel/Serve
-                    RowLayout {
-                      width: parent.width
-                      spacing: 6
-
-                      // Copy URL button
-                      Rectangle {
-                        Layout.fillWidth: true
-                        height: 24
-                        radius: 4
-                        color: copyUrlMouse.containsMouse ? "#45475a" : "#313244"
-
-                        Row {
-                          anchors.centerIn: parent
-                          spacing: 4
-                          Text { text: "󰆏"; font.family: root.monoFont; font.pixelSize: 10; color: "#cdd6f4" }
-                          Text { text: "Copy URL"; font.family: root.monoFont; font.pixelSize: 10; color: "#cdd6f4" }
-                        }
-
-                        MouseArea {
-                          id: copyUrlMouse
-                          anchors.fill: parent
-                          cursorShape: Qt.PointingHandCursor
-                          hoverEnabled: true
-                          onClicked: root.copyText(modelData.url, "URL")
-                        }
-                      }
-
-                      // Open in browser button
-                      Rectangle {
-                        Layout.fillWidth: true
-                        height: 24
-                        radius: 4
-                        color: openBrowserMouse.containsMouse ? "#45475a" : "#313244"
-
-                        Row {
-                          anchors.centerIn: parent
-                          spacing: 4
-                          Text { text: "󰖟"; font.family: root.monoFont; font.pixelSize: 10; color: "#cdd6f4" }
-                          Text { text: "Open"; font.family: root.monoFont; font.pixelSize: 10; color: "#cdd6f4" }
-                        }
-
-                        MouseArea {
-                          id: openBrowserMouse
-                          anchors.fill: parent
-                          cursorShape: Qt.PointingHandCursor
-                          hoverEnabled: true
-                          onClicked: root.openUrl(modelData.url)
-                        }
-                      }
-
-                      // Switch Scope button (Tailnet <-> Funnel)
-                      Rectangle {
-                        Layout.fillWidth: true
-                        height: 24
-                        radius: 4
-                        color: switchMouse.containsMouse ? (modelData.is_funnel ? "#22384f" : "#4a2958") : "#313244"
-                        border.color: modelData.is_funnel ? "#89b4fa" : "#cba6f7"
-                        border.width: 1
-
-                        Row {
-                          anchors.centerIn: parent
-                          spacing: 4
-                          Text {
-                            text: modelData.is_funnel ? "󰈡 Make Private" : "󱂛 Make Public"
-                            font.family: root.monoFont
-                            font.pixelSize: 10
-                            font.bold: true
-                            color: modelData.is_funnel ? "#89b4fa" : "#cba6f7"
-                          }
-                        }
-
-                        MouseArea {
-                          id: switchMouse
-                          anchors.fill: parent
-                          cursorShape: Qt.PointingHandCursor
-                          hoverEnabled: true
-                          onClicked: {
-                            const newIsFunnel = !modelData.is_funnel;
-                            root.runAction(["funnel-toggle", modelData.port, modelData.target, newIsFunnel ? "true" : "false", modelData.path || "/"],
-                                           newIsFunnel ? "Switched to Public Funnel" : "Switched to Tailnet Only");
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-
-              // Empty state when no serve items
-              Rectangle {
-                visible: !root.tsData.serve_items || root.tsData.serve_items.length === 0
-                width: parent.width
-                height: 50
-                radius: 8
-                color: "#181825"
-
-                Column {
-                  anchors.centerIn: parent
-                  spacing: 2
-                  Text {
-                    text: "No active serve or funnel endpoints."
-                    font.family: root.monoFont
-                    font.pixelSize: 11
-                    color: "#6c7086"
-                    anchors.horizontalCenter: parent.horizontalCenter
-                  }
-                  Text {
-                    text: "Launch a service below to share a web app or port."
-                    font.family: root.monoFont
-                    font.pixelSize: 10
-                    color: "#585b70"
-                    anchors.horizontalCenter: parent.horizontalCenter
-                  }
-                }
-              }
-
-              // Quick Service Launcher Card
-              Rectangle {
-                width: parent.width
-                height: launchCol.height + 16
-                radius: 10
-                color: "#181825"
-                border.color: "#313244"
-                border.width: 1
-
-                Column {
-                  id: launchCol
-                  anchors {
-                    left: parent.left
-                    right: parent.right
-                    top: parent.top
-                    margins: 8
-                  }
-                  spacing: 8
-
-                  RowLayout {
-                    width: parent.width
-
-                    Text {
-                      text: root.activeEndpoint ? "Manage Serve / Funnel" : "Start New Serve / Funnel"
-                      font.family: root.monoFont
-                      font.pixelSize: 12
-                      font.bold: true
-                      color: "#cdd6f4"
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    Rectangle {
-                      visible: root.activeEndpoint !== null
-                      width: statusBadgeText.width + 10
-                      height: 18
-                      radius: 4
-                      color: root.activeEndpoint && root.activeEndpoint.is_funnel ? "#4a2958" : "#22384f"
-                      border.color: root.activeEndpoint && root.activeEndpoint.is_funnel ? "#cba6f7" : "#89b4fa"
-                      border.width: 1
-
-                      Text {
-                        id: statusBadgeText
-                        anchors.centerIn: parent
-                        text: root.activeEndpoint ? (root.activeEndpoint.is_funnel ? "● FUNNEL ACTIVE" : "● SERVE ACTIVE") : ""
-                        font.family: root.monoFont
-                        font.pixelSize: 9
-                        font.bold: true
-                        color: root.activeEndpoint && root.activeEndpoint.is_funnel ? "#cba6f7" : "#89b4fa"
-                      }
-                    }
-                  }
-
-                  // Quick Preset chips & Manual option
-                  Flow {
-                    spacing: 6
-                    width: parent.width
-
-                    Repeater {
-                      model: [
-                        { label: "Frontend (5137)", target: "https+insecure://localhost:5137", isManual: false },
-                        { label: "Backend (8080)", target: "8080", isManual: false },
-                        { label: "Backend (3000)", target: "3000", isManual: false },
-                        { label: "Manual URL", target: "", isManual: true }
-                      ]
-
-                      Rectangle {
-                        required property var modelData
-                        readonly property var ep: modelData.isManual ? null : root.findActiveEndpoint(modelData.target, "")
-                        readonly property bool isSelected: modelData.isManual
-                          ? (!root.targetsMatch(root.launchTarget, "https+insecure://localhost:5137") &&
-                             !root.targetsMatch(root.launchTarget, "8080") &&
-                             !root.targetsMatch(root.launchTarget, "3000"))
-                          : root.targetsMatch(root.launchTarget, modelData.target)
-
-                        width: chipRow.width + 14
-                        height: 22
-                        radius: 4
-                        color: isSelected ? "#45475a" : (chipMouse.containsMouse ? "#3b3e52" : "#313244")
-                        border.color: isSelected
-                          ? (ep ? (ep.is_funnel ? "#cba6f7" : "#89b4fa") : "#89b4fa")
-                          : (ep ? (ep.is_funnel ? "#cba6f7" : "#89b4fa") : "transparent")
-                        border.width: 1
-
-                        Row {
-                          id: chipRow
-                          anchors.centerIn: parent
-                          spacing: 4
-
-                          // Status dot for active presets
-                          Rectangle {
-                            visible: ep !== null
-                            width: 6
-                            height: 6
-                            radius: 3
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: ep ? (ep.is_funnel ? "#cba6f7" : "#a6e3a1") : "transparent"
-                          }
-
-                          Text {
-                            id: chipText
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.label
-                            font.family: root.monoFont
-                            font.pixelSize: 10
-                            color: isSelected ? "#89b4fa" : "#a6adc8"
-                          }
-                        }
-
-                        MouseArea {
-                          id: chipMouse
-                          anchors.fill: parent
-                          cursorShape: Qt.PointingHandCursor
-                          hoverEnabled: true
-                          onClicked: {
-                            if (modelData.isManual) {
-                              if (root.targetsMatch(root.launchTarget, "https+insecure://localhost:5137") ||
-                                  root.targetsMatch(root.launchTarget, "8080") ||
-                                  root.targetsMatch(root.launchTarget, "3000")) {
-                                root.selectTarget("");
-                              }
-                              targetInput.forceActiveFocus();
-                            } else {
-                              root.selectTarget(modelData.target);
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-
-                  // Target Input Row
-                  RowLayout {
-                    width: parent.width
-                    spacing: 6
-
-                    Text {
-                      text: "Target URL:"
-                      font.family: root.monoFont
-                      font.pixelSize: 11
-                      color: "#a6adc8"
-                    }
-
-                    Rectangle {
-                      Layout.fillWidth: true
-                      height: 26
-                      radius: 4
-                      color: "#313244"
-                      border.color: targetInput.activeFocus ? "#89b4fa" : "transparent"
-                      border.width: 1
-
-                      RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 6
-                        anchors.rightMargin: 6
-                        spacing: 4
-
-                        Item {
-                          Layout.fillWidth: true
-                          Layout.fillHeight: true
-
-                          TextInput {
-                            id: targetInput
-                            anchors.fill: parent
-                            verticalAlignment: TextInput.AlignVCenter
-                            text: root.launchTarget
-                            font.family: root.monoFont
-                            font.pixelSize: 11
-                            color: "#cdd6f4"
-                            selectByMouse: true
-                            onTextEdited: root.selectTarget(text)
-                          }
-
-                          Text {
-                            anchors.fill: parent
-                            verticalAlignment: Text.AlignVCenter
-                            visible: !targetInput.text && !targetInput.activeFocus
-                            text: "Enter custom URL or port (e.g. http://localhost:8000)"
-                            font.family: root.monoFont
-                            font.pixelSize: 10
-                            color: "#6c7086"
-                          }
-                        }
-
-                        // Clear button when text present
-                        Rectangle {
-                          visible: targetInput.text.length > 0
-                          width: 14
-                          height: 14
-                          radius: 7
-                          color: clearMouse.containsMouse ? "#585b70" : "transparent"
-
-                          Text {
-                            anchors.centerIn: parent
-                            text: "✕"
-                            font.family: root.monoFont
-                            font.pixelSize: 9
-                            color: "#a6adc8"
-                          }
-
-                          MouseArea {
-                            id: clearMouse
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            hoverEnabled: true
-                            onClicked: {
-                              root.selectTarget("");
-                              targetInput.forceActiveFocus();
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-
-                  // Scope selection (Serve vs Funnel) & Port
-                  RowLayout {
-                    width: parent.width
-                    spacing: 6
-
-                    // Mode selector: Serve (Tailnet) vs Funnel (Public)
-                    Rectangle {
-                      Layout.fillWidth: true
-                      height: 26
-                      radius: 4
-                      color: root.launchMode === "serve" ? "#22384f" : "#313244"
-                      border.color: root.launchMode === "serve" ? "#89b4fa" : "transparent"
-                      border.width: 1
-
-                      Text {
-                        anchors.centerIn: parent
-                        text: "🔒 Tailnet (Serve)"
-                        font.family: root.monoFont
-                        font.pixelSize: 10
-                        font.bold: root.launchMode === "serve"
-                        color: root.launchMode === "serve" ? "#89b4fa" : "#a6adc8"
-                      }
-
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.launchMode = "serve"
-                      }
-                    }
-
-                    Rectangle {
-                      Layout.fillWidth: true
-                      height: 26
-                      radius: 4
-                      color: root.launchMode === "funnel" ? "#4a2958" : "#313244"
-                      border.color: root.launchMode === "funnel" ? "#cba6f7" : "transparent"
-                      border.width: 1
-
-                      Text {
-                        anchors.centerIn: parent
-                        text: "🌍 Public (Funnel)"
-                        font.family: root.monoFont
-                        font.pixelSize: 10
-                        font.bold: root.launchMode === "funnel"
-                        color: root.launchMode === "funnel" ? "#cba6f7" : "#a6adc8"
-                      }
-
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.launchMode = "funnel"
-                      }
-                    }
-
-                    // Port input
-                    Text {
-                      text: "Port:"
-                      font.family: root.monoFont
-                      font.pixelSize: 11
-                      color: "#a6adc8"
-                    }
-
-                    Rectangle {
-                      width: 48
-                      height: 26
-                      radius: 4
-                      color: "#313244"
-
-                      TextInput {
-                        anchors.fill: parent
-                        anchors.margins: 4
-                        text: root.launchPort
-                        font.family: root.monoFont
-                        font.pixelSize: 11
-                        color: "#cdd6f4"
-                        selectByMouse: true
-                        onTextEdited: root.launchPort = text
-                      }
-                    }
-                  }
-
-                  // Active endpoint live URL banner
-                  Rectangle {
-                    visible: root.activeEndpoint !== null
-                    width: parent.width
-                    height: 26
-                    radius: 4
-                    color: root.activeEndpoint && root.activeEndpoint.is_funnel ? "#291d36" : "#1b283d"
-                    border.color: root.activeEndpoint && root.activeEndpoint.is_funnel ? "#cba6f7" : "#89b4fa"
-                    border.width: 1
-
-                    RowLayout {
-                      anchors.fill: parent
-                      anchors.leftMargin: 8
-                      anchors.rightMargin: 8
-                      spacing: 6
-
-                      Text {
-                        text: root.activeEndpoint && root.activeEndpoint.is_funnel ? "🌍" : "🔒"
-                        font.pixelSize: 10
-                      }
-
-                      Text {
-                        Layout.fillWidth: true
-                        text: root.activeEndpoint ? root.activeEndpoint.url : ""
-                        font.family: root.monoFont
-                        font.pixelSize: 10
-                        font.bold: true
-                        color: "#cdd6f4"
-                        elide: Text.ElideRight
-                      }
-
-                      Rectangle {
-                        width: copyBannerText.width + 8
-                        height: 18
-                        radius: 3
-                        color: copyBannerMouse.containsMouse ? "#45475a" : "#313244"
-
-                        Text {
-                          id: copyBannerText
-                          anchors.centerIn: parent
-                          text: "Copy"
-                          font.family: root.monoFont
-                          font.pixelSize: 9
-                          color: "#cdd6f4"
-                        }
-
-                        MouseArea {
-                          id: copyBannerMouse
-                          anchors.fill: parent
-                          cursorShape: Qt.PointingHandCursor
-                          hoverEnabled: true
-                          onClicked: {
-                            if (root.activeEndpoint) root.copyText(root.activeEndpoint.url, "URL");
-                          }
-                        }
-                      }
-
-                      Rectangle {
-                        width: openBannerText.width + 8
-                        height: 18
-                        radius: 3
-                        color: openBannerMouse.containsMouse ? "#45475a" : "#313244"
-
-                        Text {
-                          id: openBannerText
-                          anchors.centerIn: parent
-                          text: "Open"
-                          font.family: root.monoFont
-                          font.pixelSize: 9
-                          color: "#cdd6f4"
-                        }
-
-                        MouseArea {
-                          id: openBannerMouse
-                          anchors.fill: parent
-                          cursorShape: Qt.PointingHandCursor
-                          hoverEnabled: true
-                          onClicked: {
-                            if (root.activeEndpoint) root.openUrl(root.activeEndpoint.url);
-                          }
-                        }
-                      }
-                    }
-                  }
-
-                  // Launch Action button
-                  Rectangle {
-                    width: parent.width
-                    height: 28
-                    radius: 6
-                    color: {
-                      if (root.launchButtonAction === "empty") {
-                        return "#313244";
-                      }
-                      if (root.launchButtonAction === "stop") {
-                        return launchMouse.containsMouse ? "#eba0ac" : "#f38ba8";
-                      }
-                      if (root.launchMode === "funnel") {
-                        return launchMouse.containsMouse ? "#b48ead" : "#cba6f7";
-                      }
-                      return launchMouse.containsMouse ? "#74c7ec" : "#89b4fa";
-                    }
-
-                    Row {
-                      anchors.centerIn: parent
-                      spacing: 6
-                      Text {
-                        text: root.launchButtonIcon
-                        font.family: root.monoFont
-                        font.pixelSize: 11
-                        color: root.launchButtonAction === "empty" ? "#6c7086" : "#11111b"
-                      }
-                      Text {
-                        text: root.launchButtonText
-                        font.family: root.monoFont
-                        font.pixelSize: 11
-                        font.bold: true
-                        color: root.launchButtonAction === "empty" ? "#a6adc8" : "#11111b"
-                      }
-                    }
-
-                    MouseArea {
-                      id: launchMouse
-                      anchors.fill: parent
-                      cursorShape: root.launchButtonAction === "empty" ? Qt.ArrowCursor : Qt.PointingHandCursor
-                      hoverEnabled: root.launchButtonAction !== "empty"
-                      enabled: root.launchButtonAction !== "empty"
-                      onClicked: {
-                        if (root.launchButtonAction === "stop") {
-                          const stopPort = (root.activeEndpoint && root.activeEndpoint.port) ? root.activeEndpoint.port : (root.launchPort || "443");
-                          const stopPath = (root.activeEndpoint && root.activeEndpoint.path) ? root.activeEndpoint.path : (root.launchPath || "/");
-                          root.runAction(
-                            ["serve-stop", stopPort, stopPath],
-                            "Stopped " + (root.launchMode === "funnel" ? "funnel" : "serve") + " on port " + stopPort
-                          );
-                        } else if (root.launchButtonAction === "switch") {
-                          const port = (root.activeEndpoint && root.activeEndpoint.port) ? root.activeEndpoint.port : (root.launchPort || "443");
-                          const target = (root.activeEndpoint && root.activeEndpoint.target) ? root.activeEndpoint.target : root.launchTarget;
-                          const path = (root.activeEndpoint && root.activeEndpoint.path) ? root.activeEndpoint.path : (root.launchPath || "/");
-                          const makeFunnel = root.launchMode === "funnel";
-                          root.runAction(
-                            ["funnel-toggle", port, target, makeFunnel ? "true" : "false", path],
-                            makeFunnel ? ("Switched " + target + " to Public Funnel") : ("Switched " + target + " to Tailnet Only")
-                          );
-                        } else {
-                          root.runAction(
-                            ["serve-start", root.launchTarget, root.launchMode, root.launchPort, root.launchPath],
-                            "Started " + root.launchMode + " for " + root.launchTarget
-                          );
-                        }
-                      }
-                    }
-                  }
-                }
-              }
+            spacing: 10
+
+            SectionHead {
+              Layout.fillWidth: true
+              label: "Active shares"
+              actionText: root.serveItems.length > 0 ? "Reset all" : ""
+              actionColor: t.red
+              onActionClicked: root.runAction(["serve-reset"], "Reset all serve endpoints")
             }
-          }
-        }
 
-        // TAB 1: SSH & REMOTE ACCESS
-        Item {
-          id: tab1
-          Layout.fillWidth: true
-          Layout.fillHeight: true
+            // Grouped share rows; tap to expand actions.
+            // Flexes to leftover space, scrolls internally past 2 rows.
+            Rectangle {
+              visible: root.serveItems.length > 0
+              Layout.fillWidth: true
+              Layout.fillHeight: true
+              Layout.minimumHeight: 56
+              radius: 12
+              color: t.surface
 
-          Flickable {
-            anchors.fill: parent
-            contentWidth: width
-            contentHeight: tab1Col.height
-            clip: true
-
-            Column {
-              id: tab1Col
-              width: parent.width
-              spacing: 10
-
-              // SSH Server Toggle Card
-              Rectangle {
-                width: parent.width
-                height: sshCol.height + 16
-                radius: 10
-                color: "#181825"
-                border.color: root.tsData.ssh_enabled ? "#a6e3a1" : "#313244"
-                border.width: 1
+              Flickable {
+                anchors.fill: parent
+                contentWidth: width
+                contentHeight: sharesCol.height
+                clip: true
 
                 Column {
-                  id: sshCol
-                  anchors {
-                    left: parent.left
-                    right: parent.right
-                    top: parent.top
-                    margins: 8
-                  }
-                  spacing: 8
+                  id: sharesCol
+                  width: parent.width
 
-                  RowLayout {
-                    width: parent.width
+                  Repeater {
+                    model: root.serveItems
+                    Column {
+                      required property var modelData
+                      required property int index
+                      width: sharesCol.width
 
-                    Row {
-                      spacing: 6
-                      Text { text: "󰒍"; font.family: root.monoFont; font.pixelSize: 14; color: root.tsData.ssh_enabled ? "#a6e3a1" : "#6c7086" }
-                      Text { text: "Tailscale SSH Server"; font.family: root.monoFont; font.pixelSize: 12; font.bold: true; color: "#cdd6f4" }
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    // Toggle button
-                    Rectangle {
-                      width: 44
-                      height: 22
-                      radius: 11
-                      color: root.tsData.ssh_enabled ? "#a6e3a1" : "#45475a"
-
-                      Rectangle {
-                        width: 18
-                        height: 18
-                        radius: 9
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: root.tsData.ssh_enabled ? undefined : parent.left
-                        anchors.right: root.tsData.ssh_enabled ? parent.right : undefined
-                        anchors.margins: 2
-                        color: "#11111b"
-                        Behavior on x { NumberAnimation { duration: 150 } }
-                      }
-
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                          const newState = !root.tsData.ssh_enabled;
-                          root.runAction(["ssh-toggle", newState ? "true" : "false"], newState ? "Tailscale SSH Enabled" : "Tailscale SSH Disabled");
-                        }
-                      }
-                    }
-                  }
-
-                  Text {
-                    text: root.tsData.ssh_enabled
-                          ? "✓ Port 22 managed by Tailscale. Authenticated tailnet devices can SSH directly."
-                          : "Tailscale SSH is currently inactive on this node."
-                    font.family: root.monoFont
-                    font.pixelSize: 11
-                    color: root.tsData.ssh_enabled ? "#a6e3a1" : "#a6adc8"
-                    wrapMode: Text.Wrap
-                    width: parent.width
-                  }
-
-                  // Quick SSH commands to copy
-                  Column {
-                    width: parent.width
-                    spacing: 4
-                    visible: Boolean(root.tsData.ssh_enabled)
-
-                    Text {
-                      text: "Click to copy SSH connection command:"
-                      font.family: root.monoFont
-                      font.pixelSize: 10
-                      color: "#6c7086"
-                    }
-
-                    Repeater {
-                      model: [
-                        "ssh dev@" + ((root.tsData.self && root.tsData.self.hostname) || "fedora"),
-                        "ssh dev@" + ((root.tsData.self && root.tsData.self.ipv4) || "100.72.40.125"),
-                        "ssh dev@" + ((root.tsData.self && root.tsData.self.dns_name) || "fedora.ts.net")
-                      ]
-
-                      Rectangle {
-                        required property string modelData
+                      RowBase {
                         width: parent.width
-                        height: 26
-                        radius: 4
-                        color: sshCmdMouse.containsMouse ? "#3b3e52" : "#313244"
-
+                        height: 50
+                        rad: (index === 0 && root.serveItems.length === 1) ? 10 : 0
+                        onClicked: {
+                          targetField.setText(modelData.target || modelData.url);
+                          root.selectTarget(modelData.target || modelData.url);
+                        }
                         RowLayout {
                           anchors.fill: parent
-                          anchors.margins: 6
-
-                          Text {
-                            text: modelData
-                            font.family: root.monoFont
-                            font.pixelSize: 11
-                            color: "#89b4fa"
+                          anchors.leftMargin: 12
+                          anchors.rightMargin: 12
+                          spacing: 8
+                          Column {
                             Layout.fillWidth: true
-                            elide: Text.ElideRight
+                            spacing: 2
+                            Text {
+                              width: parent.width
+                              text: modelData.url
+                              font.pixelSize: 13
+                              font.weight: Font.Medium
+                              color: t.ink1
+                              elide: Text.ElideRight
+                            }
+                            Row {
+                              width: parent.width
+                              spacing: 5
+                              Text {
+                                text: modelData.is_funnel ? "Public" : "Tailnet"
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                                color: modelData.is_funnel ? t.violet : t.accent
+                              }
+                              Text {
+                                text: "·"
+                                font.pixelSize: 11
+                                color: t.ink3
+                              }
+                              Text {
+                                width: parent.width - 90
+                                text: ":" + modelData.port + " → " + modelData.target
+                                font.family: t.mono
+                                font.pixelSize: 11
+                                color: t.ink3
+                                elide: Text.ElideRight
+                              }
+                            }
                           }
-
-                          Text {
-                            text: "󰆏 Copy"
-                            font.family: root.monoFont
-                            font.pixelSize: 10
-                            color: "#a6adc8"
-                          }
-                        }
-
-                        MouseArea {
-                          id: sshCmdMouse
-                          anchors.fill: parent
-                          cursorShape: Qt.PointingHandCursor
-                          hoverEnabled: true
-                          onClicked: root.copyText(modelData, "SSH Command")
-                        }
-                      }
-                    }
-                  }
-
-                  // Health alert (SELinux notice)
-                  Rectangle {
-                    visible: Boolean(root.tsData.health && root.tsData.health.length > 0)
-                    width: parent.width
-                    height: healthText.implicitHeight + 14
-                    radius: 6
-                    color: "#3b2e22"
-                    border.color: "#fab387"
-                    border.width: 1
-
-                    Text {
-                      id: healthText
-                      anchors {
-                        left: parent.left
-                        right: parent.right
-                        top: parent.top
-                        margins: 7
-                      }
-                      text: "ℹ " + (root.tsData.health ? root.tsData.health.join("\n") : "")
-                      font.family: root.monoFont
-                      font.pixelSize: 10
-                      color: "#fab387"
-                      wrapMode: Text.Wrap
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // TAB 2: PEERS & DEVICES
-        Item {
-          id: tab2
-          Layout.fillWidth: true
-          Layout.fillHeight: true
-
-          Flickable {
-            anchors.fill: parent
-            contentWidth: width
-            contentHeight: tab2Col.height
-            clip: true
-
-            Column {
-              id: tab2Col
-              width: parent.width
-              spacing: 8
-
-              RowLayout {
-                width: parent.width
-                Text {
-                  text: "Tailnet Devices (" + (root.tsData.peers ? root.tsData.peers.length : 0) + ")"
-                  font.family: root.monoFont
-                  font.pixelSize: 12
-                  font.bold: true
-                  color: "#cdd6f4"
-                }
-                Item { Layout.fillWidth: true }
-              }
-
-              Repeater {
-                model: root.tsData.peers || []
-
-                Rectangle {
-                  required property var modelData
-                  required property int index
-
-                  width: tab2Col.width
-                  height: peerCol.height + 16
-                  radius: 8
-                  color: "#181825"
-                  border.color: "#313244"
-                  border.width: 1
-
-                  Column {
-                    id: peerCol
-                    anchors {
-                      left: parent.left
-                      right: parent.right
-                      top: parent.top
-                      margins: 8
-                    }
-                    spacing: 6
-
-                    RowLayout {
-                      width: parent.width
-
-                      // OS Icon
-                      Text {
-                        text: {
-                          const os = (modelData.os || "").toLowerCase();
-                          if (os.includes("android")) return "󰀲";
-                          if (os.includes("linux")) return "󰌽";
-                          if (os.includes("mac") || os.includes("ios")) return "󰀵";
-                          if (os.includes("win")) return "󰖳";
-                          return "󰛳";
-                        }
-                        font.family: root.monoFont
-                        font.pixelSize: 14
-                        color: "#89b4fa"
-                      }
-
-                      // Device Hostname
-                      Text {
-                        text: modelData.hostname || "Device"
-                        font.family: root.monoFont
-                        font.pixelSize: 12
-                        font.bold: true
-                        color: "#cdd6f4"
-                      }
-
-                      // Online indicator
-                      Rectangle {
-                        width: 6
-                        height: 6
-                        radius: 3
-                        color: modelData.online ? "#a6e3a1" : "#6c7086"
-                      }
-
-                      Item { Layout.fillWidth: true }
-
-                      Text {
-                        text: modelData.os
-                        font.family: root.monoFont
-                        font.pixelSize: 10
-                        color: "#6c7086"
-                      }
-                    }
-
-                    RowLayout {
-                      width: parent.width
-
-                      Text {
-                        text: modelData.ipv4 || modelData.dns_name
-                        font.family: root.monoFont
-                        font.pixelSize: 11
-                        color: "#a6e3a1"
-                      }
-
-                      Item { Layout.fillWidth: true }
-
-                      // Ping result if this peer was pinged
-                      Text {
-                        visible: root.pingTargetIp === modelData.ipv4 && root.pingResult.length > 0
-                        text: root.pingResult
-                        font.family: root.monoFont
-                        font.pixelSize: 10
-                        font.bold: true
-                        color: root.pingResult.includes("ms") ? "#a6e3a1" : "#fab387"
-                      }
-
-                      // Ping action
-                      Rectangle {
-                        width: 44
-                        height: 20
-                        radius: 4
-                        color: pingMouse.containsMouse ? "#45475a" : "#313244"
-
-                        Text {
-                          anchors.centerIn: parent
-                          text: "Ping"
-                          font.family: root.monoFont
-                          font.pixelSize: 10
-                          color: "#89b4fa"
-                        }
-
-                        MouseArea {
-                          id: pingMouse
-                          anchors.fill: parent
-                          cursorShape: Qt.PointingHandCursor
-                          hoverEnabled: true
-                          onClicked: root.pingPeer(modelData.ipv4)
                         }
                       }
 
-                      // Copy IP action
-                      Rectangle {
-                        width: 44
-                        height: 20
-                        radius: 4
-                        color: copyPeerIpMouse.containsMouse ? "#45475a" : "#313244"
-
-                        Text {
-                          anchors.centerIn: parent
-                          text: "Copy"
-                          font.family: root.monoFont
-                          font.pixelSize: 10
-                          color: "#cdd6f4"
+                      Row {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 4
+                        TextBtn {
+                          text: "Copy link"
+                          fs: 11
+                          onClicked: root.copyText(modelData.url, "URL")
                         }
-
-                        MouseArea {
-                          id: copyPeerIpMouse
-                          anchors.fill: parent
-                          cursorShape: Qt.PointingHandCursor
-                          hoverEnabled: true
-                          onClicked: root.copyText(modelData.ipv4, "Peer IP")
+                        TextBtn {
+                          text: "Open"
+                          fs: 11
+                          onClicked: root.openUrl(modelData.url)
                         }
+                        TextBtn {
+                          text: modelData.is_funnel ? "Make private" : "Make public"
+                          fs: 11
+                          bold: true
+                          fg: modelData.is_funnel ? t.accent : t.violet
+                          onClicked: root.flipScope(modelData)
+                        }
+                        TextBtn {
+                          text: "Stop"
+                          fs: 11
+                          fg: t.red
+                          onClicked: root.stopEndpoint(modelData.port)
+                        }
+                      }
+
+                      Item { width: 1; height: 6 }
+
+                      Hairline {
+                        visible: index < root.serveItems.length - 1
+                        width: parent.width - 24
+                        anchors.horizontalCenter: parent.horizontalCenter
                       }
                     }
                   }
                 }
               }
             }
-          }
-        }
 
-        // TAB 3: SETTINGS & DIAGNOSTICS
-        Item {
-          id: tab3
-          Layout.fillWidth: true
-          Layout.fillHeight: true
+            // Empty state flexes to absorb slack; nothing to box.
+            Item {
+              visible: root.serveItems.length === 0
+              Layout.fillWidth: true
+              Layout.fillHeight: true
+              Layout.minimumHeight: 44
+              Text {
+                anchors.centerIn: parent
+                text: "Nothing shared yet"
+                font.pixelSize: 12
+                color: t.ink3
+              }
+            }
 
-          Flickable {
-            anchors.fill: parent
-            contentWidth: width
-            contentHeight: tab3Col.height
-            clip: true
+            SectionHead {
+              Layout.fillWidth: true
+              label: "New share"
+            }
 
-            Column {
-              id: tab3Col
-              width: parent.width
-              spacing: 10
+            Rectangle {
+              id: composerRect
+              Layout.fillWidth: true
+              height: composerCol.height + 20
+              radius: 12
+              color: t.surface
 
-              // Preferences Toggles Card
-              Rectangle {
-                width: parent.width
-                height: prefCol.height + 16
-                radius: 10
-                color: "#181825"
-                border.color: "#313244"
-                border.width: 1
+              Column {
+                id: composerCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 10
+                spacing: 8
 
-                Column {
-                  id: prefCol
-                  anchors {
-                    left: parent.left
-                    right: parent.right
-                    top: parent.top
-                    margins: 8
+                Field {
+                  id: targetField
+                  width: parent.width
+                  initial: root.launchTarget
+                  clearable: true
+                  placeholder: "Local address or port · e.g. 8080"
+                  onEdited: text => root.selectTarget(text)
+                }
+
+                // Presets in one quiet line; color carries state, no chips.
+                Row {
+                  width: parent.width
+                  spacing: 2
+                  Repeater {
+                    model: root.suggestions
+                    TextBtn {
+                      required property var modelData
+                      property var ep: root.findActiveEndpoint(modelData.addr, "")
+                      property bool selected: root.targetsMatch(root.launchTarget, modelData.addr)
+                      text: modelData.name + " · " + root.extractPort(modelData.addr)
+                      fs: 11
+                      bold: selected
+                      fg: {
+                        if (selected) return t.ink1;
+                        if (ep) return ep.is_funnel ? t.violet : t.accent;
+                        return t.ink3;
+                      }
+                      onClicked: {
+                        targetField.setText(modelData.addr);
+                        root.selectTarget(modelData.addr);
+                      }
+                    }
                   }
-                  spacing: 8
+                }
 
-                  Text {
-                    text: "Tailnet Settings & Preferences"
-                    font.family: root.monoFont
-                    font.pixelSize: 12
-                    font.bold: true
-                    color: "#cdd6f4"
-                  }
-
-                  // Webclient Toggle
                   RowLayout {
                     width: parent.width
-
-                    Column {
+                    spacing: 8
+                    Segments {
                       Layout.fillWidth: true
-                      spacing: 1
-                      Text { text: "Tailscale Web UI (:5252)"; font.family: root.monoFont; font.pixelSize: 11; font.bold: true; color: "#cdd6f4" }
-                      Text { text: "Background web portal for managing node"; font.family: root.monoFont; font.pixelSize: 10; color: "#6c7086" }
+                      Layout.preferredHeight: 32
+                      items: [{ icon: "", label: "Tailnet", count: 0 }, { icon: "", label: "Public", count: 0 }]
+                      current: root.launchMode === "funnel" ? 1 : 0
+                      onSelected: index => root.launchMode = index === 1 ? "funnel" : "serve"
+                    }
+                    Field {
+                      id: portField
+                      Layout.preferredWidth: 84
+                      initial: root.launchPort
+                      placeholder: "443"
+                      onEdited: text => root.launchPort = text
+                    }
+                  }
+
+                  PrimaryBtn {
+                    width: parent.width
+                    enabledBtn: root.launchButtonAction !== "empty"
+                    text: root.launchButtonText
+                    glyph: root.launchButtonGlyph
+                    fill: {
+                      if (root.launchButtonAction === "stop") return t.red;
+                      if (root.launchMode === "funnel") return t.violet;
+                      return t.accent;
+                    }
+                    onClicked: root.launchPrimary()
+                  }
+                }
+              }
+          }
+        }
+
+        // ============ TAB 1: DEVICES ============
+        Item {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          opacity: root.currentTab === 1 ? 1 : 0
+          Behavior on opacity { NumberAnimation { duration: 110 } }
+
+          Flickable {
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: devicesCol.height
+            clip: true
+
+            Column {
+              id: devicesCol
+              width: parent.width
+              spacing: 12
+
+              SectionHead {
+                width: parent.width
+                label: "Devices on this tailnet"
+              }
+
+              Rectangle {
+                visible: root.peers.length > 0
+                width: parent.width
+                height: peersCol.height
+                radius: 12
+                color: t.surface
+
+                Column {
+                  id: peersCol
+                  width: parent.width
+
+                  Repeater {
+                    model: root.peers
+                    Column {
+                      required property var modelData
+                      required property int index
+                      width: peersCol.width
+
+                      RowBase {
+                        width: parent.width
+                        height: 58
+                        rad: (index === 0 || index === root.peers.length - 1) ? 10 : 0
+                        actionable: Boolean(modelData.ipv4)
+                        onClicked: root.copyText(modelData.ipv4, "Peer IP")
+                        RowLayout {
+                          anchors.fill: parent
+                          anchors.leftMargin: 12
+                          anchors.rightMargin: 10
+                          spacing: 10
+                          Text {
+                            text: root.osIcon(modelData.os)
+                            font.family: t.mono
+                            font.pixelSize: 15
+                            color: modelData.online ? t.ink2 : t.ink3
+                          }
+                          Column {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                              width: parent.width
+                              text: modelData.hostname || "Device"
+                              font.pixelSize: 13
+                              font.weight: Font.Medium
+                              color: modelData.online ? t.ink1 : t.ink3
+                              elide: Text.ElideRight
+                            }
+                            Text {
+                              text: modelData.ipv4 || modelData.dns_name
+                              font.family: t.mono
+                              font.pixelSize: 11
+                              color: t.ink3
+                            }
+                          }
+                          Text {
+                            visible: !modelData.online
+                            text: "Offline"
+                            font.pixelSize: 11
+                            color: t.ink3
+                          }
+                          TextBtn {
+                            visible: Boolean(modelData.online)
+                            property string pd: root.pingDisplay(modelData.ipv4)
+                            text: pd.length > 0 ? pd : "Ping"
+                            fs: 11
+                            fg: {
+                              if (pd.length === 0 || pd === "…") return t.accent;
+                              return pd.includes("ms") ? t.green : t.amber;
+                            }
+                            onClicked: root.pingPeer(modelData.ipv4)
+                          }
+                        }
+                      }
+
+                      Hairline {
+                        visible: index < root.peers.length - 1
+                        width: parent.width - 24
+                        anchors.horizontalCenter: parent.horizontalCenter
+                      }
+                    }
+                  }
+                }
+              }
+
+              Item {
+                visible: root.peers.length === 0
+                width: parent.width
+                height: 64
+                Column {
+                  anchors.centerIn: parent
+                  spacing: 3
+                  Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "No devices nearby"
+                    font.pixelSize: 12
+                    color: t.ink2
+                  }
+                  Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Devices on your tailnet will appear here."
+                    font.pixelSize: 11
+                    color: t.ink3
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // ============ TAB 2: SETTINGS ============
+        Item {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          opacity: root.currentTab === 2 ? 1 : 0
+          Behavior on opacity { NumberAnimation { duration: 110 } }
+
+          Flickable {
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: settingsCol.height
+            clip: true
+
+            Column {
+              id: settingsCol
+              width: parent.width
+              spacing: 12
+
+              SectionHead {
+                width: parent.width
+                label: "This device"
+              }
+
+              Rectangle {
+                width: parent.width
+                height: prefsCol.height
+                radius: 12
+                color: t.surface
+
+                Column {
+                  id: prefsCol
+                  width: parent.width
+
+                  // SSH
+                  Column {
+                    width: parent.width
+                    RowBase {
+                      width: parent.width
+                      height: 54
+                      rad: 12
+                      onClicked: {
+                        const next = !(root.tsData.ssh_enabled);
+                        root.runAction(["ssh-toggle", next ? "true" : "false"], next ? "Tailscale SSH Enabled" : "Tailscale SSH Disabled");
+                      }
+                      RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 10
+                        Text {
+                          text: "󰒍"
+                          font.family: t.mono
+                          font.pixelSize: 15
+                          color: root.tsData.ssh_enabled ? t.green : t.ink3
+                        }
+                        Column {
+                          Layout.fillWidth: true
+                          spacing: 1
+                          Text {
+                            text: "Secure shell"
+                            font.pixelSize: 13
+                            font.weight: Font.Medium
+                            color: t.ink1
+                          }
+                          Text {
+                            text: root.tsData.ssh_enabled ? "Tailnet devices can sign in over SSH" : "Let tailnet devices sign in over SSH"
+                            font.pixelSize: 11
+                            color: t.ink3
+                          }
+                        }
+                        TSwitch {
+                          on: Boolean(root.tsData.ssh_enabled)
+                          onToggled: {
+                            const next2 = !(root.tsData.ssh_enabled);
+                            root.runAction(["ssh-toggle", next2 ? "true" : "false"], next2 ? "Tailscale SSH Enabled" : "Tailscale SSH Disabled");
+                          }
+                        }
+                      }
                     }
 
-                    Rectangle {
-                      visible: Boolean(root.tsData.webclient_enabled)
-                      width: 42
-                      height: 20
-                      radius: 4
-                      color: "#313244"
-                      Text { anchors.centerIn: parent; text: "Open"; font.family: root.monoFont; font.pixelSize: 9; color: "#89b4fa" }
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
+                    Item {
+                      visible: Boolean(root.tsData.ssh_enabled)
+                      width: parent.width
+                      height: visible ? sshCmds.height + 12 : 0
+                      clip: true
+                      Behavior on height { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                      Column {
+                        id: sshCmds
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 4
+                        Repeater {
+                          model: root.sshCommands()
+                          RowBase {
+                            required property string modelData
+                            width: sshCmds.width
+                            height: 30
+                            base: t.inset
+                            rad: 8
+                            hover: "#1B1C26"
+                            press: "#22232F"
+                            onClicked: root.copyText(modelData, "SSH command")
+                            RowLayout {
+                              anchors.fill: parent
+                              anchors.leftMargin: 10
+                              anchors.rightMargin: 10
+                              Text {
+                                Layout.fillWidth: true
+                                text: modelData
+                                font.family: t.mono
+                                font.pixelSize: 11
+                                color: t.ink1
+                                elide: Text.ElideRight
+                              }
+                              Text {
+                                text: "Copy"
+                                font.pixelSize: 11
+                                color: t.ink3
+                              }
+                            }
+                          }
+                        }
+                        Item { width: 1; height: 2 }
+                      }
+                    }
+                  }
+
+                  Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
+
+                  // Web admin
+                  RowBase {
+                    width: parent.width
+                    height: 54
+                    onClicked: {
+                      const next = !(root.tsData.webclient_enabled);
+                      root.runAction(["set-pref", "webclient", next ? "true" : "false"], "Updated Web UI setting");
+                    }
+                    RowLayout {
+                      anchors.fill: parent
+                      anchors.leftMargin: 12
+                      anchors.rightMargin: 12
+                      spacing: 10
+                      Text {
+                        text: "󰖟"
+                        font.family: t.mono
+                        font.pixelSize: 15
+                        color: root.tsData.webclient_enabled ? t.accent : t.ink3
+                      }
+                      Column {
+                        Layout.fillWidth: true
+                        spacing: 1
+                        Text {
+                          text: "Web admin"
+                          font.pixelSize: 13
+                          font.weight: Font.Medium
+                          color: t.ink1
+                        }
+                        Text {
+                          text: "Local dashboard on port 5252"
+                          font.pixelSize: 11
+                          color: t.ink3
+                        }
+                      }
+                      TextBtn {
+                        visible: Boolean(root.tsData.webclient_enabled)
+                        text: "Open"
+                        fs: 11
+                        fg: t.accent
                         onClicked: root.openUrl("http://localhost:5252")
                       }
-                    }
-
-                    Rectangle {
-                      width: 36
-                      height: 18
-                      radius: 9
-                      color: root.tsData.webclient_enabled ? "#a6e3a1" : "#45475a"
-                      Rectangle {
-                        width: 14; height: 14; radius: 7
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: root.tsData.webclient_enabled ? undefined : parent.left
-                        anchors.right: root.tsData.webclient_enabled ? parent.right : undefined
-                        anchors.margins: 2; color: "#11111b"
-                      }
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.runAction(["set-pref", "webclient", !root.tsData.webclient_enabled ? "true" : "false"], "Updated Web UI setting")
+                      TSwitch {
+                        on: Boolean(root.tsData.webclient_enabled)
+                        onToggled: {
+                          const next2 = !(root.tsData.webclient_enabled);
+                          root.runAction(["set-pref", "webclient", next2 ? "true" : "false"], "Updated Web UI setting");
+                        }
                       }
                     }
                   }
 
-                  // Exit Node Advertisement
-                  RowLayout {
+                  Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
+
+                  // Exit node
+                  RowBase {
                     width: parent.width
-
-                    Column {
-                      Layout.fillWidth: true
-                      spacing: 1
-                      Text { text: "Advertise Exit Node"; font.family: root.monoFont; font.pixelSize: 11; font.bold: true; color: "#cdd6f4" }
-                      Text { text: "Allow routing tailnet traffic through this machine"; font.family: root.monoFont; font.pixelSize: 10; color: "#6c7086" }
+                    height: 54
+                    onClicked: {
+                      const next = !(root.tsData.exit_node_enabled);
+                      root.runAction(["set-pref", "advertise-exit-node", next ? "true" : "false"], "Updated exit node setting");
                     }
-
-                    Rectangle {
-                      width: 36
-                      height: 18
-                      radius: 9
-                      color: root.tsData.exit_node_enabled ? "#a6e3a1" : "#45475a"
-                      Rectangle {
-                        width: 14; height: 14; radius: 7
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: root.tsData.exit_node_enabled ? undefined : parent.left
-                        anchors.right: root.tsData.exit_node_enabled ? parent.right : undefined
-                        anchors.margins: 2; color: "#11111b"
+                    RowLayout {
+                      anchors.fill: parent
+                      anchors.leftMargin: 12
+                      anchors.rightMargin: 12
+                      spacing: 10
+                      Text {
+                        text: "󰌽"
+                        font.family: t.mono
+                        font.pixelSize: 15
+                        color: root.tsData.exit_node_enabled ? t.accent : t.ink3
                       }
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.runAction(["set-pref", "advertise-exit-node", !root.tsData.exit_node_enabled ? "true" : "false"], "Updated exit node setting")
+                      Column {
+                        Layout.fillWidth: true
+                        spacing: 1
+                        Text {
+                          text: "Exit node"
+                          font.pixelSize: 13
+                          font.weight: Font.Medium
+                          color: t.ink1
+                        }
+                        Text {
+                          text: "Route tailnet traffic through this device"
+                          font.pixelSize: 11
+                          color: t.ink3
+                        }
+                      }
+                      TSwitch {
+                        on: Boolean(root.tsData.exit_node_enabled)
+                        onToggled: {
+                          const next2 = !(root.tsData.exit_node_enabled);
+                          root.runAction(["set-pref", "advertise-exit-node", next2 ? "true" : "false"], "Updated exit node setting");
+                        }
                       }
                     }
                   }
 
-                  // Shields Up
-                  RowLayout {
+                  Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
+
+                  // Shields up
+                  RowBase {
                     width: parent.width
-
-                    Column {
-                      Layout.fillWidth: true
-                      spacing: 1
-                      Text { text: "Shields Up"; font.family: root.monoFont; font.pixelSize: 11; font.bold: true; color: "#cdd6f4" }
-                      Text { text: "Block all incoming connections from tailnet"; font.family: root.monoFont; font.pixelSize: 10; color: "#6c7086" }
+                    height: 54
+                    rad: 12
+                    onClicked: {
+                      const next = !(root.tsData.shields_up);
+                      root.runAction(["set-pref", "shields-up", next ? "true" : "false"], "Updated shields-up setting");
                     }
-
-                    Rectangle {
-                      width: 36
-                      height: 18
-                      radius: 9
-                      color: root.tsData.shields_up ? "#f38ba8" : "#45475a"
-                      Rectangle {
-                        width: 14; height: 14; radius: 7
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: root.tsData.shields_up ? undefined : parent.left
-                        anchors.right: root.tsData.shields_up ? parent.right : undefined
-                        anchors.margins: 2; color: "#11111b"
+                    RowLayout {
+                      anchors.fill: parent
+                      anchors.leftMargin: 12
+                      anchors.rightMargin: 12
+                      spacing: 10
+                      Text {
+                        text: "󰒃"
+                        font.family: t.mono
+                        font.pixelSize: 15
+                        color: root.tsData.shields_up ? t.red : t.ink3
                       }
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.runAction(["set-pref", "shields-up", !root.tsData.shields_up ? "true" : "false"], "Updated shields-up setting")
+                      Column {
+                        Layout.fillWidth: true
+                        spacing: 1
+                        Text {
+                          text: "Shields up"
+                          font.pixelSize: 13
+                          font.weight: Font.Medium
+                          color: t.ink1
+                        }
+                        Text {
+                          text: "Block incoming tailnet connections"
+                          font.pixelSize: 11
+                          color: t.ink3
+                        }
+                      }
+                      TSwitch {
+                        on: Boolean(root.tsData.shields_up)
+                        onColor: t.red
+                        onToggled: {
+                          const next2 = !(root.tsData.shields_up);
+                          root.runAction(["set-pref", "shields-up", next2 ? "true" : "false"], "Updated shields-up setting");
+                        }
                       }
                     }
                   }
                 }
               }
 
-              // Netcheck Diagnostics Card
+              // Health notice: tinted wash, no border shouting.
+              Rectangle {
+                visible: root.health.length > 0
+                width: parent.width
+                height: healthRow.height + 20
+                radius: 10
+                color: "#1AE2A63B"
+                Row {
+                  id: healthRow
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.margins: 10
+                  spacing: 8
+                  Text {
+                    text: "!"
+                    font.pixelSize: 12
+                    font.bold: true
+                    color: t.amber
+                  }
+                  Text {
+                    width: parent.width - 20
+                    text: root.health.join("\n")
+                    font.pixelSize: 11
+                    color: "#E8B54B"
+                    wrapMode: Text.Wrap
+                  }
+                }
+              }
+
+              SectionHead {
+                width: parent.width
+                label: "Diagnostics"
+              }
+
               Rectangle {
                 width: parent.width
-                height: netcheckCol.height + 16
-                radius: 10
-                color: "#181825"
-                border.color: "#313244"
-                border.width: 1
+                height: netCol.height + 24
+                radius: 12
+                color: t.surface
 
                 Column {
-                  id: netcheckCol
-                  anchors {
-                    left: parent.left
-                    right: parent.right
-                    top: parent.top
-                    margins: 8
-                  }
-                  spacing: 8
+                  id: netCol
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.margins: 12
+                  spacing: 10
 
                   RowLayout {
                     width: parent.width
-
-                    Text {
-                      text: "Network Diagnostics (Netcheck)"
-                      font.family: root.monoFont
-                      font.pixelSize: 12
-                      font.bold: true
-                      color: "#cdd6f4"
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    Rectangle {
-                      width: netcheckBtnText.width + 12
-                      height: 22
-                      radius: 4
-                      color: netcheckMouse.containsMouse ? "#74c7ec" : "#89b4fa"
-
+                    Column {
+                      Layout.fillWidth: true
+                      spacing: 1
                       Text {
-                        id: netcheckBtnText
-                        anchors.centerIn: parent
-                        text: root.isRunningNetcheck ? "Testing…" : "Run Test"
-                        font.family: root.monoFont
-                        font.pixelSize: 10
-                        font.bold: true
-                        color: "#11111b"
+                        text: "Connection test"
+                        font.pixelSize: 13
+                        font.weight: Font.Medium
+                        color: t.ink1
                       }
-
-                      MouseArea {
-                        id: netcheckMouse
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        hoverEnabled: true
-                        onClicked: root.runNetcheck()
+                      Text {
+                        text: "Relays, NAT mapping and latency"
+                        font.pixelSize: 11
+                        color: t.ink3
                       }
+                    }
+                    TextBtn {
+                      text: root.netBusy ? "Testing…" : "Run"
+                      fs: 11
+                      bold: true
+                      fg: t.accent
+                      onClicked: root.runNetcheck()
                     }
                   }
 
                   Rectangle {
-                    visible: root.netcheckReport.length > 0
+                    visible: root.netReport.length > 0
                     width: parent.width
-                    height: Math.min(120, reportText.implicitHeight + 14)
-                    radius: 6
-                    color: "#11111b"
-
+                    height: 104
+                    radius: 8
+                    color: t.inset
                     Flickable {
                       anchors.fill: parent
-                      anchors.margins: 7
+                      anchors.margins: 8
                       contentWidth: width
                       contentHeight: reportText.implicitHeight
                       clip: true
-
                       Text {
                         id: reportText
                         width: parent.width
-                        text: root.netcheckReport
-                        font.family: root.monoFont
+                        text: root.netReport
+                        font.family: t.mono
                         font.pixelSize: 10
-                        color: "#a6adc8"
+                        color: t.ink2
                         wrapMode: Text.Wrap
                       }
                     }
                   }
                 }
               }
+
+              Text {
+                visible: Boolean(root.tsData.version && root.tsData.version.length > 0)
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: "Tailscale " + root.tsData.version
+                font.pixelSize: 11
+                color: t.ink3
+              }
             }
           }
         }
+      }
+    }
+
+    // ---- Toast: one quiet overlay, fades in place ----
+    Rectangle {
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.bottom: parent.bottom
+      anchors.bottomMargin: 14
+      width: Math.min(toastLabel.implicitWidth + 30, parent.width - 32)
+      height: 30
+      radius: 15
+      color: "#2A2B38"
+      opacity: root.toastMessage.length > 0 ? 1 : 0
+      visible: opacity > 0
+      Behavior on opacity { NumberAnimation { duration: 160 } }
+      Text {
+        id: toastLabel
+        anchors.centerIn: parent
+        width: parent.width - 30
+        text: "✓  " + root.toastMessage
+        font.pixelSize: 11
+        font.weight: Font.Medium
+        color: t.ink1
+        elide: Text.ElideRight
+        horizontalAlignment: Text.AlignHCenter
       }
     }
   }

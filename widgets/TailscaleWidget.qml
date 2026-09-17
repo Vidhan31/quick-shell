@@ -1,4 +1,5 @@
-// TailscaleWidget.qml — Minimal Top bar widget for Tailscale
+// TailscaleWidget.qml — Quiet top-bar indicator for Tailscale.
+// Single glyph + single word. No dot, no bold, no pill: the tint carries state.
 import QtQuick
 import Quickshell
 import Quickshell.Plugins.Tailscale
@@ -18,7 +19,6 @@ Item {
   property var tsData: monitor.tsData
   readonly property bool isBusy: monitor.isBusy
 
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
   readonly property bool isConnected: monitor.connected
   readonly property int serveCount: monitor.serveCount
   readonly property bool hasFunnel: monitor.hasFunnel
@@ -36,42 +36,31 @@ Item {
 
   Row {
     id: contentRow
-    spacing: 6
+    spacing: 7
     anchors.verticalCenter: parent.verticalCenter
 
-    // Status Icon
     Text {
       anchors.verticalCenter: parent.verticalCenter
       text: "󰖩"
-      font.family: root.monoFont
+      font.family: "JetBrainsMono Nerd Font Mono"
       font.pixelSize: 13
-      color: root.isConnected ? (root.hasFunnel ? "#cba6f7" : "#89b4fa") : "#f38ba8"
+      color: {
+        if (!root.isConnected) return "#6F6F84";
+        if (root.hasFunnel) return "#AE8CFF";
+        return "#5E9DFF";
+      }
     }
 
-    // Status Label
     Text {
       anchors.verticalCenter: parent.verticalCenter
       text: {
-        if (!root.isConnected) return "TS Offline";
-        if (root.serveCount > 0) {
-          return (root.hasFunnel ? "Funnel" : "Serve") + " (" + root.serveCount + ")";
-        }
-        if (root.tsData.ssh_enabled) return "TS (SSH)";
+        if (!root.isConnected) return "Offline";
+        if (root.hasFunnel) return "Funnel " + root.serveCount;
+        if (root.serveCount > 0) return "Serve " + root.serveCount;
         return "Tailscale";
       }
-      font.family: root.monoFont
       font.pixelSize: 12
-      font.bold: root.isConnected
-      color: root.isConnected ? "#cdd6f4" : "#a6adc8"
-    }
-
-    // Status Dot Indicator
-    Rectangle {
-      width: 6
-      height: 6
-      radius: 3
-      anchors.verticalCenter: parent.verticalCenter
-      color: root.isConnected ? "#a6e3a1" : "#f38ba8"
+      color: root.isConnected ? "#C9C9D6" : "#6F6F84"
     }
   }
 }
