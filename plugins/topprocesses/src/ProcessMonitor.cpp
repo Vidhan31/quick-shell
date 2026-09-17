@@ -95,9 +95,10 @@ static inline QString formatRssString(double kb) {
     return QString::number(kb / (1024.0 * 1024.0), 'f', 2) + QStringLiteral("G");
 }
 
-SamplerWorker::SamplerWorker(int intervalMs, QObject *parent)
+SamplerWorker::SamplerWorker(int intervalMs, int candidateCount, QObject *parent)
     : QObject(parent)
     , m_intervalMs(intervalMs)
+    , m_candidateCount(std::clamp(candidateCount, 16, 32))
 {
     long sz = sysconf(_SC_PAGESIZE);
     m_pageSizeKb = (sz > 0) ? (sz / 1024) : 4;
@@ -147,6 +148,10 @@ void SamplerWorker::setInterval(int intervalMs) {
     if (m_timer && m_timer->isActive()) {
         m_timer->setInterval(m_intervalMs);
     }
+}
+
+void SamplerWorker::setCandidateCount(int candidateCount) {
+    m_candidateCount = std::clamp(candidateCount, 16, 32);
 }
 
 unsigned long long SamplerWorker::readTotalJiffies() {
@@ -351,15 +356,15 @@ void SamplerWorker::sample() {
     }
 
     std::vector<int> groupsToResolve;
-    groupsToResolve.reserve(24);
+    groupsToResolve.reserve(32);
 
-    size_t initialN = std::min<size_t>(10, m_groupIndices.size());
-    for (size_t i = 0; i < initialN; ++i) {
+    size_t candidateN = std::min<size_t>(static_cast<size_t>(m_candidateCount), m_groupIndices.size());
+    for (size_t i = 0; i < candidateN; ++i) {
         groupsToResolve.push_back(m_groupIndices[i]);
     }
 
     std::vector<int> procIndicesToResolve;
-    procIndicesToResolve.reserve(64);
+    procIndicesToResolve.reserve(128);
 
     for (int gIdx : groupsToResolve) {
         m_groups[gIdx].pssResolved = true;
@@ -425,89 +430,6 @@ void SamplerWorker::sample() {
         }
     }
 
-    std::vector<unsigned long long> topMems;
-    topMems.reserve(groupsToResolve.size());
-    for (int gIdx : groupsToResolve) {
-        topMems.push_back(m_groups[gIdx].actualMem);
-    }
-    unsigned long long threshold = 0;
-    if (topMems.size() >= 10) {
-        std::nth_element(topMems.begin(), topMems.begin() + 9, topMems.end(), std::greater<unsigned long long>());
-        threshold = topMems[9];
-    }
-
-    std::vector<int> secondaryGroups;
-    for (size_t i = initialN; i < m_groupIndices.size(); ++i) {
-        int gIdx = m_groupIndices[i];
-        if (m_groups[gIdx].rssUpperBound <= threshold) break;
-        secondaryGroups.push_back(gIdx);
-    }
-
-    if (!secondaryGroups.empty()) {
-        std::vector<int> secProcs;
-        for (int gIdx : secondaryGroups) {
-            m_groups[gIdx].pssResolved = true;
-            int pIdx = groupHead[gIdx];
-            while (pIdx != -1) {
-                secProcs.push_back(pIdx);
-                pIdx = nextMember[pIdx];
-            }
-        }
-
-        std::atomic<int> remaining(static_cast<int>(secProcs.size()));
-        std::mutex doneMutex;
-        std::condition_variable doneCv;
-
-        for (int pIdx : secProcs) {
-            m_pool->enqueue([&, pIdx, procFd] {
-                char pbuf[64];
-                snprintf(pbuf, sizeof(pbuf), "%d/smaps_rollup", m_rawProcs[pIdx].pid);
-                int smapsFd = openat(procFd, pbuf, O_RDONLY);
-                if (smapsFd >= 0) {
-                    char smapsBuf[384];
-                    ssize_t sn = read(smapsFd, smapsBuf, sizeof(smapsBuf) - 1);
-                    close(smapsFd);
-                    if (sn > 0) {
-                        smapsBuf[sn] = '\0';
-                        const char *pssPtr = strstr(smapsBuf, "\nPss:");
-                        if (pssPtr) {
-                            m_rawProcs[pIdx].finalMemKb = std::strtoull(pssPtr + 5, nullptr, 10);
-                        }
-                    }
-                }
-                if (--remaining == 0) {
-                    std::unique_lock<std::mutex> lk(doneMutex);
-                    doneCv.notify_one();
-                }
-            });
-        }
-
-        {
-            std::unique_lock<std::mutex> lk(doneMutex);
-            doneCv.wait(lk, [&] { return remaining.load() == 0; });
-        }
-
-        for (int gIdx : secondaryGroups) {
-            auto &g = m_groups[gIdx];
-            g.actualMem = 0;
-            g.maxChildMem = 0;
-            g.maxChildPid = 0;
-            g.maxChildComm = nullptr;
-
-            int pIdx = groupHead[gIdx];
-            while (pIdx != -1) {
-                const auto &proc = m_rawProcs[pIdx];
-                g.actualMem += proc.finalMemKb;
-                if (g.maxChildComm == nullptr || proc.finalMemKb >= g.maxChildMem) {
-                    g.maxChildMem = proc.finalMemKb;
-                    g.maxChildComm = proc.comm;
-                    g.maxChildPid = proc.pid;
-                }
-                pIdx = nextMember[pIdx];
-            }
-        }
-    }
-
     closedir(procDir);
 
     m_items.clear();
@@ -566,13 +488,14 @@ ProcessMonitor::ProcessMonitor(QObject *parent)
     : QObject(parent)
     , m_running(false)
 {
-    m_worker = new SamplerWorker(m_interval);
+    m_worker = new SamplerWorker(m_interval, m_candidateCount);
     m_worker->moveToThread(&m_workerThread);
 
     connect(&m_workerThread, &QThread::finished, m_worker, &QObject::deleteLater);
     connect(this, &ProcessMonitor::requestStart, m_worker, &SamplerWorker::start);
     connect(this, &ProcessMonitor::requestStop, m_worker, &SamplerWorker::stop);
     connect(this, &ProcessMonitor::requestSetInterval, m_worker, &SamplerWorker::setInterval);
+    connect(this, &ProcessMonitor::requestSetCandidateCount, m_worker, &SamplerWorker::setCandidateCount);
     connect(this, &ProcessMonitor::requestSample, m_worker, &SamplerWorker::sample);
 
     connect(m_worker, &SamplerWorker::dataReady, this, &ProcessMonitor::onDataReady, Qt::QueuedConnection);
@@ -607,6 +530,14 @@ void ProcessMonitor::setInterval(int interval) {
     m_interval = interval;
     emit intervalChanged();
     emit requestSetInterval(m_interval);
+}
+
+void ProcessMonitor::setCandidateCount(int candidateCount) {
+    int clamped = std::clamp(candidateCount, 16, 32);
+    if (m_candidateCount == clamped) return;
+    m_candidateCount = clamped;
+    emit candidateCountChanged();
+    emit requestSetCandidateCount(m_candidateCount);
 }
 
 void ProcessMonitor::refresh() {

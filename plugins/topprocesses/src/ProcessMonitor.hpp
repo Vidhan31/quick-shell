@@ -51,13 +51,14 @@ class SamplerWorker : public QObject {
     Q_OBJECT
 
 public:
-    explicit SamplerWorker(int intervalMs = 2000, QObject *parent = nullptr);
+    explicit SamplerWorker(int intervalMs = 2000, int candidateCount = 24, QObject *parent = nullptr);
     ~SamplerWorker() override;
 
 public slots:
     void start();
     void stop();
     void setInterval(int intervalMs);
+    void setCandidateCount(int candidateCount);
     void sample();
 
 signals:
@@ -65,6 +66,7 @@ signals:
 
 private:
     int m_intervalMs;
+    int m_candidateCount{24};
     QTimer *m_timer{nullptr};
     long m_pageSizeKb{4};
     long m_nCpu{1};
@@ -97,6 +99,7 @@ class ProcessMonitor : public QObject {
     Q_PROPERTY(QString updatedAt READ updatedAt NOTIFY processesChanged)
     Q_PROPERTY(bool running READ running WRITE setRunning NOTIFY runningChanged)
     Q_PROPERTY(int interval READ interval WRITE setInterval NOTIFY intervalChanged)
+    Q_PROPERTY(int candidateCount READ candidateCount WRITE setCandidateCount NOTIFY candidateCountChanged)
 
 public:
     explicit ProcessMonitor(QObject *parent = nullptr);
@@ -107,9 +110,11 @@ public:
     QString updatedAt() const { return m_updatedAt; }
     bool running() const { return m_running; }
     int interval() const { return m_interval; }
+    int candidateCount() const { return m_candidateCount; }
 
     void setRunning(bool running);
     void setInterval(int interval);
+    void setCandidateCount(int candidateCount);
 
     Q_INVOKABLE void refresh();
 
@@ -117,11 +122,13 @@ signals:
     void processesChanged();
     void runningChanged();
     void intervalChanged();
+    void candidateCountChanged();
 
     // Internal signals to worker thread
     void requestStart();
     void requestStop();
     void requestSetInterval(int interval);
+    void requestSetCandidateCount(int candidateCount);
     void requestSample();
 
 private slots:
@@ -133,6 +140,7 @@ private:
     QString m_updatedAt;
     bool m_running{false};
     int m_interval{2000};
+    int m_candidateCount{24};
 
     QThread m_workerThread;
     SamplerWorker *m_worker{nullptr};

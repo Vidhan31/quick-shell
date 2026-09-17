@@ -7,6 +7,7 @@ Item {
   id: root
 
   property int interval: 2000
+  property int candidateCount: 24
   property var processes: monitor.processes
   property double maxMem: monitor.maxMem
   property string updatedAt: monitor.updatedAt
@@ -29,6 +30,7 @@ Item {
   ProcessMonitor {
     id: monitor
     interval: root.interval
+    candidateCount: root.candidateCount
     running: root.visible
   }
 
