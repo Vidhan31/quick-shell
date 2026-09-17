@@ -1,37 +1,23 @@
 // MediaBarWidget.qml — Compact top bar widget for current media status.
 import QtQuick
 import Quickshell
-import Quickshell.Services.Mpris
+import Quickshell.Plugins.Media
 
 Item {
   id: root
 
   readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
 
-  readonly property var playerList: (Mpris.players && Mpris.players.values) ? Mpris.players.values : []
-
-  function getBestPlayer(): var {
-    if (playerList.length === 0) return null;
-    for (let i = 0; i < playerList.length; i++) {
-      if (playerList[i].playbackState === MprisPlaybackState.Playing) return playerList[i];
-    }
-    for (let i = 0; i < playerList.length; i++) {
-      if (playerList[i].playbackState === MprisPlaybackState.Paused) return playerList[i];
-    }
-    return playerList[0];
+  MediaManager {
+    id: media
   }
 
-  readonly property var activePlayer: getBestPlayer()
-  readonly property bool hasPlayer: activePlayer !== null
-  readonly property bool isPlaying: activePlayer ? (activePlayer.playbackState === MprisPlaybackState.Playing) : false
+  readonly property var activePlayer: media.activePlayer
+  readonly property bool hasPlayer: media.hasPlayer
+  readonly property bool isPlaying: media.isPlaying
 
-  readonly property string title: activePlayer ? (activePlayer.trackTitle || activePlayer.identity || "Media") : "Media"
-  readonly property string artist: {
-    if (!activePlayer) return "";
-    if (activePlayer.trackArtist) return activePlayer.trackArtist;
-    if (activePlayer.trackArtists && activePlayer.trackArtists.length > 0) return activePlayer.trackArtists.join(", ");
-    return "";
-  }
+  readonly property string title: media.title
+  readonly property string artist: media.artist
 
   implicitWidth: contentRow.width
   implicitHeight: 20

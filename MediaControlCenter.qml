@@ -1,16 +1,17 @@
 // MediaControlCenter.qml — Nice modern minimalist media control center for Quickshell.
-// Docs:
-// - https://quickshell.org/docs/v0.3.1/types/Quickshell.Services.Mpris/
-// - https://quickshell.org/docs/v0.3.1/types/Quickshell.Services.Pipewire/
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Services.Mpris
+import Quickshell.Plugins.Media
 
 Item {
   id: root
 
   readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
+
+  MediaManager {
+    id: media
+  }
 
   // Width & height of the control center card
   implicitWidth: 360
@@ -19,74 +20,29 @@ Item {
   height: implicitHeight
 
   // Manually selected player, if user clicked a tab
-  property var manualPlayer: null
+  property alias manualPlayer: media.manualPlayer
 
-  // All available players from MPRIS
-  readonly property var playerList: (Mpris.players && Mpris.players.values) ? Mpris.players.values : []
-  readonly property int playerCount: playerList.length
+  // All available players from native MPRIS manager
+  readonly property var playerList: media.playerList
+  readonly property int playerCount: media.playerCount
 
-  // Find best active player
-  function getBestPlayer(): var {
-    if (playerList.length === 0) return null;
-
-    // If manual player is still alive, keep it
-    if (manualPlayer) {
-      for (let i = 0; i < playerList.length; i++) {
-        if (playerList[i] === manualPlayer) return manualPlayer;
-      }
-    }
-
-    // 1. First playing player
-    for (let i = 0; i < playerList.length; i++) {
-      if (playerList[i].playbackState === MprisPlaybackState.Playing) {
-        return playerList[i];
-      }
-    }
-
-    // 2. First paused player
-    for (let i = 0; i < playerList.length; i++) {
-      if (playerList[i].playbackState === MprisPlaybackState.Paused) {
-        return playerList[i];
-      }
-    }
-
-    // 3. Fallback to first player in list
-    return playerList[0];
-  }
-
-  readonly property var player: getBestPlayer()
-  readonly property bool hasPlayer: player !== null
+  readonly property var player: media.activePlayer
+  readonly property bool hasPlayer: media.hasPlayer
 
   // Track playback status
-  readonly property bool isPlaying: player ? (player.playbackState === MprisPlaybackState.Playing) : false
+  readonly property bool isPlaying: media.isPlaying
 
   // Seeking state
   property bool isSeeking: false
   property real seekTarget: 0
 
   // Track length & position in seconds
-  readonly property real trackLength: (player && player.lengthSupported && isFinite(player.length) && player.length > 0) ? player.length : 0
-  readonly property real trackPos: isSeeking ? seekTarget : ((player && player.positionSupported && isFinite(player.position)) ? player.position : 0)
+  readonly property real trackLength: media.trackLength
+  readonly property real trackPos: isSeeking ? seekTarget : media.trackPos
 
-  // Timer to actively update position while playing (recommended by Quickshell MPRIS docs)
-  Timer {
-    interval: 250
-    running: root.visible && root.isPlaying && !root.isSeeking
-    repeat: true
-    onTriggered: {
-      if (root.player && root.player.positionSupported) {
-        root.player.positionChanged();
-      }
-    }
-  }
-
-  // Format artwork URL (ensure local paths have file:// scheme)
+  // Format artwork URL
   function formatArtUrl(url: string): string {
-    if (!url) return "";
-    if (url.startsWith("/") && !url.startsWith("//")) {
-      return "file://" + url;
-    }
-    return url;
+    return url || "";
   }
 
   // Format seconds to mm:ss or hh:mm:ss
@@ -193,7 +149,7 @@ Item {
                   radius: 2
                   anchors.verticalCenter: parent.verticalCenter
                   color: "#a6e3a1"
-                  visible: modelData.playbackState === MprisPlaybackState.Playing
+                  visible: modelData.isPlaying
                 }
 
                 Text {
@@ -627,10 +583,10 @@ Item {
 
               Text {
                 anchors.centerIn: parent
-                text: (root.player && root.player.loopState === MprisLoopState.Track) ? "󰑘" : "󰑖"
+                text: (root.player && root.player.loopState === 1) ? "󰑘" : "󰑖"
                 font.family: root.monoFont
                 font.pixelSize: 17
-                color: (root.player && root.player.loopState !== MprisLoopState.None) ? "#89b4fa" : "#6c7086"
+                color: (root.player && root.player.loopState !== 0) ? "#89b4fa" : "#6c7086"
                 opacity: (root.player && root.player.loopSupported) ? 1.0 : 0.3
               }
 
@@ -641,12 +597,12 @@ Item {
                 cursorShape: (root.player && root.player.loopSupported) ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: {
                   if (root.player && root.player.loopSupported && root.player.canControl) {
-                    if (root.player.loopState === MprisLoopState.None) {
-                      root.player.loopState = MprisLoopState.Playlist;
-                    } else if (root.player.loopState === MprisLoopState.Playlist) {
-                      root.player.loopState = MprisLoopState.Track;
+                    if (root.player.loopState === 0) {
+                      root.player.loopState = 2; // Playlist
+                    } else if (root.player.loopState === 2) {
+                      root.player.loopState = 1; // Track
                     } else {
-                      root.player.loopState = MprisLoopState.None;
+                      root.player.loopState = 0; // None
                     }
                   }
                 }
