@@ -1,53 +1,36 @@
 // EthernetControlCenter.qml — Detailed Ethernet & Internet status and diagnostics popup.
+// Native C++ Qt6 QML module (Quickshell.Plugins.Ethernet).
 import QtQuick
 import QtQuick.Layouts
-import Quickshell.Io
+import Quickshell.Plugins.Ethernet
 
 Item {
   id: root
 
-  property var ethData: ({
-    ok: true,
-    interface: "enp34s0",
-    carrier: true,
-    operstate: "up",
-    speed_mbps: 100,
-    speed_label: "100 Mbps",
-    hw_address: "",
-    ip: "",
-    ipv6: "",
-    gateway: "",
-    dns: [],
-    connection_name: "Ethernet",
-    nm_connectivity: 4,
-    has_internet: true,
-    is_default_route: true,
-    status: "internet",
-    status_desc: "Connected • Internet OK",
-    rx_bytes: 0,
-    tx_bytes: 0,
-    query_time_ms: 0
-  })
+  property EthernetMonitor monitor: null
+  EthernetMonitor {
+    id: fallbackMonitor
+    running: root.monitor === null
+  }
+  readonly property EthernetMonitor activeMonitor: root.monitor ? root.monitor : fallbackMonitor
 
+  property var ethData: activeMonitor ? activeMonitor.ethData : null
   signal triggerRefresh()
 
   readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
-  readonly property bool hasInternet: ethData ? (ethData.has_internet === true) : false
-  readonly property bool isCarrier: ethData ? (ethData.carrier === true) : false
-  readonly property string currentStatus: ethData ? (ethData.status || "offline") : "offline"
-  readonly property string ifaceName: ethData ? (ethData.interface || "enp34s0") : "enp34s0"
+  readonly property bool hasInternet: activeMonitor ? activeMonitor.hasInternet : false
+  readonly property bool isCarrier: activeMonitor ? activeMonitor.carrier : false
+  readonly property string currentStatus: activeMonitor ? activeMonitor.currentStatus : "offline"
+  readonly property string ifaceName: activeMonitor ? activeMonitor.interfaceName : "enp34s0"
 
-  // Ping test state
-  property string pingResult: ""
-  property double pingLatency: -1
-  property bool isPinging: false
+  // Ping test state from native C++ monitor
+  readonly property string pingResult: activeMonitor ? activeMonitor.pingResult : ""
+  readonly property double pingLatency: activeMonitor ? activeMonitor.pingLatency : -1
+  readonly property bool isPinging: activeMonitor ? activeMonitor.isPinging : false
 
-  // Live throughput tracking
-  property double _prevRx: -1
-  property double _prevTx: -1
-  property double _prevTime: -1
-  property double downloadBps: 0
-  property double uploadBps: 0
+  // Live throughput metrics from native C++ monitor
+  readonly property double downloadBps: activeMonitor ? activeMonitor.downloadBps : 0
+  readonly property double uploadBps: activeMonitor ? activeMonitor.uploadBps : 0
 
   function formatSpeed(bps: double): string {
     if (!isFinite(bps) || bps < 0) return "0 B/s";
@@ -57,110 +40,35 @@ Item {
     return (bps / 1024 / 1024 / 1024).toFixed(2) + " GB/s";
   }
 
-  function updateThroughput(rx: double, tx: double): void {
-    const now = Date.now();
-    if (root._prevRx >= 0 && root._prevTime > 0) {
-      const dt = (now - root._prevTime) / 1000;
-      if (dt > 0) {
-        const dRx = rx >= root._prevRx ? rx - root._prevRx : 0;
-        const dTx = tx >= root._prevTx ? tx - root._prevTx : 0;
-        root.downloadBps = dRx / dt;
-        root.uploadBps = dTx / dt;
-      }
-    }
-    root._prevRx = rx;
-    root._prevTx = tx;
-    root._prevTime = now;
-  }
-
-  onEthDataChanged: {
-    if (ethData && typeof ethData.rx_bytes === "number") {
-      updateThroughput(ethData.rx_bytes, ethData.tx_bytes);
-    }
-  }
-
   implicitWidth: 380
   implicitHeight: 460
   width: implicitWidth
   height: implicitHeight
 
-  // Ping test process
-  Process {
-    id: pingProc
-    command: ["sh", "-c", "/usr/bin/python3 /home/dev/Projects/quick-shell/ethernet-bridge.py ping 1.1.1.1"]
-    stdout: StdioCollector {
-      id: pingCollector
-      onStreamFinished: {
-        root.isPinging = false;
-        const raw = pingCollector.text;
-        if (!raw) return;
-        try {
-          const res = JSON.parse(raw);
-          if (res && res.ok) {
-            root.pingLatency = res.latency_ms;
-            root.pingResult = res.latency_ms.toFixed(1) + " ms";
-          } else {
-            root.pingLatency = -1;
-            root.pingResult = "Failed";
-          }
-        } catch (e) {
-          root.pingResult = "Error";
-        }
-      }
-    }
-    onExited: {
-      root.isPinging = false;
-    }
-  }
-
-  // Force check connectivity process
-  Process {
-    id: checkProc
-    command: ["sh", "-c", "/usr/bin/python3 /home/dev/Projects/quick-shell/ethernet-bridge.py check"]
-    stdout: StdioCollector {
-      id: checkCollector
-      onStreamFinished: {
-        const raw = checkCollector.text;
-        if (!raw) return;
-        try {
-          const res = JSON.parse(raw);
-          if (res && res.ok) {
-            root.ethData = res;
-          }
-        } catch (e) {}
-      }
-    }
-  }
-
-  // Actions process (settings, reconnect)
-  Process {
-    id: actionProc
-  }
-
   function runPing(): void {
-    if (!pingProc.running) {
-      root.isPinging = true;
-      root.pingResult = "Testing...";
-      pingProc.running = true;
+    if (activeMonitor) {
+      activeMonitor.runPing("1.1.1.1");
     }
   }
 
   function runCheck(): void {
-    if (!checkProc.running) {
-      checkProc.running = true;
+    if (activeMonitor) {
+      activeMonitor.runCheck();
       root.triggerRefresh();
     }
   }
 
   function openSettings(): void {
-    actionProc.command = ["sh", "-c", "/usr/bin/python3 /home/dev/Projects/quick-shell/ethernet-bridge.py open-settings"];
-    actionProc.running = true;
+    if (activeMonitor) {
+      activeMonitor.openSettings();
+    }
   }
 
   function reconnectDevice(): void {
-    actionProc.command = ["sh", "-c", "/usr/bin/python3 /home/dev/Projects/quick-shell/ethernet-bridge.py reconnect '" + root.ifaceName + "'"];
-    actionProc.running = true;
-    checkTimer.start();
+    if (activeMonitor) {
+      activeMonitor.reconnect(root.ifaceName);
+      checkTimer.start();
+    }
   }
 
   Timer {

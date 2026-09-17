@@ -1,5 +1,5 @@
 //@ pragma UseQApplication
-//@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/plugins/topprocesses/build/imports:/home/dev/Projects/quick-shell/plugins/privacy/build/imports
+//@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/plugins/topprocesses/build/imports:/home/dev/Projects/quick-shell/plugins/privacy/build/imports:/home/dev/Projects/quick-shell/plugins/ethernet/build/imports
 // Shell.qml — Main Quickshell entrypoint for the desktop bar.
 // Docs:
 // - PanelWindow: anchors, height, color, screen
@@ -336,6 +336,7 @@ ShellRoot {
         EthernetControlCenter {
           id: ethControlCenter
           anchors.fill: parent
+          monitor: ethBarWidget.monitor
           ethData: ethBarWidget.ethData
           onTriggerRefresh: ethBarWidget.refresh()
         }

@@ -1,42 +1,28 @@
 // EthernetWidget.qml — Compact top bar widget for Ethernet & Internet status.
+// Native C++ Qt6 QML module (Quickshell.Plugins.Ethernet).
 import QtQuick
-import Quickshell
-import Quickshell.Io
-import Quickshell.Networking
+import Quickshell.Plugins.Ethernet
 
 Item {
   id: root
 
   property int pollInterval: 2500
-  property var ethData: ({
-    ok: true,
-    interface: "enp34s0",
-    carrier: true,
-    operstate: "up",
-    speed_mbps: 100,
-    speed_label: "100 Mbps",
-    hw_address: "",
-    ip: "",
-    ipv6: "",
-    gateway: "",
-    dns: [],
-    connection_name: "Ethernet",
-    nm_connectivity: 4,
-    has_internet: true,
-    is_default_route: true,
-    status: "internet",
-    status_desc: "Connected • Internet OK",
-    rx_bytes: 0,
-    tx_bytes: 0,
-    query_time_ms: 0
-  })
-  property bool isBusy: false
+
+  EthernetMonitor {
+    id: monitor
+    running: true
+    interval: root.pollInterval
+  }
+
+  property alias monitor: monitor
+  property var ethData: monitor.ethData
+  readonly property bool isBusy: monitor.isBusy
 
   readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
-  readonly property string currentStatus: ethData ? (ethData.status || "offline") : "offline"
-  readonly property bool hasInternet: ethData ? (ethData.has_internet === true) : false
-  readonly property bool isCarrier: ethData ? (ethData.carrier === true) : false
-  readonly property bool hasIp: ethData ? (Boolean(ethData.ip)) : false
+  readonly property string currentStatus: monitor.currentStatus
+  readonly property bool hasInternet: monitor.hasInternet
+  readonly property bool isCarrier: monitor.carrier
+  readonly property bool hasIp: Boolean(monitor.ip)
 
   // Status-derived icon glyph
   readonly property string iconGlyph: {
@@ -56,12 +42,12 @@ Item {
 
   // Status description for tooltip
   readonly property string tooltipText: {
-    if (!ethData || !ethData.ok) return "Ethernet: Not Detected";
-    const iface = ethData.interface || "eth";
+    if (!monitor.ok) return "Ethernet: Not Detected";
+    const iface = monitor.interfaceName || "eth";
     if (!root.isCarrier) return "Ethernet (" + iface + "): Cable Unplugged";
     if (root.currentStatus === "connecting") return "Ethernet (" + iface + "): Connecting...";
     if (root.hasInternet) {
-      const ipStr = ethData.ip ? (" • " + ethData.ip.split("/")[0]) : "";
+      const ipStr = monitor.ip ? (" • " + monitor.ip.split("/")[0]) : "";
       return "Ethernet: Internet OK (" + iface + ipStr + ")";
     }
     return "Ethernet (" + iface + "): No Internet (Local Only)";
@@ -73,56 +59,7 @@ Item {
   height: implicitHeight
 
   function refresh(): void {
-    if (!statusProc.running) {
-      root.isBusy = true;
-      statusProc.running = true;
-    }
-  }
-
-  // Instant reactive trigger when Quickshell.Networking connectivity changes
-  Connections {
-    target: Networking
-    function onConnectivityChanged() {
-      root.refresh();
-    }
-  }
-
-  Component.onCompleted: root.refresh()
-
-  Process {
-    id: statusProc
-    command: ["sh", "-c", "/usr/bin/python3 /home/dev/Projects/quick-shell/ethernet-bridge.py status"]
-    stdout: StdioCollector {
-      id: widgetCollector
-      onStreamFinished: {
-        root.isBusy = false;
-        const raw = widgetCollector.text;
-        if (!raw) return;
-        try {
-          const data = JSON.parse(raw);
-          if (data && data.ok) {
-            root.ethData = data;
-          }
-        } catch (e) {
-          console.warn("EthernetWidget parse error:", e);
-        }
-      }
-    }
-    onExited: error => {
-      root.isBusy = false;
-      if (error !== 0) {
-        console.warn("EthernetWidget: status process exited with", error);
-      }
-    }
-  }
-
-  Timer {
-    id: pollTimer
-    interval: root.pollInterval
-    running: true
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: root.refresh()
+    monitor.refresh();
   }
 
   Row {
