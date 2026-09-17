@@ -3,10 +3,17 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import Quickshell
-import Quickshell.Io
+import Quickshell.Plugins.Tailscale
 
 Item {
   id: root
+
+  property TailscaleMonitor monitor: null
+  TailscaleMonitor {
+    id: fallbackMonitor
+    running: root.monitor === null
+  }
+  readonly property TailscaleMonitor activeMonitor: root.monitor ? root.monitor : fallbackMonitor
 
   readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
 
@@ -15,7 +22,7 @@ Item {
   width: implicitWidth
   height: implicitHeight
 
-  property var tsData: ({
+  property var tsData: activeMonitor ? activeMonitor.tsData : ({
     connected: false,
     backend_state: "Unknown",
     version: "",
@@ -183,153 +190,75 @@ Item {
 
   function refresh(): void {
     root.triggerRefresh();
-    if (!statusProc.running) {
-      root.isBusy = true;
-      statusProc.running = true;
+    if (root.activeMonitor) {
+      root.activeMonitor.refresh();
     }
   }
 
   function runAction(args: var, successMsg: string): void {
-    root.isBusy = true;
-    actionProc.command = ["sh", "-c", "/usr/bin/python3 /home/dev/Projects/quick-shell/tailscale-bridge.py " + args.map(x => "'" + x + "'").join(" ")];
-    actionProc.successToast = successMsg;
-    actionProc.running = true;
+    if (root.activeMonitor) {
+      root.activeMonitor.runAction(args, successMsg || "");
+    }
   }
 
   function copyText(text: string, label: string): void {
     if (!text) return;
-    runAction(["copy", text], "Copied " + (label ? label : text));
+    if (root.activeMonitor) {
+      root.activeMonitor.copy(text);
+      root.showToast("Copied " + (label ? label : text));
+    }
   }
 
   function openUrl(url: string): void {
     if (!url) return;
-    runAction(["open-url", url], "Opening " + url);
+    if (root.activeMonitor) {
+      root.activeMonitor.openUrl(url);
+      root.showToast("Opening " + url);
+    }
   }
 
   function pingPeer(ip: string): void {
     if (!ip) return;
     root.pingTargetIp = ip;
     root.pingResult = "Pinging…";
-    pingProc.command = ["sh", "-c", "/usr/bin/python3 /home/dev/Projects/quick-shell/tailscale-bridge.py ping '" + ip + "'"];
-    pingProc.running = true;
+    if (root.activeMonitor) {
+      root.activeMonitor.ping(ip);
+    }
   }
 
   function runNetcheck(): void {
     root.isRunningNetcheck = true;
     root.netcheckReport = "Running diagnostic netcheck…";
-    netcheckProc.running = true;
+    if (root.activeMonitor) {
+      root.activeMonitor.netcheck();
+    }
   }
 
   Component.onCompleted: root.refresh()
 
-  // Fetch status process
-  Process {
-    id: statusProc
-    command: ["sh", "-c", "/usr/bin/python3 /home/dev/Projects/quick-shell/tailscale-bridge.py status"]
-    stdout: StdioCollector {
-      id: ctrlStatusCollector
-      onStreamFinished: {
-        root.isBusy = false;
-        const raw = ctrlStatusCollector.text;
-        if (!raw) return;
-        try {
-          const data = JSON.parse(raw);
-          if (data && data.ok) {
-            root.tsData = data;
-            if (!root.initialTargetSynced && data.serve_items && data.serve_items.length > 0) {
-              root.initialTargetSynced = true;
-              root.selectTarget(root.launchTarget);
-            }
-          }
-        } catch (e) {
-          console.warn("TailscaleControlCenter status parse error:", e);
-        }
+  Connections {
+    target: root.activeMonitor
+    function onActionCompleted(ok, output, error, successMsg) {
+      if (successMsg) {
+        root.showToast(successMsg);
       }
     }
-    onExited: error => {
-      root.isBusy = false;
-    }
-  }
-
-  // General action process
-  Process {
-    id: actionProc
-    property string successToast: ""
-    stdout: StdioCollector {
-      id: ctrlActionCollector
-      onStreamFinished: {
-        root.isBusy = false;
-        if (actionProc.successToast) {
-          root.showToast(actionProc.successToast);
-        }
-        root.refresh();
+    function onPingFinished(ok, targetIp, latency) {
+      if (root.pingTargetIp === targetIp) {
+        root.pingResult = ok ? latency : (latency ? latency : "No reply");
       }
     }
-    onExited: error => {
-      root.isBusy = false;
-      root.refresh();
-    }
-  }
-
-  // Ping process
-  Process {
-    id: pingProc
-    stdout: StdioCollector {
-      id: ctrlPingCollector
-      onStreamFinished: {
-        const raw = ctrlPingCollector.text;
-        if (!raw) {
-          root.pingResult = "Failed";
-          return;
-        }
-        try {
-          const res = JSON.parse(raw);
-          if (res.ok && res.latency) {
-            root.pingResult = res.latency;
-          } else if (res.ok && res.output) {
-            root.pingResult = res.output;
-          } else {
-            root.pingResult = "No reply";
-          }
-        } catch (e) {
-          root.pingResult = "Error";
-        }
+    function onNetcheckStatusChanged() {
+      if (root.activeMonitor) {
+        root.isRunningNetcheck = root.activeMonitor.isRunningNetcheck;
+        root.netcheckReport = root.activeMonitor.netcheckReport;
       }
     }
-    onExited: error => {
-      if (error !== 0 && root.pingResult === "Pinging…") {
-        root.pingResult = "Timeout";
+    function onStateChanged() {
+      if (!root.initialTargetSynced && root.tsData && root.tsData.serve_items && root.tsData.serve_items.length > 0) {
+        root.initialTargetSynced = true;
+        root.selectTarget(root.launchTarget);
       }
-    }
-  }
-
-  // Netcheck process
-  Process {
-    id: netcheckProc
-    command: ["sh", "-c", "/usr/bin/python3 /home/dev/Projects/quick-shell/tailscale-bridge.py netcheck"]
-    stdout: StdioCollector {
-      id: ctrlNetcheckCollector
-      onStreamFinished: {
-        root.isRunningNetcheck = false;
-        const raw = ctrlNetcheckCollector.text;
-        if (!raw) {
-          root.netcheckReport = "Netcheck returned empty result.";
-          return;
-        }
-        try {
-          const res = JSON.parse(raw);
-          if (res.report) {
-            root.netcheckReport = res.report;
-          } else if (res.error) {
-            root.netcheckReport = "Error: " + res.error;
-          }
-        } catch (e) {
-          root.netcheckReport = raw;
-        }
-      }
-    }
-    onExited: error => {
-      root.isRunningNetcheck = false;
     }
   }
 

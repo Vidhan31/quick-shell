@@ -1,5 +1,5 @@
 //@ pragma UseQApplication
-//@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/plugins/topprocesses/build/imports:/home/dev/Projects/quick-shell/plugins/privacy/build/imports:/home/dev/Projects/quick-shell/plugins/ethernet/build/imports
+//@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/plugins/topprocesses/build/imports:/home/dev/Projects/quick-shell/plugins/privacy/build/imports:/home/dev/Projects/quick-shell/plugins/ethernet/build/imports:/home/dev/Projects/quick-shell/plugins/tailscale/build/imports
 // Shell.qml — Main Quickshell entrypoint for the desktop bar.
 // Docs:
 // - PanelWindow: anchors, height, color, screen
@@ -271,6 +271,7 @@ ShellRoot {
         TailscaleControlCenter {
           id: tsControlCenter
           anchors.fill: parent
+          monitor: tsBarWidget.monitor
           tsData: tsBarWidget.tsData
           onTriggerRefresh: tsBarWidget.refresh()
         }
