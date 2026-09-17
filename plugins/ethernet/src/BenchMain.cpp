@@ -44,7 +44,46 @@ int main(int argc, char *argv[]) {
     auto wState = EthernetProbe::probe(false);
     (void)wState;
 
-    // Benchmark 1: Sysfs interface + RX/TX byte stats
+    // Benchmark 1: Linux Netlink & Ethtool (kernel link, carrier, speed, MAC, stats)
+    std::vector<double> netlinkSamples;
+    netlinkSamples.reserve(ITERS);
+    for (int i = 0; i < ITERS; ++i) {
+        EthernetState st;
+        st.iface = QStringLiteral("enp34s0");
+        auto t0 = std::chrono::steady_clock::now();
+        EthernetProbe::queryNetlinkAndEthtool(st);
+        auto t1 = std::chrono::steady_clock::now();
+        netlinkSamples.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
+    }
+    const auto netlinkStats = computeStats(netlinkSamples);
+
+    // Benchmark 2: POSIX kernel calls (getifaddrs + /proc/net/route)
+    std::vector<double> posixSamples;
+    posixSamples.reserve(ITERS);
+    for (int i = 0; i < ITERS; ++i) {
+        EthernetState st;
+        st.iface = QStringLiteral("enp34s0");
+        auto t0 = std::chrono::steady_clock::now();
+        EthernetProbe::querySysfsAndPosixFallback(st);
+        auto t1 = std::chrono::steady_clock::now();
+        posixSamples.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
+    }
+    const auto posixStats = computeStats(posixSamples);
+
+    // Benchmark 3: Fast DBus query (without XML introspection)
+    std::vector<double> dbusFastSamples;
+    dbusFastSamples.reserve(ITERS);
+    for (int i = 0; i < ITERS; ++i) {
+        EthernetState st;
+        st.iface = QStringLiteral("enp34s0");
+        auto t0 = std::chrono::steady_clock::now();
+        EthernetProbe::queryNetworkManagerFast(st);
+        auto t1 = std::chrono::steady_clock::now();
+        dbusFastSamples.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
+    }
+    const auto dbusFastStats = computeStats(dbusFastSamples);
+
+    // Benchmark 4: Sysfs interface + RX/TX byte stats
     std::vector<double> sysfsSamples;
     sysfsSamples.reserve(ITERS);
     quint64 rx = 0, tx = 0;
@@ -59,33 +98,7 @@ int main(int argc, char *argv[]) {
     }
     const auto sysfsStats = computeStats(sysfsSamples);
 
-    // Benchmark 2: NetworkManager DBus query
-    std::vector<double> dbusSamples;
-    dbusSamples.reserve(ITERS);
-    for (int i = 0; i < ITERS; ++i) {
-        EthernetState st;
-        st.iface = QStringLiteral("enp34s0");
-        auto t0 = std::chrono::steady_clock::now();
-        EthernetProbe::queryNetworkManager(st);
-        auto t1 = std::chrono::steady_clock::now();
-        dbusSamples.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
-    }
-    const auto dbusStats = computeStats(dbusSamples);
-
-    // Benchmark 3: POSIX /proc / sysfs / getifaddrs fallback
-    std::vector<double> posixSamples;
-    posixSamples.reserve(ITERS);
-    for (int i = 0; i < ITERS; ++i) {
-        EthernetState st;
-        st.iface = QStringLiteral("enp34s0");
-        auto t0 = std::chrono::steady_clock::now();
-        EthernetProbe::querySysfsAndPosixFallback(st);
-        auto t1 = std::chrono::steady_clock::now();
-        posixSamples.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
-    }
-    const auto posixStats = computeStats(posixSamples);
-
-    // Benchmark 4: Full Probe (fast idle cycle, DBus + Sysfs + RX/TX)
+    // Benchmark 5: Full Native Probe (Netlink + Ethtool + POSIX + fast DBus)
     std::vector<double> fullSamples;
     fullSamples.reserve(ITERS);
     for (int i = 0; i < ITERS; ++i) {
@@ -96,7 +109,7 @@ int main(int argc, char *argv[]) {
     }
     const auto fullStats = computeStats(fullSamples);
 
-    // Benchmark 5: Socket Internet Connectivity Test (10 iterations)
+    // Benchmark 6: Socket Internet Connectivity Test (10 iterations)
     std::vector<double> sockSamples;
     sockSamples.reserve(10);
     for (int i = 0; i < 10; ++i) {
@@ -108,7 +121,7 @@ int main(int argc, char *argv[]) {
     }
     const auto sockStats = computeStats(sockSamples);
 
-    // Benchmark 6: In-process ICMP Ping (5 iterations)
+    // Benchmark 7: In-process ICMP Ping (5 iterations)
     std::vector<double> pingSamples;
     pingSamples.reserve(5);
     for (int i = 0; i < 5; ++i) {
@@ -120,9 +133,10 @@ int main(int argc, char *argv[]) {
     const auto pingStats = computeStats(pingSamples);
 
     std::cout << "=== ETHERNET C++ MICRO-BENCHMARKS ===" << std::endl;
-    std::cout << "SYSFS_STATS:" << sysfsStats.mean << ":" << sysfsStats.median << ":" << sysfsStats.stddev << ":" << sysfsStats.minVal << ":" << sysfsStats.maxVal << std::endl;
-    std::cout << "DBUS_QUERY:" << dbusStats.mean << ":" << dbusStats.median << ":" << dbusStats.stddev << ":" << dbusStats.minVal << ":" << dbusStats.maxVal << std::endl;
+    std::cout << "NETLINK_ETHTOOL:" << netlinkStats.mean << ":" << netlinkStats.median << ":" << netlinkStats.stddev << ":" << netlinkStats.minVal << ":" << netlinkStats.maxVal << std::endl;
     std::cout << "POSIX_FALLBACK:" << posixStats.mean << ":" << posixStats.median << ":" << posixStats.stddev << ":" << posixStats.minVal << ":" << posixStats.maxVal << std::endl;
+    std::cout << "DBUS_FAST:" << dbusFastStats.mean << ":" << dbusFastStats.median << ":" << dbusFastStats.stddev << ":" << dbusFastStats.minVal << ":" << dbusFastStats.maxVal << std::endl;
+    std::cout << "SYSFS_STATS:" << sysfsStats.mean << ":" << sysfsStats.median << ":" << sysfsStats.stddev << ":" << sysfsStats.minVal << ":" << sysfsStats.maxVal << std::endl;
     std::cout << "FULL_PROBE:" << fullStats.mean << ":" << fullStats.median << ":" << fullStats.stddev << ":" << fullStats.minVal << ":" << fullStats.maxVal << std::endl;
     std::cout << "SOCKET_TEST:" << sockStats.mean << ":" << sockStats.median << ":" << sockStats.stddev << ":" << sockStats.minVal << ":" << sockStats.maxVal << std::endl;
     std::cout << "ICMP_PING:" << pingStats.mean << ":" << pingStats.median << ":" << pingStats.stddev << ":" << pingStats.minVal << ":" << pingStats.maxVal << std::endl;

@@ -25,6 +25,8 @@ public:
     static bool openSettings();
 
     // Low-level component probes
+    static bool queryNetlinkAndEthtool(EthernetState &state);
+    static bool queryNetworkManagerFast(EthernetState &state);
     static bool queryNetworkManager(EthernetState &state);
     static void querySysfsAndPosixFallback(EthernetState &state);
 };
