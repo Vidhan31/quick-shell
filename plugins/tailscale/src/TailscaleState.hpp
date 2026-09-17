@@ -17,6 +17,8 @@ struct TailscaleSelf {
     QString relay;
     QVariantMap user;
 
+    bool operator==(const TailscaleSelf &) const = default;
+
     [[nodiscard]] QVariantMap toMap() const {
         QVariantMap m;
         m[QStringLiteral("hostname")] = hostname;
@@ -42,6 +44,8 @@ struct TailscalePeer {
     quint64 rxBytes{0};
     quint64 txBytes{0};
 
+    bool operator==(const TailscalePeer &) const = default;
+
     [[nodiscard]] QVariantMap toMap() const {
         QVariantMap m;
         m[QStringLiteral("hostname")] = hostname;
@@ -65,6 +69,8 @@ struct TailscaleServeItem {
     QString type;
     bool isFunnel{false};
     QString url;
+
+    bool operator==(const TailscaleServeItem &) const = default;
 
     [[nodiscard]] QVariantMap toMap() const {
         QVariantMap m;
@@ -96,6 +102,8 @@ struct TailscaleState {
     QList<TailscaleServeItem> serveItems;
     QList<TailscalePeer> peers;
     QVariantList services;
+
+    bool operator==(const TailscaleState &) const = default;
 
     [[nodiscard]] QVariantMap toMap() const {
         QVariantMap m;

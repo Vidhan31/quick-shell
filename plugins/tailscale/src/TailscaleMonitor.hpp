@@ -3,6 +3,7 @@
 #include "TailscaleSocketClient.hpp"
 #include "TailscaleState.hpp"
 
+#include <QFileSystemWatcher>
 #include <QLocalSocket>
 #include <QObject>
 #include <QThread>
@@ -42,18 +43,26 @@ private slots:
     void onWatchSocketError(QLocalSocket::LocalSocketError socketError);
     void onWatchSocketDisconnected();
     void reconnectWatchBus();
+    void onSocketDirectoryChanged(const QString &path);
 
 private:
     void connectWatchBus();
+    void triggerSampleDebounced();
+    void setupFsWatcher();
+    void closeFsWatcher();
 
     TailscaleSocketClient m_client;
     int m_intervalMs{5000};
-    QTimer *m_timer{nullptr};
+    QTimer *m_debounceTimer{nullptr};
     QTimer *m_reconnectTimer{nullptr};
+    QFileSystemWatcher *m_fsWatcher{nullptr};
     QLocalSocket *m_watchSocket{nullptr};
     QByteArray m_watchBuffer;
     bool m_watchConnected{false};
+    bool m_headersParsed{false};
     bool m_isSampling{false};
+    bool m_initialized{false};
+    TailscaleState m_lastState;
 };
 
 class TailscaleMonitor : public QObject {

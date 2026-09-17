@@ -1,5 +1,7 @@
 #include "TailscaleMonitor.hpp"
 
+#include <QDir>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 
@@ -22,57 +24,107 @@ TailscaleWorker::~TailscaleWorker()
 
 void TailscaleWorker::start()
 {
-    if (!m_timer) {
-        m_timer = new QTimer(this);
-        m_timer->setInterval(m_intervalMs);
-        connect(m_timer, &QTimer::timeout, this, &TailscaleWorker::sample);
-        m_timer->start();
-    }
-
     if (!m_reconnectTimer) {
         m_reconnectTimer = new QTimer(this);
         m_reconnectTimer->setSingleShot(true);
         connect(m_reconnectTimer, &QTimer::timeout, this, &TailscaleWorker::reconnectWatchBus);
     }
 
+    if (!m_debounceTimer) {
+        m_debounceTimer = new QTimer(this);
+        m_debounceTimer->setSingleShot(true);
+        connect(m_debounceTimer, &QTimer::timeout, this, &TailscaleWorker::sample);
+    }
+
+    setupFsWatcher();
     connectWatchBus();
     sample();
 }
 
 void TailscaleWorker::stop()
 {
-    if (m_timer) {
-        m_timer->stop();
+    if (m_debounceTimer) {
+        m_debounceTimer->stop();
     }
     if (m_reconnectTimer) {
         m_reconnectTimer->stop();
     }
+    closeFsWatcher();
     if (m_watchSocket) {
         m_watchSocket->disconnect();
         m_watchSocket->abort();
         delete m_watchSocket;
         m_watchSocket = nullptr;
     }
+    m_watchConnected = false;
+    m_headersParsed = false;
+    m_watchBuffer.clear();
 }
 
 void TailscaleWorker::setInterval(int intervalMs)
 {
     m_intervalMs = intervalMs;
-    if (m_timer) {
-        m_timer->setInterval(intervalMs);
+}
+
+void TailscaleWorker::setupFsWatcher()
+{
+    closeFsWatcher();
+
+    m_fsWatcher = new QFileSystemWatcher(this);
+    connect(m_fsWatcher, &QFileSystemWatcher::directoryChanged, this, &TailscaleWorker::onSocketDirectoryChanged);
+    connect(m_fsWatcher, &QFileSystemWatcher::fileChanged, this, &TailscaleWorker::onSocketDirectoryChanged);
+
+    const QString sockPath = m_client.socketPath();
+    const QFileInfo sockInfo(sockPath);
+    const QString dirPath = sockInfo.dir().absolutePath();
+
+    if (QDir(dirPath).exists()) {
+        m_fsWatcher->addPath(dirPath);
+    }
+    if (sockInfo.exists()) {
+        m_fsWatcher->addPath(sockPath);
+    }
+}
+
+void TailscaleWorker::closeFsWatcher()
+{
+    if (m_fsWatcher) {
+        delete m_fsWatcher;
+        m_fsWatcher = nullptr;
+    }
+}
+
+void TailscaleWorker::onSocketDirectoryChanged(const QString &)
+{
+    const QString sockPath = m_client.socketPath();
+    if (!m_watchConnected && QFileInfo::exists(sockPath)) {
+        if (m_reconnectTimer && m_reconnectTimer->isActive()) {
+            m_reconnectTimer->stop();
+        }
+        connectWatchBus();
     }
 }
 
 void TailscaleWorker::connectWatchBus()
 {
     if (m_watchSocket) {
+        m_watchSocket->disconnect();
         m_watchSocket->abort();
         delete m_watchSocket;
         m_watchSocket = nullptr;
     }
 
     m_watchBuffer.clear();
+    m_headersParsed = false;
     m_watchConnected = false;
+
+    const QString sockPath = m_client.socketPath();
+    if (!QFileInfo::exists(sockPath)) {
+        if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
+            m_reconnectTimer->start(3000);
+        }
+        return;
+    }
 
     m_watchSocket = new QLocalSocket(this);
     connect(m_watchSocket, &QLocalSocket::connected, this, &TailscaleWorker::onWatchSocketConnected);
@@ -80,7 +132,7 @@ void TailscaleWorker::connectWatchBus()
     connect(m_watchSocket, &QLocalSocket::errorOccurred, this, &TailscaleWorker::onWatchSocketError);
     connect(m_watchSocket, &QLocalSocket::disconnected, this, &TailscaleWorker::onWatchSocketDisconnected);
 
-    m_watchSocket->connectToServer(m_client.socketPath());
+    m_watchSocket->connectToServer(sockPath);
 }
 
 void TailscaleWorker::reconnectWatchBus()
@@ -91,6 +143,13 @@ void TailscaleWorker::reconnectWatchBus()
 void TailscaleWorker::onWatchSocketConnected()
 {
     m_watchConnected = true;
+    m_headersParsed = false;
+    m_watchBuffer.clear();
+
+    if (m_reconnectTimer) {
+        m_reconnectTimer->stop();
+    }
+
     // Subscribe to IPN bus with mask 16390 (NotifyInitialState | NotifyInitialPrefs | NotifyInitialStatus)
     const QByteArray req = "GET /localapi/v0/watch-ipn-bus?mask=16390 HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n";
     m_watchSocket->write(req);
@@ -105,50 +164,119 @@ void TailscaleWorker::onWatchSocketReadyRead()
 
     m_watchBuffer.append(m_watchSocket->readAll());
 
-    // Skip HTTP headers if not yet processed
-    int headerEnd = m_watchBuffer.indexOf("\r\n\r\n");
-    if (headerEnd != -1) {
-        // Look for newline-separated JSON objects in the stream
-        int newlineIdx;
-        while ((newlineIdx = m_watchBuffer.indexOf('\n', headerEnd + 4)) != -1) {
-            const QByteArray line = m_watchBuffer.mid(headerEnd + 4, newlineIdx - (headerEnd + 4)).trimmed();
-            m_watchBuffer.remove(0, newlineIdx + 1);
-            headerEnd = -4; // already past headers
-
-            if (line.isEmpty()) {
-                continue;
-            }
-
-            // If chunked length marker, skip
-            bool isHex = false;
-            line.toInt(&isHex, 16);
-            if (isHex && line.size() <= 8) {
-                continue;
-            }
-
-            // When a notification arrives, refresh the state
-            QJsonParseError err{};
-            const QJsonDocument doc = QJsonDocument::fromJson(line, &err);
-            if (err.error == QJsonParseError::NoError && doc.isObject()) {
-                sample();
-            }
+    if (!m_headersParsed) {
+        const int headerEnd = m_watchBuffer.indexOf("\r\n\r\n");
+        if (headerEnd == -1) {
+            return;
         }
+
+        const QByteArray headerBytes = m_watchBuffer.left(headerEnd);
+        const int firstLineEnd = headerBytes.indexOf("\r\n");
+        const QByteArray statusLine = (firstLineEnd != -1) ? headerBytes.left(firstLineEnd) : headerBytes;
+        if (!statusLine.contains("200")) {
+            m_watchSocket->abort();
+            reconnectWatchBus();
+            return;
+        }
+
+        m_watchBuffer.remove(0, headerEnd + 4);
+        m_headersParsed = true;
+    }
+
+    while (m_headersParsed) {
+        const int lineEnd = m_watchBuffer.indexOf("\r\n");
+        if (lineEnd == -1) {
+            break;
+        }
+
+        QByteArray line = m_watchBuffer.left(lineEnd).trimmed();
+        if (line.isEmpty()) {
+            m_watchBuffer.remove(0, lineEnd + 2);
+            continue;
+        }
+
+        const int semi = line.indexOf(';');
+        if (semi != -1) {
+            line = line.left(semi).trimmed();
+        }
+
+        bool ok = false;
+        const qint64 chunkSize = line.toLongLong(&ok, 16);
+        if (!ok || chunkSize < 0) {
+            m_watchSocket->abort();
+            reconnectWatchBus();
+            return;
+        }
+
+        if (chunkSize == 0) {
+            m_watchSocket->abort();
+            reconnectWatchBus();
+            return;
+        }
+
+        const int headerLen = lineEnd + 2;
+        if (m_watchBuffer.size() < headerLen + chunkSize + 2) {
+            break;
+        }
+
+        const QByteArray chunkData = m_watchBuffer.mid(headerLen, chunkSize);
+        m_watchBuffer.remove(0, headerLen + chunkSize + 2);
+
+        QJsonParseError err{};
+        const QJsonDocument doc = QJsonDocument::fromJson(chunkData, &err);
+        if (err.error == QJsonParseError::NoError && doc.isObject()) {
+            triggerSampleDebounced();
+        }
+    }
+}
+
+void TailscaleWorker::triggerSampleDebounced()
+{
+    if (!m_initialized) {
+        sample();
+        return;
+    }
+
+    if (!m_debounceTimer) {
+        m_debounceTimer = new QTimer(this);
+        m_debounceTimer->setSingleShot(true);
+        connect(m_debounceTimer, &QTimer::timeout, this, &TailscaleWorker::sample);
+    }
+
+    if (!m_debounceTimer->isActive()) {
+        m_debounceTimer->start(60);
     }
 }
 
 void TailscaleWorker::onWatchSocketError(QLocalSocket::LocalSocketError)
 {
+    const bool wasConnected = m_watchConnected;
     m_watchConnected = false;
+    m_headersParsed = false;
+    m_watchBuffer.clear();
+
+    if (wasConnected) {
+        sample();
+    }
+
     if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
-        m_reconnectTimer->start(4000);
+        m_reconnectTimer->start(3000);
     }
 }
 
 void TailscaleWorker::onWatchSocketDisconnected()
 {
+    const bool wasConnected = m_watchConnected;
     m_watchConnected = false;
+    m_headersParsed = false;
+    m_watchBuffer.clear();
+
+    if (wasConnected) {
+        sample();
+    }
+
     if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
-        m_reconnectTimer->start(4000);
+        m_reconnectTimer->start(3000);
     }
 }
 
@@ -161,7 +289,12 @@ void TailscaleWorker::sample()
 
     TailscaleState state;
     m_client.fetchFullStatus(state);
-    emit stateChanged(state);
+
+    if (!m_initialized || state != m_lastState) {
+        m_initialized = true;
+        m_lastState = state;
+        emit stateChanged(state);
+    }
 
     m_isSampling = false;
 }
