@@ -2,17 +2,7 @@
 
 Personal desktop bar and control center built on [Quickshell](https://quickshell.org).
 
-This configuration is opinionated and tailored to my personal setup. It targets specific hardware, network interfaces, and desktop configurations on my workstation. It is not designed as a generic or multi-distro shell.
-
-## Target system
-
-- OS: Fedora Linux 44
-- Desktop environment: KDE Plasma 6 (Wayland session)
-- CPU: AMD Ryzen 5 3600 (6 cores, 12 threads)
-- GPU: AMD Radeon RX 570 (4 GB)
-- RAM: 16 GB
-- Primary network interface: `enp34s0`
-- Software stack: Quickshell 0.3.1, Qt 6.11, CMake 3.28+
+This configuration is opinionated and tailored to my personal setup and workflow. It is not designed as a generic or multi-distro shell.
 
 ## Architecture
 
@@ -21,7 +11,6 @@ The project pairs Quickshell QML interfaces with dedicated C++ Qt6 plugins to av
 ```
 quick-shell/
 ├── shell.qml          Main bar window and layout entrypoint
-├── AGENTS.md          Repository rules and environment notes
 ├── assets/            Static resources (holidays.ics)
 ├── bridges/           External helper scripts (KWin D-Bus taskbar bridge)
 ├── docs/              Documentation references
