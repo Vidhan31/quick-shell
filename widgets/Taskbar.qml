@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
+import qs.utils
 
 Item {
   id: root
@@ -29,7 +30,7 @@ Item {
   // KWin bridge process for KDE Plasma Wayland sessions
   Process {
     id: bridgeProcess
-    command: ["python3", "-u", "/home/dev/Projects/quick-shell/kwin-taskbar-bridge.py"]
+    command: ["python3", "-u", Quickshell.shellPath("bridges/kwin-taskbar-bridge.py")]
     running: true
     stdinEnabled: true
 

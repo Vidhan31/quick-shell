@@ -4,6 +4,7 @@
 // - https://quickshell.org/docs/v0.3.1/types/Quickshell.Io/FileView/ (path, text(), loaded)
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Io
 
 Item {
@@ -15,7 +16,7 @@ Item {
   property int shownMonth: -1 // 0-11
   property var cells: []
 
-  property string icsPath: "/home/dev/Projects/quick-shell/holidays.ics"
+  property string icsPath: Quickshell.shellPath("assets/holidays.ics")
   property var eventsMap: ({})
   property var selectedEvents: []
 
