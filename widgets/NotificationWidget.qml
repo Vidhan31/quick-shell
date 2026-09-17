@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
-// NotificationWidget.qml — Compact top bar widget for notification status and unread counter.
+// NotificationWidget.qml — Quiet top-bar indicator for notifications.
+// Single glyph + single word. No badge pill, no dot: the tint carries state.
 import QtQuick
 
 Item {
@@ -12,7 +13,7 @@ Item {
   readonly property int unreadCount: service ? (service.unreadCount || 0) : 0
   readonly property int totalCount: service ? ((service.notifications && service.notifications.length) || 0) : 0
 
-  // Bell icon glyph
+  // Bell glyph mirrors TailscaleWidget's single-glyph approach.
   readonly property string iconGlyph: {
     if (root.isDnd) return "󰂛"; // Bell off
     if (root.unreadCount > 0) return "󰂚"; // Bell active
@@ -20,31 +21,42 @@ Item {
     return "󰂜"; // Bell outline
   }
 
-  // Bell icon color
+  // Tint carries state: amber when muted, accent when new, quiet grey otherwise.
   readonly property color iconColor: {
-    if (root.isDnd) return "#fab387"; // Peach / Warning
-    if (root.unreadCount > 0) return "#89b4fa"; // Blue / Active
-    if (root.totalCount > 0) return "#cdd6f4";
-    return "#a6adc8"; // Subdued
+    if (root.isDnd) return "#E2A63B";
+    if (root.unreadCount > 0) return "#5E9DFF";
+    if (root.totalCount > 0) return "#A6A6B8";
+    return "#6F6F84";
   }
 
-  implicitWidth: contentRow.implicitWidth
+  readonly property string labelText: {
+    if (root.isDnd) return root.unreadCount > 0 ? `Muted ${root.unreadCount}` : "Muted";
+    if (root.unreadCount > 0) return root.unreadCount > 99 ? "99+ new" : `${root.unreadCount} new`;
+    return "Notifications";
+  }
+
+  readonly property color labelColor: {
+    if (root.isDnd) return "#6F6F84";
+    if (root.unreadCount > 0) return "#C9C9D6";
+    return "#6F6F84";
+  }
+
+  implicitWidth: contentRow.width
   implicitHeight: 20
   width: implicitWidth
   height: implicitHeight
 
   Row {
     id: contentRow
-    spacing: 5
+    spacing: 7
     anchors.verticalCenter: parent.verticalCenter
 
-    // Bell icon
     Text {
       id: bellIcon
       anchors.verticalCenter: parent.verticalCenter
       text: root.iconGlyph
       font.family: root.monoFont
-      font.pixelSize: 14
+      font.pixelSize: 13
       color: root.iconColor
 
       Behavior on color {
@@ -52,36 +64,15 @@ Item {
       }
     }
 
-    // Unread count badge
-    Rectangle {
-      id: badge
+    Text {
       anchors.verticalCenter: parent.verticalCenter
-      visible: root.unreadCount > 0
-      width: Math.max(16, badgeText.implicitWidth + 8)
-      height: 16
-      radius: 8
-      color: "#89b4fa"
+      text: root.labelText
+      font.pixelSize: 12
+      color: root.labelColor
 
-      Text {
-        id: badgeText
-        anchors.centerIn: parent
-        text: root.unreadCount > 99 ? "99+" : `${root.unreadCount}`
-        font.family: root.monoFont
-        font.pixelSize: 9
-        font.bold: true
-        color: "#181825"
+      Behavior on color {
+        ColorAnimation { duration: 150 }
       }
-    }
-
-    // Small indicator dot for DND if no unread badge
-    Rectangle {
-      id: dndDot
-      anchors.verticalCenter: parent.verticalCenter
-      visible: root.isDnd && root.unreadCount === 0
-      width: 6
-      height: 6
-      radius: 3
-      color: "#fab387"
     }
   }
 }

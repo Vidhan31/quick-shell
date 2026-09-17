@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
-// NotificationControlCenter.qml — KDE Plasma 6 style Notification Center popup.
-// Features app-grouped notifications, vertical thread line styling, expandable history,
-// clear all/app actions, action buttons, and individual dismissals.
+// NotificationControlCenter.qml — Quiet control surface for notifications.
+// Grouped rows with hairlines, borderless buttons, words instead of badges.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell.Widgets
@@ -48,355 +47,499 @@ Item {
   }
 
   readonly property int totalCount: service ? ((service.notifications && service.notifications.length) || 0) : 0
+  readonly property int unreadCount: service ? (service.unreadCount || 0) : 0
+  readonly property bool isDnd: service ? (service.dnd === true) : false
 
-  implicitWidth: 380
-  implicitHeight: root.totalCount > 0 ? Math.min(480, Math.max(160, mainCol.implicitHeight + 24)) : 140
+  readonly property string subtitleText: {
+    if (root.isDnd) return root.totalCount > 0 ? `Muted · ${root.totalCount} stored` : "Muted · new ones held back";
+    if (root.totalCount === 0) return "You're all caught up";
+    if (root.unreadCount > 0) return `${root.totalCount} stored · ${root.unreadCount} new`;
+    return `${root.totalCount} stored`;
+  }
+
+  implicitWidth: 440
+  implicitHeight: root.totalCount > 0 ? Math.min(620, Math.max(180, mainCol.implicitHeight + 32)) : 172
   width: implicitWidth
   height: implicitHeight
 
-  // Card Background
-  Rectangle {
-    id: cardBg
-    anchors.fill: parent
-    color: "#1e1e2e"
-    radius: 10
-    border.color: "#313244"
-    border.width: 1
+  // ================= Design tokens (mirrors TailscaleControlCenter) =================
+  QtObject {
+    id: t
+    readonly property color bg: "#17171E"
+    readonly property color surface: "#1F202B"
+    readonly property color inset: "#121217"
+    readonly property color line: "#2B2C3A"
+    readonly property color ink1: "#F1F1F6"
+    readonly property color ink2: "#A6A6B8"
+    readonly property color ink3: "#6F6F84"
+    readonly property color accent: "#5E9DFF"
+    readonly property color green: "#46C786"
+    readonly property color amber: "#E2A63B"
+    readonly property color red: "#DF6363"
+    readonly property color violet: "#AE8CFF"
+    readonly property color darkInk: "#101018"
+    readonly property string mono: "JetBrainsMono Nerd Font Mono"
   }
 
-  ColumnLayout {
-    id: mainCol
-    anchors {
-      top: parent.top
-      left: parent.left
-      right: parent.right
-      margins: 12
+  // ================= Reusable quiet components (mirrors TailscaleControlCenter) =================
+  component Hairline: Rectangle {
+    color: t.line
+    height: 1
+  }
+
+  // Small caps section label with an optional trailing quiet action.
+  component SectionHead: Item {
+    property string label: ""
+    property string actionText: ""
+    property color actionColor: t.ink2
+    signal actionClicked
+    implicitHeight: 20
+    Text {
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      text: label
+      font.pixelSize: 11
+      font.bold: true
+      font.capitalization: Font.AllUppercase
+      font.letterSpacing: 0.8
+      color: t.ink3
     }
-    spacing: 10
+    TextBtn {
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      visible: actionText.length > 0
+      text: parent.actionText
+      fg: parent.actionColor
+      fs: 11
+      onClicked: parent.actionClicked()
+    }
+  }
 
-    // ═══════════════════════════════════════════════════
-    // 1. HEADER ROW: Title + Clear All
-    // ═══════════════════════════════════════════════════
-    RowLayout {
-      Layout.fillWidth: true
-      Layout.preferredHeight: 28
-      spacing: 6
-
-      // Section Title
-      Text {
-        text: "Notifications"
-        font.family: root.monoFont
-        font.pixelSize: 13
-        font.bold: true
-        color: "#cdd6f4"
+  // Base for every clickable row: same wash everywhere, no borders.
+  component RowBase: Rectangle {
+    id: rb
+    signal clicked
+    property color base: "transparent"
+    property color hover: "#0FFFFFFF"
+    property color press: "#1AFFFFFF"
+    property real rad: 0
+    property bool actionable: true
+    radius: rb.rad
+    color: (!rb.actionable || (!ma.containsMouse && !ma.pressed)) ? base : (ma.pressed ? press : hover)
+    Behavior on color { ColorAnimation { duration: 90 } }
+    MouseArea {
+      id: ma
+      anchors.fill: parent
+      hoverEnabled: rb.actionable
+      cursorShape: rb.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onClicked: {
+        if (rb.actionable) rb.clicked();
       }
+    }
+  }
 
-      Item {
-        Layout.fillWidth: true
-      }
+  // Borderless text button.
+  component TextBtn: Rectangle {
+    id: tb
+    signal clicked
+    property string text: ""
+    property color fg: t.ink2
+    property int fs: 12
+    property bool bold: false
+    implicitWidth: lbl.implicitWidth + 18
+    implicitHeight: 26
+    radius: 7
+    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
+    Behavior on color { ColorAnimation { duration: 90 } }
+    Text {
+      id: lbl
+      anchors.centerIn: parent
+      text: tb.text
+      font.pixelSize: tb.fs
+      font.bold: tb.bold
+      color: (ma.containsMouse || ma.pressed) ? t.ink1 : tb.fg
+      Behavior on color { ColorAnimation { duration: 90 } }
+    }
+    MouseArea {
+      id: ma
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: tb.clicked()
+    }
+  }
 
-      // Clear all (broom)
+  // Borderless square icon button.
+  component IconBtn: Rectangle {
+    id: ib
+    signal clicked
+    property string glyph: ""
+    property int fs: 14
+    property color fg: t.ink2
+    property int btnSize: 30
+    width: btnSize
+    height: btnSize
+    radius: 8
+    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
+    Behavior on color { ColorAnimation { duration: 90 } }
+    Text {
+      id: ibGlyph
+      anchors.centerIn: parent
+      text: ib.glyph
+      font.family: t.mono
+      font.pixelSize: ib.fs
+      color: (ma.containsMouse || ma.pressed) ? t.ink1 : ib.fg
+      Behavior on color { ColorAnimation { duration: 90 } }
+    }
+    MouseArea {
+      id: ma
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: ib.clicked()
+    }
+  }
+
+  // macOS-style switch. Track carries the color, thumb just slides.
+  component TSwitch: Item {
+    id: sw
+    signal toggled
+    property bool on: false
+    property color onColor: t.green
+    width: 42
+    height: 24
+    Rectangle {
+      anchors.fill: parent
+      radius: 12
+      color: sw.on ? sw.onColor : "#3B3C4C"
+      Behavior on color { ColorAnimation { duration: 140 } }
       Rectangle {
-        Layout.preferredWidth: 24
-        Layout.preferredHeight: 24
-        radius: 4
-        color: clearMouse.containsMouse ? "#313244" : "transparent"
-        visible: root.totalCount > 0
+        width: 20
+        height: 20
+        radius: 10
+        y: 2
+        x: sw.on ? parent.width - width - 2 : 2
+        color: "#F4F4F8"
+        Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+      }
+    }
+    MouseArea {
+      anchors.fill: parent
+      cursorShape: Qt.PointingHandCursor
+      onClicked: sw.toggled()
+    }
+  }
 
-        Behavior on color { ColorAnimation { duration: 120 } }
+  // ================= Card =================
+  Rectangle {
+    id: card
+    anchors.fill: parent
+    radius: 14
+    color: t.bg
+    border.color: "#26272F"
+    border.width: 1
+
+    ColumnLayout {
+      id: mainCol
+      anchors.fill: parent
+      anchors.margins: 16
+      spacing: 0
+
+      // ---- Header: identity left, clear + mute switch right ----
+      RowLayout {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 40
+        spacing: 10
 
         Text {
-          anchors.centerIn: parent
-          text: "󰃢" // Broom glyph
-          font.family: root.monoFont
-          font.pixelSize: 14
-          color: clearMouse.containsMouse ? "#89b4fa" : "#a6adc8"
+          text: root.isDnd ? "󰂛" : "󰂚"
+          font.family: t.mono
+          font.pixelSize: 19
+          color: root.totalCount > 0 ? (root.isDnd ? t.amber : t.accent) : t.ink3
         }
 
-        MouseArea {
-          id: clearMouse
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
+        Column {
+          Layout.fillWidth: true
+          spacing: 1
+          Text {
+            text: "Notifications"
+            font.pixelSize: 14
+            font.weight: Font.DemiBold
+            color: t.ink1
+          }
+          Text {
+            text: root.subtitleText
+            font.pixelSize: 11
+            color: t.ink3
+            elide: Text.ElideRight
+          }
+        }
+
+        IconBtn {
+          visible: root.totalCount > 0
+          glyph: "󰃢"
+          fs: 14
           onClicked: {
             if (root.service) root.service.clearAll();
           }
         }
-      }
-    }
 
-    // ═══════════════════════════════════════════════════
-    // 2. DIVIDER
-    // ═══════════════════════════════════════════════════
-    Rectangle {
-      Layout.fillWidth: true
-      Layout.preferredHeight: 1
-      color: "#313244"
-    }
-
-    // ═══════════════════════════════════════════════════
-    // 3. EMPTY STATE (When no notifications)
-    // ═══════════════════════════════════════════════════
-    Item {
-      Layout.fillWidth: true
-      Layout.preferredHeight: 70
-      visible: root.totalCount === 0
-
-      ColumnLayout {
-        anchors.centerIn: parent
-        spacing: 6
-
-        Text {
-          Layout.alignment: Qt.AlignHCenter
-          text: "󰂚"
-          font.family: root.monoFont
-          font.pixelSize: 28
-          color: "#45475a"
-        }
-
-        Text {
-          Layout.alignment: Qt.AlignHCenter
-          text: "No Notifications"
-          font.family: root.monoFont
-          font.pixelSize: 12
-          font.bold: true
-          color: "#a6adc8"
-        }
-
-        Text {
-          Layout.alignment: Qt.AlignHCenter
-          text: "You're all caught up"
-          font.family: root.monoFont
-          font.pixelSize: 10
-          color: "#6c7086"
+        TSwitch {
+          on: root.isDnd
+          onColor: t.amber
+          onToggled: {
+            if (root.service) root.service.toggleDnd();
+          }
         }
       }
-    }
 
-    // ═══════════════════════════════════════════════════
-    // 4. NOTIFICATION GROUPS LIST (Flickable + ColumnLayout)
-    // ═══════════════════════════════════════════════════
-    Flickable {
-      id: flickView
-      Layout.fillWidth: true
-      Layout.preferredHeight: Math.min(400, contentCol.implicitHeight)
-      contentWidth: width
-      contentHeight: contentCol.implicitHeight
-      clip: true
-      visible: root.totalCount > 0
-      boundsBehavior: Flickable.StopAtBounds
+      Item { Layout.preferredHeight: 14; Layout.fillWidth: true }
 
-      ColumnLayout {
-        id: contentCol
-        width: flickView.width
-        spacing: 14
+      // ---- Empty state: nothing to box, like "Nothing shared yet" ----
+      Item {
+        visible: root.totalCount === 0
+        Layout.fillWidth: true
+        Layout.preferredHeight: 64
+        Column {
+          anchors.centerIn: parent
+          spacing: 3
+          Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "No notifications"
+            font.pixelSize: 12
+            color: t.ink2
+          }
+          Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "You're all caught up"
+            font.pixelSize: 11
+            color: t.ink3
+          }
+        }
+      }
 
-        Repeater {
-          model: root.groupedList
+      // ---- Grouped app sections ----
+      Flickable {
+        id: flickView
+        visible: root.totalCount > 0
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        Layout.preferredHeight: Math.min(500, contentCol.height)
+        contentWidth: width
+        contentHeight: contentCol.height
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
 
-          delegate: Item {
-            id: groupDelegate
-            required property var modelData
-            required property int index
+        Column {
+          id: contentCol
+          width: flickView.width
+          spacing: 12
 
-            readonly property var group: groupDelegate.modelData
-            readonly property string appName: group ? (group.appName || "Application") : "Application"
-            readonly property string appIcon: group ? (group.appIcon || "") : ""
-            readonly property var notifsList: group ? (group.notifications || []) : []
-            readonly property int totalGroupCount: group ? (group.totalCount || 0) : 0
-            readonly property bool isExpanded: group ? (group.expanded === true) : false
+          Repeater {
+            model: root.groupedList
 
-            // Slice to 2 items if not expanded
-            readonly property var visibleItems: isExpanded ? notifsList : notifsList.slice(0, 2)
+            delegate: Column {
+              id: groupDelegate
+              required property var modelData
+              required property int index
 
-            // Resolve icon source via IconResolver
-            readonly property string resolvedIcon: root.resolveNotifIcon(appIcon, appName, "")
+              readonly property var group: groupDelegate.modelData
+              readonly property string appName: group ? (group.appName || "Application") : "Application"
+              readonly property string appIcon: group ? (group.appIcon || "") : ""
+              readonly property var notifsList: group ? (group.notifications || []) : []
+              readonly property int totalGroupCount: group ? (group.totalCount || 0) : 0
+              readonly property bool isExpanded: group ? (group.expanded === true) : false
 
-            Layout.fillWidth: true
-            implicitHeight: groupCol.implicitHeight
-            height: implicitHeight
+              // Slice to 2 items if not expanded
+              readonly property var visibleItems: isExpanded ? notifsList : notifsList.slice(0, 2)
 
-            ColumnLayout {
-              id: groupCol
-              anchors {
-                left: parent.left
-                right: parent.right
-                top: parent.top
-              }
-              spacing: 8
+              // Resolve icon source via IconResolver
+              readonly property string resolvedIcon: root.resolveNotifIcon(appIcon, appName, "")
 
-              // --- App Header Row ---
-              RowLayout {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 22
-                spacing: 8
+              width: contentCol.width
+              spacing: 10
 
-                // App Icon
-                IconImage {
-                  id: appIconImg
-                  Layout.preferredWidth: 18
-                  Layout.preferredHeight: 18
-                  source: groupDelegate.resolvedIcon
-                  asynchronous: true
-                }
-
-                // Fallback letter if icon unavailable
-                Text {
-                  visible: appIconImg.status === Image.Error || !groupDelegate.resolvedIcon
-                  text: groupDelegate.appName.charAt(0).toUpperCase()
-                  font.family: root.monoFont
-                  font.pixelSize: 11
-                  font.bold: true
-                  color: "#89b4fa"
-                }
-
-                // App Name
-                Text {
-                  Layout.fillWidth: true
-                  text: groupDelegate.appName
-                  font.family: root.monoFont
-                  font.pixelSize: 12
-                  font.bold: true
-                  color: "#cdd6f4"
-                  elide: Text.ElideRight
-                }
-
-                // App Clear Button (Red Circle with X)
-                Rectangle {
-                  Layout.preferredWidth: 18
-                  Layout.preferredHeight: 18
-                  radius: 9
-                  color: appClearMouse.containsMouse ? "#f38ba8" : "#eb4d4b"
-
-                  Behavior on color { ColorAnimation { duration: 100 } }
-
-                  Text {
-                    anchors.centerIn: parent
-                    text: "✕"
-                    font.family: root.monoFont
-                    font.pixelSize: 9
-                    font.bold: true
-                    color: "#ffffff"
-                  }
-
-                  MouseArea {
-                    id: appClearMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                      if (root.service) root.service.clearApp(groupDelegate.appName);
-                    }
-                  }
+              SectionHead {
+                width: parent.width
+                label: groupDelegate.appName + (groupDelegate.totalGroupCount > 1 ? ` · ${groupDelegate.totalGroupCount}` : "")
+                actionText: "Clear"
+                actionColor: t.red
+                onActionClicked: {
+                  if (root.service) root.service.clearApp(groupDelegate.appName);
                 }
               }
 
-              // --- Notification Items List ---
-              Column {
-                Layout.fillWidth: true
-                spacing: 8
+              Rectangle {
+                width: parent.width
+                height: groupCol.height
+                radius: 12
+                color: t.surface
 
-                Repeater {
-                  model: groupDelegate.visibleItems
+                Column {
+                  id: groupCol
+                  width: parent.width
 
-                  delegate: Item {
-                    id: notifItem
-                    required property var modelData
-                    required property int index
-
-                    readonly property var notif: notifItem.modelData
-                    readonly property string summaryText: notif ? (notif.summary || "Notification") : ""
-                    readonly property string bodyText: notif ? (notif.body || "") : ""
-                    readonly property string imageSrc: notif ? (notif.image || "") : ""
-                    readonly property var actionsList: notif ? (notif.actions || []) : []
-                    readonly property string timeStr: root.service ? root.service.timeAgo(notif.timestamp) : "Just now"
-                    readonly property int urgencyVal: notif ? (notif.urgency || 1) : 1
-
+                  // App identity row; tap to expand when collapsed.
+                  RowBase {
                     width: parent.width
-                    implicitHeight: notifContentCol.implicitHeight + 4
-                    height: implicitHeight
-
-                    MouseArea {
-                      id: itemHoverArea
+                    height: 42
+                    rad: 12
+                    actionable: groupDelegate.totalGroupCount > 1
+                    onClicked: {
+                      if (root.service) root.service.toggleGroupExpanded(groupDelegate.appName);
+                    }
+                    RowLayout {
                       anchors.fill: parent
-                      hoverEnabled: true
-                      acceptedButtons: Qt.NoButton
-                    }
-
-                    // Vertical Thread Accent Line (KDE Plasma 6 style)
-                    Rectangle {
-                      id: threadLine
-                      width: 3
-                      anchors {
-                        left: parent.left
-                        leftMargin: 4
-                        top: parent.top
-                        bottom: parent.bottom
-                        topMargin: 2
-                        bottomMargin: 2
+                      anchors.leftMargin: 12
+                      anchors.rightMargin: 12
+                      spacing: 10
+                      IconImage {
+                        id: appIconImg
+                        Layout.preferredWidth: 18
+                        Layout.preferredHeight: 18
+                        source: groupDelegate.resolvedIcon
+                        asynchronous: true
                       }
-                      radius: 1.5
-                      color: notifItem.urgencyVal === 2 ? "#f38ba8" : (itemHoverArea.containsMouse ? "#89b4fa" : "#45475a")
-
-                      Behavior on color { ColorAnimation { duration: 120 } }
-                    }
-
-                    // Notification Content Column
-                    ColumnLayout {
-                      id: notifContentCol
-                      anchors {
-                        left: threadLine.right
-                        leftMargin: 10
-                        right: parent.right
-                        top: parent.top
+                      Text {
+                        visible: appIconImg.status === Image.Error || !groupDelegate.resolvedIcon
+                        text: groupDelegate.appName.charAt(0).toUpperCase()
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        color: t.accent
                       }
-                      spacing: 3
-
-                      // Summary + Timestamp + Close Row
-                      RowLayout {
+                      Text {
                         Layout.fillWidth: true
-                        spacing: 8
+                        text: groupDelegate.appName
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        color: t.ink1
+                        elide: Text.ElideRight
+                      }
+                      Text {
+                        visible: groupDelegate.totalGroupCount > 2
+                        text: groupDelegate.isExpanded ? "Show less" : `Show ${groupDelegate.totalGroupCount - 2} more`
+                        font.pixelSize: 11
+                        color: t.ink3
+                      }
+                    }
+                  }
 
-                        Text {
-                          Layout.fillWidth: true
-                          text: notifItem.summaryText
-                          font.family: root.monoFont
-                          font.pixelSize: 12
-                          font.bold: true
-                          color: "#ffffff"
-                          elide: Text.ElideRight
-                        }
+                  Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
 
-                        Text {
-                          text: notifItem.timeStr
-                          font.family: root.monoFont
-                          font.pixelSize: 10
-                          color: "#a6adc8"
-                        }
+                  Repeater {
+                    model: groupDelegate.visibleItems
 
-                        // Individual Close Button (Red Circle with X)
-                        Rectangle {
-                          Layout.preferredWidth: 16
-                          Layout.preferredHeight: 16
-                          radius: 8
-                          color: itemCloseMouse.containsMouse ? "#f38ba8" : "#eb4d4b"
+                    delegate: Column {
+                      id: notifItem
+                      required property var modelData
+                      required property int index
 
-                          Behavior on color { ColorAnimation { duration: 100 } }
+                      readonly property var notif: notifItem.modelData
+                      readonly property string summaryText: notif ? (notif.summary || "Notification") : ""
+                      readonly property string bodyText: notif ? (notif.body || "") : ""
+                      readonly property string imageSrc: notif ? (notif.image || "") : ""
+                      readonly property var actionsList: notif ? (notif.actions || []) : []
+                      readonly property string timeStr: root.service ? root.service.timeAgo(notif.timestamp) : "Just now"
+                      readonly property int urgencyVal: notif ? (notif.urgency || 1) : 1
+                      readonly property bool isCritical: notifItem.urgencyVal === 2
 
-                          Text {
-                            anchors.centerIn: parent
-                            text: "✕"
-                            font.family: root.monoFont
-                            font.pixelSize: 8
-                            font.bold: true
-                            color: "#ffffff"
+                      width: groupCol.width
+
+                      RowBase {
+                        width: parent.width
+                        height: notifBody.height + 20
+                        rad: (notifItem.index === groupDelegate.visibleItems.length - 1) ? 12 : 0
+                        actionable: false
+                        RowLayout {
+                          anchors.fill: parent
+                          anchors.leftMargin: 12
+                          anchors.rightMargin: 8
+                          anchors.topMargin: 10
+                          anchors.bottomMargin: 10
+                          spacing: 8
+                          Column {
+                            id: notifBody
+                            Layout.fillWidth: true
+                            spacing: 3
+
+                            Row {
+                              width: parent.width
+                              spacing: 6
+                              Text {
+                                width: Math.min(implicitWidth, parent.width - 130)
+                                text: notifItem.summaryText
+                                font.pixelSize: 13
+                                font.weight: Font.Medium
+                                color: notifItem.isCritical ? t.red : t.ink1
+                                elide: Text.ElideRight
+                              }
+                              Text {
+                                visible: notifItem.isCritical
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Critical"
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                                color: t.red
+                              }
+                              Item { width: 1; height: 1 }
+                            }
+
+                            Text {
+                              visible: notifItem.bodyText.length > 0
+                              width: parent.width
+                              text: notifItem.bodyText
+                              font.pixelSize: 12
+                              color: t.ink2
+                              wrapMode: Text.WordWrap
+                              maximumLineCount: 4
+                              elide: Text.ElideRight
+                            }
+
+                            Text {
+                              text: notifItem.timeStr
+                              font.pixelSize: 11
+                              color: t.ink3
+                            }
+
+                            Rectangle {
+                              visible: notifItem.imageSrc.length > 0
+                              width: parent.width
+                              height: Math.min(80, width * 0.45)
+                              radius: 8
+                              color: t.inset
+                              clip: true
+                              Image {
+                                anchors.fill: parent
+                                source: notifItem.imageSrc
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                              }
+                            }
+
+                            Row {
+                              visible: notifItem.actionsList.length > 0
+                              width: parent.width
+                              spacing: 2
+                              Repeater {
+                                model: notifItem.actionsList
+                                TextBtn {
+                                  required property var modelData
+                                  text: modelData.text || "Action"
+                                  fs: 11
+                                  onClicked: {
+                                    if (root.service) root.service.invokeAction(notifItem.notif, modelData.identifier);
+                                  }
+                                }
+                              }
+                            }
                           }
 
-                          MouseArea {
-                            id: itemCloseMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
+                          IconBtn {
+                            Layout.alignment: Qt.AlignTop
+                            glyph: "󰅖"
+                            fs: 13
+                            btnSize: 24
+                            fg: t.ink3
                             onClicked: {
                               if (root.service) root.service.dismissNotification(notifItem.notif.id);
                             }
@@ -404,126 +547,11 @@ Item {
                         }
                       }
 
-                      // Body Text (if present)
-                      Text {
-                        visible: notifItem.bodyText.length > 0
-                        Layout.fillWidth: true
-                        text: notifItem.bodyText
-                        font.family: root.monoFont
-                        font.pixelSize: 11
-                        color: "#bac2de"
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 4
-                        elide: Text.ElideRight
+                      Hairline {
+                        visible: notifItem.index < groupDelegate.visibleItems.length - 1
+                        width: parent.width - 24
+                        anchors.horizontalCenter: parent.horizontalCenter
                       }
-
-                      // Attached Image (if present)
-                      Rectangle {
-                        visible: notifItem.imageSrc.length > 0
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(80, width * 0.45)
-                        radius: 6
-                        color: "#181825"
-                        clip: true
-
-                        Image {
-                          anchors.fill: parent
-                          source: notifItem.imageSrc
-                          fillMode: Image.PreserveAspectCrop
-                          asynchronous: true
-                        }
-                      }
-
-                      // Action Buttons Row (e.g. "View", "Open", etc.)
-                      RowLayout {
-                        visible: notifItem.actionsList.length > 0
-                        Layout.fillWidth: true
-
-                        Item {
-                          Layout.fillWidth: true
-                        }
-
-                        Repeater {
-                          model: notifItem.actionsList
-
-                          delegate: Rectangle {
-                            id: actionBtn
-                            required property var modelData
-                            required property int index
-
-                            implicitWidth: actionLabel.implicitWidth + 20
-                            implicitHeight: 24
-                            radius: 4
-                            color: actionMouse.containsMouse ? "#3b3e52" : "#2b2d3d"
-                            border.color: actionMouse.containsMouse ? "#89b4fa" : "#45475a"
-                            border.width: 1
-
-                            Behavior on color { ColorAnimation { duration: 120 } }
-                            Behavior on border.color { ColorAnimation { duration: 120 } }
-
-                            Text {
-                              id: actionLabel
-                              anchors.centerIn: parent
-                              text: actionBtn.modelData.text || "Action"
-                              font.family: root.monoFont
-                              font.pixelSize: 11
-                              color: actionMouse.containsMouse ? "#ffffff" : "#cdd6f4"
-                            }
-
-                            MouseArea {
-                              id: actionMouse
-                              anchors.fill: parent
-                              hoverEnabled: true
-                              cursorShape: Qt.PointingHandCursor
-                              onClicked: {
-                                if (root.service) {
-                                  root.service.invokeAction(notifItem.notif, actionBtn.modelData.identifier);
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-
-              // --- Group Footer: "Show X More" / "Show Less" ---
-              Item {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 20
-                visible: groupDelegate.totalGroupCount > 2
-
-                RowLayout {
-                  anchors.left: parent.left
-                  anchors.leftMargin: 16
-                  anchors.verticalCenter: parent.verticalCenter
-                  spacing: 4
-
-                  Text {
-                    text: groupDelegate.isExpanded ? "󰅃" : "󰅀"
-                    font.family: root.monoFont
-                    font.pixelSize: 11
-                    color: showMoreMouse.containsMouse ? "#b4befe" : "#89b4fa"
-                  }
-
-                  Text {
-                    text: groupDelegate.isExpanded ? "Show Less" : (`Show ${groupDelegate.totalGroupCount - 2} More`)
-                    font.family: root.monoFont
-                    font.pixelSize: 11
-                    color: showMoreMouse.containsMouse ? "#b4befe" : "#89b4fa"
-                  }
-                }
-
-                MouseArea {
-                  id: showMoreMouse
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: {
-                    if (root.service) {
-                      root.service.toggleGroupExpanded(groupDelegate.appName);
                     }
                   }
                 }
