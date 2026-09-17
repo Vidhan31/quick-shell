@@ -212,6 +212,7 @@ ShellRoot {
         MediaControlCenter {
           id: mediaControlCenter
           anchors.fill: parent
+          media: mediaBarWidget.media
         }
       }
 

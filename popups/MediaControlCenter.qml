@@ -9,8 +9,24 @@ Item {
 
   readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
 
-  MediaManager {
-    id: media
+  property MediaManager media: null
+
+  Loader {
+    id: fallbackMediaLoader
+    active: root.media === null
+    sourceComponent: MediaManager {
+      running: root.media === null
+    }
+  }
+
+  readonly property MediaManager activeMedia: root.media ? root.media : fallbackMediaLoader.item
+
+  // Position tracking: enable 100ms clock interpolation only when popup is visible
+  Binding {
+    target: root.activeMedia
+    property: "positionTracking"
+    value: root.visible
+    when: root.activeMedia !== null
   }
 
   // Width & height of the control center card
@@ -20,25 +36,39 @@ Item {
   height: implicitHeight
 
   // Manually selected player, if user clicked a tab
-  property alias manualPlayer: media.manualPlayer
+  property var manualPlayer: activeMedia ? activeMedia.manualPlayer : null
+  onManualPlayerChanged: {
+    if (activeMedia && activeMedia.manualPlayer !== manualPlayer) {
+      activeMedia.manualPlayer = manualPlayer;
+    }
+  }
+
+  Connections {
+    target: root.activeMedia
+    function onManualPlayerChanged() {
+      if (root.activeMedia && root.manualPlayer !== root.activeMedia.manualPlayer) {
+        root.manualPlayer = root.activeMedia.manualPlayer;
+      }
+    }
+  }
 
   // All available players from native MPRIS manager
-  readonly property var playerList: media.playerList
-  readonly property int playerCount: media.playerCount
+  readonly property var playerList: activeMedia ? activeMedia.playerList : []
+  readonly property int playerCount: activeMedia ? activeMedia.playerCount : 0
 
-  readonly property var player: media.activePlayer
-  readonly property bool hasPlayer: media.hasPlayer
+  readonly property var player: activeMedia ? activeMedia.activePlayer : null
+  readonly property bool hasPlayer: activeMedia ? activeMedia.hasPlayer : false
 
   // Track playback status
-  readonly property bool isPlaying: media.isPlaying
+  readonly property bool isPlaying: activeMedia ? activeMedia.isPlaying : false
 
   // Seeking state
   property bool isSeeking: false
   property real seekTarget: 0
 
   // Track length & position in seconds
-  readonly property real trackLength: media.trackLength
-  readonly property real trackPos: isSeeking ? seekTarget : media.trackPos
+  readonly property real trackLength: activeMedia ? activeMedia.trackLength : 0
+  readonly property real trackPos: isSeeking ? seekTarget : (activeMedia ? activeMedia.trackPos : 0)
 
   // Format artwork URL
   function formatArtUrl(url: string): string {

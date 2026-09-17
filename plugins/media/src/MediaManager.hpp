@@ -53,22 +53,30 @@ class MediaManager : public QObject {
     Q_PROPERTY(bool shuffleSupported READ shuffleSupported NOTIFY shuffleChanged)
     Q_PROPERTY(int loopState READ loopState WRITE setLoopState NOTIFY loopStateChanged)
     Q_PROPERTY(bool loopSupported READ loopSupported NOTIFY loopStateChanged)
+    Q_PROPERTY(bool running READ isRunning WRITE setRunning NOTIFY runningChanged)
+    Q_PROPERTY(bool positionTracking READ positionTracking WRITE setPositionTracking NOTIFY positionTrackingChanged)
 
 public:
     explicit MediaManager(QObject *parent = nullptr);
     ~MediaManager() override;
 
+    [[nodiscard]] bool isRunning() const noexcept { return m_running; }
+    void setRunning(bool running);
+
+    [[nodiscard]] bool positionTracking() const noexcept { return m_positionTracking; }
+    void setPositionTracking(bool tracking);
+
     [[nodiscard]] QList<QObject*> playerListObjects() const;
-    [[nodiscard]] int playerCount() const { return m_players.size(); }
+    [[nodiscard]] int playerCount() const;
 
-    [[nodiscard]] QObject* activePlayerObject() const { return m_activePlayer; }
-    [[nodiscard]] MediaPlayer* activePlayer() const { return m_activePlayer; }
+    [[nodiscard]] QObject* activePlayerObject() const;
+    [[nodiscard]] MediaPlayer* activePlayer() const;
 
-    [[nodiscard]] QObject* manualPlayerObject() const { return m_manualPlayer; }
+    [[nodiscard]] QObject* manualPlayerObject() const;
     void setManualPlayer(QObject *player);
 
-    [[nodiscard]] bool hasPlayer() const { return m_activePlayer != nullptr; }
-    [[nodiscard]] bool isPlaying() const { return m_activePlayer && m_activePlayer->isPlaying(); }
+    [[nodiscard]] bool hasPlayer() const;
+    [[nodiscard]] bool isPlaying() const;
 
     [[nodiscard]] QString title() const;
     [[nodiscard]] QString artist() const;
@@ -114,33 +122,12 @@ signals:
     void capabilitiesChanged();
     void shuffleChanged();
     void loopStateChanged();
-
-private slots:
-    void onServiceRegistered(const QString &service);
-    void onServiceUnregistered(const QString &service);
-    void onServiceOwnerChanged(const QString &service, const QString &oldOwner, const QString &newOwner);
-
-    void onPlayerPlaybackStateChanged();
-    void onPlayerMetadataChanged();
-    void onPlayerIdentityChanged();
-    void onPlayerCapabilitiesChanged();
-    void onPlayerPositionChanged();
-
-    void onClockTick();
+    void runningChanged();
+    void positionTrackingChanged();
 
 private:
-    void discoverInitialServices();
-    void addPlayer(const QString &service);
-    void removePlayer(const QString &service);
-    void resolveActivePlayer();
-    void updateClockTimer();
-
-    QList<MediaPlayer*> m_players;
-    MediaPlayer *m_activePlayer{nullptr};
-    MediaPlayer *m_manualPlayer{nullptr};
-
-    QDBusServiceWatcher *m_watcher{nullptr};
-    QTimer *m_clockTimer{nullptr};
+    bool m_running{true};
+    bool m_positionTracking{false};
 };
 
 } // namespace qs::plugins::media

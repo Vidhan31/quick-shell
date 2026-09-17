@@ -10,7 +10,10 @@ Item {
 
   MediaManager {
     id: media
+    positionTracking: false
   }
+
+  property alias media: media
 
   readonly property var activePlayer: media.activePlayer
   readonly property bool hasPlayer: media.hasPlayer
