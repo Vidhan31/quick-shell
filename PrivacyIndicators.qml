@@ -1,69 +1,40 @@
 // PrivacyIndicators.qml — Compact top bar indicators for active Camera and Microphone usage.
+// Native C++ Qt6 QML module (Quickshell.Plugins.Privacy).
 import QtQuick
-import Quickshell
-import Quickshell.Io
+import Quickshell.Plugins.Privacy
 
 Item {
   id: root
 
-  property var privacyData: ({
-    camera: { active: false, apps: [], devices: [] },
-    microphone: { active: false, apps: [], devices: [] }
-  })
+  PrivacyMonitor {
+    id: monitor
+    running: true
+    interval: 800
+  }
 
-  readonly property bool cameraActive: privacyData && privacyData.camera && privacyData.camera.active === true
-  readonly property bool micActive: privacyData && privacyData.microphone && privacyData.microphone.active === true
-  readonly property bool hasActive: cameraActive || micActive
+  property var privacyData: monitor.privacyData
 
-  readonly property var cameraApps: (privacyData && privacyData.camera && privacyData.camera.apps) ? privacyData.camera.apps : []
-  readonly property var micApps: (privacyData && privacyData.microphone && privacyData.microphone.apps) ? privacyData.microphone.apps : []
-  readonly property var cameraDevices: (privacyData && privacyData.camera && privacyData.camera.devices) ? privacyData.camera.devices : []
-  readonly property var micDevices: (privacyData && privacyData.microphone && privacyData.microphone.devices) ? privacyData.microphone.devices : []
+  readonly property bool cameraActive: monitor.cameraActive
+  readonly property bool micActive: monitor.micActive
+  readonly property bool hasActive: monitor.hasActive
+
+  readonly property var cameraApps: monitor.cameraApps
+  readonly property var micApps: monitor.micApps
+  readonly property var cameraDevices: monitor.cameraDevices
+  readonly property var micDevices: monitor.micDevices
 
   readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
 
   signal clicked()
 
+  function refresh(): void {
+    monitor.refresh();
+  }
+
   implicitHeight: 24
   implicitWidth: contentRow.width
   width: implicitWidth
   height: implicitHeight
-
-  // Streaming Process running privacy-bridge.py
-  Process {
-    id: bridgeProc
-    command: ["python3", "-u", "/home/dev/Projects/quick-shell/privacy-bridge.py", "monitor"]
-    running: true
-
-    stdout: SplitParser {
-      splitMarker: "\n"
-      onRead: data => {
-        const trimmed = data.trim();
-        if (!trimmed || !trimmed.startsWith("{")) return;
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (parsed && (parsed.camera || parsed.microphone)) {
-            root.privacyData = parsed;
-          }
-        } catch (e) {
-          console.warn("PrivacyIndicators parse error:", e);
-        }
-      }
-    }
-
-    onExited: (code, status) => {
-      restartTimer.restart();
-    }
-  }
-
-  Timer {
-    id: restartTimer
-    interval: 2000
-    repeat: false
-    onTriggered: {
-      bridgeProc.running = true;
-    }
-  }
 
   Row {
     id: contentRow

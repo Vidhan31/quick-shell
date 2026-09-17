@@ -9,16 +9,33 @@
 #include <unordered_map>
 #include <vector>
 #include <string>
+#include <memory>
 
 namespace qs::plugins {
 
-struct GroupInfo {
-    unsigned long long rss{0};
+class SimpleThreadPool;
+
+struct RawProc {
+    int pid{0};
+    int ppid{0};
+    unsigned long long jiffies{0};
+    unsigned long long cpuDelta{0};
+    unsigned long long rssPagesKb{0};
+    unsigned long long finalMemKb{0};
+    char comm[16]{};
+    int rootPid{0};
+};
+
+struct NewGroup {
+    int rootPid{0};
+    unsigned long long rssUpperBound{0};
+    unsigned long long actualMem{0};
     unsigned long long cpuDelta{0};
     int count{0};
-    unsigned long long maxChildRss{0};
-    std::string maxChildName;
+    unsigned long long maxChildMem{0};
     int maxChildPid{0};
+    const char *maxChildComm{nullptr};
+    bool pssResolved{false};
 };
 
 struct ProcessItem {
@@ -35,7 +52,7 @@ class SamplerWorker : public QObject {
 
 public:
     explicit SamplerWorker(int intervalMs = 2000, QObject *parent = nullptr);
-    ~SamplerWorker() override = default;
+    ~SamplerWorker() override;
 
 public slots:
     void start();
@@ -51,17 +68,19 @@ private:
     QTimer *m_timer{nullptr};
     long m_pageSizeKb{4};
     long m_nCpu{1};
+    long m_memTotalKb{1};
     unsigned long long m_prevTotalJiffies{0};
-    std::unordered_map<int, unsigned long long> m_prevProcJiffies;
+
+    std::unique_ptr<SimpleThreadPool> m_pool;
 
     // Persistent containers to avoid heap reallocations
-    std::vector<int> m_pids;
-    std::unordered_map<int, int> m_parentMap;
-    std::unordered_map<int, std::string> m_commMap;
-    std::unordered_map<int, unsigned long long> m_currentProcJiffies;
-    std::unordered_map<int, unsigned long long> m_cpuDeltaMap;
-    std::unordered_map<int, unsigned long long> m_memMap;
-    std::unordered_map<int, GroupInfo> m_groups;
+    std::vector<RawProc> m_rawProcs;
+    std::unordered_map<int, int> m_pidToIndex;
+    std::unordered_map<int, unsigned long long> m_prevJiffies;
+    std::unordered_map<int, unsigned long long> m_currJiffies;
+    std::vector<NewGroup> m_groups;
+    std::unordered_map<int, int> m_groupLookup;
+    std::vector<int> m_groupIndices;
     std::vector<ProcessItem> m_items;
 
     unsigned long long readTotalJiffies();

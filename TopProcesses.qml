@@ -45,14 +45,17 @@ Item {
       anchors.margins: 14
       spacing: 6
 
-      // Rows — plain Items with anchors
+      // Rows — fixed 10 delegates to avoid destroying and recreating 90 scene graph items every tick
       Repeater {
-        model: root.processes
+        model: 10
         delegate: Item {
-          required property var modelData
+          id: rowDelegate
           required property int index
+          readonly property var modelData: (root.processes && rowDelegate.index < root.processes.length) ? root.processes[rowDelegate.index] : null
+
+          visible: rowDelegate.modelData !== null
           width: parent.width
-          height: 36
+          height: visible ? 36 : 0
 
           // Left: grouped name + count on top, main pid below
           Item {
@@ -69,10 +72,10 @@ Item {
                 right: parent.right
                 top: parent.top
               }
-              text: modelData.name + (modelData.count > 1 ? " ×" + modelData.count : "")
+              text: rowDelegate.modelData ? (rowDelegate.modelData.name + (rowDelegate.modelData.count > 1 ? " ×" + rowDelegate.modelData.count : "")) : ""
               elide: Text.ElideRight
               maximumLineCount: 1
-              color: index === 0 ? "#f38ba8" : "#cdd6f4"
+              color: rowDelegate.index === 0 ? "#f38ba8" : "#cdd6f4"
               font.family: root.monoFont
               font.pixelSize: 12
             }
@@ -82,7 +85,7 @@ Item {
                 right: parent.right
                 bottom: parent.bottom
               }
-              text: modelData.mpid
+              text: rowDelegate.modelData ? rowDelegate.modelData.mpid : ""
               elide: Text.ElideRight
               maximumLineCount: 1
               color: "#6c7086"
@@ -100,10 +103,10 @@ Item {
               leftMargin: 8
             }
             height: 18
-            readonly property string barLabel: (modelData && modelData.barLabel)
-              ? modelData.barLabel
-              : (root.formatRss(modelData.rss) + " (" + (modelData.mem ? modelData.mem.toFixed(0) : "0") + "%)")
-            readonly property double fillFrac: Math.min(1, modelData.mem / root.maxMem)
+            readonly property string barLabel: (rowDelegate.modelData && rowDelegate.modelData.barLabel)
+              ? rowDelegate.modelData.barLabel
+              : (rowDelegate.modelData ? (root.formatRss(rowDelegate.modelData.rss) + " (" + (rowDelegate.modelData.mem ? rowDelegate.modelData.mem.toFixed(0) : "0") + "%)") : "")
+            readonly property double fillFrac: (rowDelegate.modelData && root.maxMem > 0) ? Math.min(1, rowDelegate.modelData.mem / root.maxMem) : 0
 
             Rectangle {
               anchors.fill: parent
@@ -114,7 +117,7 @@ Item {
               height: parent.height
               radius: 4
               width: parent.width * parent.fillFrac
-              color: index === 0 ? "#f38ba8" : "#89b4fa"
+              color: rowDelegate.index === 0 ? "#f38ba8" : "#89b4fa"
               opacity: 0.85
             }
             // Dark label on the fill (only when it fits), else light label

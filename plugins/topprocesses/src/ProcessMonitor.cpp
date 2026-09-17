@@ -12,11 +12,63 @@
 #include <cstdlib>
 #include <cstring>
 #include <vector>
-#include <unordered_set>
+#include <unordered_map>
 #include <algorithm>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+#include <atomic>
+#include <functional>
 
 namespace qs::plugins {
+
+class SimpleThreadPool {
+public:
+    explicit SimpleThreadPool(size_t numThreads = 6) : m_stop(false) {
+        for (size_t i = 0; i < numThreads; ++i) {
+            m_workers.emplace_back([this] {
+                while (true) {
+                    std::function<void()> task;
+                    {
+                        std::unique_lock<std::mutex> lock(m_queueMutex);
+                        m_cv.wait(lock, [this] { return m_stop || !m_tasks.empty(); });
+                        if (m_stop && m_tasks.empty()) return;
+                        task = std::move(m_tasks.front());
+                        m_tasks.pop();
+                    }
+                    task();
+                }
+            });
+        }
+    }
+
+    ~SimpleThreadPool() {
+        {
+            std::unique_lock<std::mutex> lock(m_queueMutex);
+            m_stop = true;
+        }
+        m_cv.notify_all();
+        for (std::thread &worker : m_workers) {
+            if (worker.joinable()) worker.join();
+        }
+    }
+
+    void enqueue(std::function<void()> task) {
+        {
+            std::unique_lock<std::mutex> lock(m_queueMutex);
+            m_tasks.push(std::move(task));
+        }
+        m_cv.notify_one();
+    }
+
+private:
+    std::vector<std::thread> m_workers;
+    std::queue<std::function<void()>> m_tasks;
+    std::mutex m_queueMutex;
+    std::condition_variable m_cv;
+    bool m_stop;
+};
 
 static inline const char* skip_space(const char *p) {
     while (*p == ' ') ++p;
@@ -26,6 +78,14 @@ static inline const char* skip_space(const char *p) {
 static inline const char* skip_field(const char *p) {
     while (*p && *p != ' ') ++p;
     return skip_space(p);
+}
+
+static inline unsigned long long parse_u64(const char*& p) {
+    unsigned long long val = 0;
+    while (*p >= '0' && *p <= '9') {
+        val = val * 10 + (*p++ - '0');
+    }
+    return val;
 }
 
 static inline QString formatRssString(double kb) {
@@ -47,15 +107,23 @@ SamplerWorker::SamplerWorker(int intervalMs, QObject *parent)
         if (m_nCpu <= 0) m_nCpu = 1;
     }
 
-    m_pids.reserve(512);
-    m_parentMap.reserve(512);
-    m_commMap.reserve(512);
-    m_currentProcJiffies.reserve(512);
-    m_cpuDeltaMap.reserve(512);
-    m_memMap.reserve(512);
+    m_memTotalKb = readMemTotalKb();
+
+    // Initialize 6 worker threads for parallel PSS resolution on multi-core Ryzen
+    size_t poolWorkers = std::clamp<size_t>(m_nCpu > 0 ? static_cast<size_t>(m_nCpu) : 4, 2, 6);
+    m_pool = std::make_unique<SimpleThreadPool>(poolWorkers);
+
+    m_rawProcs.reserve(512);
+    m_pidToIndex.reserve(512);
+    m_prevJiffies.reserve(512);
+    m_currJiffies.reserve(512);
     m_groups.reserve(256);
+    m_groupLookup.reserve(256);
+    m_groupIndices.reserve(256);
     m_items.reserve(256);
 }
+
+SamplerWorker::~SamplerWorker() = default;
 
 void SamplerWorker::start() {
     if (!m_timer) {
@@ -93,10 +161,14 @@ unsigned long long SamplerWorker::readTotalJiffies() {
 
     if (strncmp(buf, "cpu ", 4) != 0) return 0;
 
-    unsigned long long user = 0, nice = 0, system = 0, idle = 0, iowait = 0, irq = 0, softirq = 0, steal = 0;
-    sscanf(buf + 4, "%llu %llu %llu %llu %llu %llu %llu %llu",
-           &user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal);
-    return user + nice + system + idle + iowait + irq + softirq + steal;
+    const char *p = buf + 4;
+    p = skip_space(p);
+    unsigned long long sum = 0;
+    for (int i = 0; i < 8; ++i) {
+        sum += parse_u64(p);
+        p = skip_space(p);
+    }
+    return sum;
 }
 
 long SamplerWorker::readMemTotalKb() {
@@ -118,7 +190,9 @@ long SamplerWorker::readMemTotalKb() {
 }
 
 void SamplerWorker::sample() {
-    long memTotalKb = readMemTotalKb();
+    if (m_memTotalKb <= 1) {
+        m_memTotalKb = readMemTotalKb();
+    }
     unsigned long long totalJiffies = readTotalJiffies();
     unsigned long long deltaTotalJiffies = (totalJiffies > m_prevTotalJiffies && m_prevTotalJiffies > 0)
                                               ? (totalJiffies - m_prevTotalJiffies)
@@ -128,24 +202,24 @@ void SamplerWorker::sample() {
     if (!procDir) return;
     int procFd = dirfd(procDir);
 
-    m_pids.clear();
-    m_parentMap.clear();
-    m_commMap.clear();
-    m_currentProcJiffies.clear();
-    m_cpuDeltaMap.clear();
-    m_memMap.clear();
+    m_rawProcs.clear();
+    m_pidToIndex.clear();
+    m_currJiffies.clear();
 
-    char pathBuf[270];
     char statBuf[1024];
+    char pathBuf[64];
 
     struct dirent *entry;
     while ((entry = readdir(procDir)) != nullptr) {
         if (entry->d_name[0] < '0' || entry->d_name[0] > '9') continue;
-        int pid = std::atoi(entry->d_name);
+        int pid = 0;
+        const char *np = entry->d_name;
+        while (*np >= '0' && *np <= '9') {
+            pid = pid * 10 + (*np++ - '0');
+        }
         if (pid <= 0) continue;
 
-        // Fast openat relative to /proc
-        snprintf(pathBuf, sizeof(pathBuf), "%s/stat", entry->d_name);
+        snprintf(pathBuf, sizeof(pathBuf), "%d/stat", pid);
         int statFd = openat(procFd, pathBuf, O_RDONLY);
         if (statFd < 0) continue;
 
@@ -158,125 +232,295 @@ void SamplerWorker::sample() {
         char *closeParen = strrchr(statBuf, ')');
         if (!openParen || !closeParen || closeParen <= openParen) continue;
 
-        std::string comm(openParen + 1, closeParen - openParen - 1);
+        RawProc proc;
+        proc.pid = pid;
 
-        // Fast pointer walk parsing fields from /proc/[pid]/stat
-        const char *p = closeParen + 2; // skip ") "
-        p = skip_field(p); // skip state (field 3)
+        size_t commLen = closeParen - openParen - 1;
+        if (commLen > 15) commLen = 15;
+        memcpy(proc.comm, openParen + 1, commLen);
+        proc.comm[commLen] = '\0';
 
-        int ppid = std::atoi(p);
-        p = skip_field(p); // skip ppid (field 4)
+        const char *p = closeParen + 2;
+        p = skip_field(p); // skip state
 
-        // Skip 9 fields (5 to 13: pgrp, session, tty_nr, tpgid, flags, minflt, cminflt, majflt, cmajflt)
+        proc.ppid = static_cast<int>(parse_u64(p));
+        p = skip_space(p);
+
+        // Skip 9 fields (5 to 13)
         for (int i = 0; i < 9; ++i) {
             p = skip_field(p);
         }
 
-        // Field 14: utime
-        char *endPtr = nullptr;
-        unsigned long long utime = std::strtoull(p, &endPtr, 10);
-        p = skip_space(endPtr);
+        unsigned long long utime = parse_u64(p);
+        p = skip_space(p);
 
-        // Field 15: stime
-        unsigned long long stime = std::strtoull(p, &endPtr, 10);
-        p = skip_space(endPtr);
+        unsigned long long stime = parse_u64(p);
+        p = skip_space(p);
 
-        // Skip 8 fields (16 to 23: cutime, cstime, priority, nice, num_threads, itrealvalue, starttime, vsize)
+        // Skip 8 fields (16 to 23)
         for (int i = 0; i < 8; ++i) {
             p = skip_field(p);
         }
 
-        // Field 24: rss (resident pages) fallback
-        long long rssPages = std::strtoll(p, nullptr, 10);
-        if (rssPages < 0) rssPages = 0;
-        unsigned long long memKb = static_cast<unsigned long long>(rssPages) * static_cast<unsigned long long>(m_pageSizeKb);
-
-        // Read proportional set size (PSS) from /proc/[pid]/smaps_rollup
-        snprintf(pathBuf, sizeof(pathBuf), "%s/smaps_rollup", entry->d_name);
-        int smapsFd = openat(procFd, pathBuf, O_RDONLY);
-        if (smapsFd >= 0) {
-            char smapsBuf[384];
-            ssize_t sn = read(smapsFd, smapsBuf, sizeof(smapsBuf) - 1);
-            close(smapsFd);
-            if (sn > 0) {
-                smapsBuf[sn] = '\0';
-                const char *pssPtr = strstr(smapsBuf, "\nPss:");
-                if (pssPtr) {
-                    memKb = std::strtoull(pssPtr + 5, nullptr, 10);
-                }
-            }
-        }
+        // Field 24: rss (pages)
+        unsigned long long rssPages = parse_u64(p);
+        proc.rssPagesKb = rssPages * static_cast<unsigned long long>(m_pageSizeKb);
+        proc.finalMemKb = proc.rssPagesKb;
 
         unsigned long long procJiffies = utime + stime;
+        proc.jiffies = procJiffies;
         unsigned long long cpuDelta = 0;
         if (deltaTotalJiffies > 0) {
-            auto itPrev = m_prevProcJiffies.find(pid);
-            if (itPrev != m_prevProcJiffies.end() && procJiffies >= itPrev->second) {
+            auto itPrev = m_prevJiffies.find(pid);
+            if (itPrev != m_prevJiffies.end() && procJiffies >= itPrev->second) {
                 cpuDelta = procJiffies - itPrev->second;
             }
         }
+        proc.cpuDelta = cpuDelta;
 
-        m_pids.push_back(pid);
-        m_parentMap[pid] = ppid;
-        m_commMap[pid] = std::move(comm);
-        m_currentProcJiffies[pid] = procJiffies;
-        m_cpuDeltaMap[pid] = cpuDelta;
-        m_memMap[pid] = memKb;
+        m_currJiffies[pid] = procJiffies;
+        m_pidToIndex[pid] = static_cast<int>(m_rawProcs.size());
+        m_rawProcs.push_back(proc);
     }
-    closedir(procDir);
 
     m_prevTotalJiffies = totalJiffies;
-    m_prevProcJiffies = m_currentProcJiffies;
+    m_prevJiffies = std::move(m_currJiffies);
 
-    if (deltaTotalJiffies == 0) {
-        return;
-    }
+    auto get_root_fast = [&](int startPid) -> int {
+        int curr = startPid;
+        int depth = 0;
+        while (depth++ < 32) {
+            auto it = m_pidToIndex.find(curr);
+            if (it == m_pidToIndex.end()) break;
+            const auto &p = m_rawProcs[it->second];
+            if (p.ppid <= 1) break;
 
-    auto get_root = [&](int p) -> int {
-        int curr = p;
-        std::unordered_set<int> visited;
-        visited.insert(curr);
-        while (true) {
-            auto itP = m_parentMap.find(curr);
-            if (itP == m_parentMap.end() || itP->second <= 1) break;
-            int par = itP->second;
-            auto itC = m_commMap.find(par);
-            if (itC != m_commMap.end() && itC->second == "systemd") break;
-            if (visited.count(par)) break;
-            if (itC != m_commMap.end()) {
-                const std::string &comm = itC->second;
-                if (comm == "bash" || comm == "zsh" || comm == "fish" || comm == "sh") break;
-            }
-            curr = par;
-            visited.insert(curr);
+            auto itPar = m_pidToIndex.find(p.ppid);
+            if (itPar == m_pidToIndex.end()) break;
+            const auto &parProc = m_rawProcs[itPar->second];
+
+            if (strcmp(parProc.comm, "systemd") == 0) break;
+            if (strcmp(parProc.comm, "bash") == 0 ||
+                strcmp(parProc.comm, "zsh") == 0 ||
+                strcmp(parProc.comm, "fish") == 0 ||
+                strcmp(parProc.comm, "sh") == 0) break;
+
+            curr = p.ppid;
         }
         return curr;
     };
 
     m_groups.clear();
-    for (int p : m_pids) {
-        int r = get_root(p);
-        auto &g = m_groups[r];
-        g.rss += m_memMap[p];
-        g.cpuDelta += m_cpuDeltaMap[p];
-        g.count++;
-        if (g.maxChildName.empty() || m_memMap[p] >= g.maxChildRss) {
-            g.maxChildRss = m_memMap[p];
-            g.maxChildName = m_commMap[p];
-            g.maxChildPid = p;
+    m_groupLookup.clear();
+    for (auto &proc : m_rawProcs) {
+        int r = get_root_fast(proc.pid);
+        proc.rootPid = r;
+
+        auto it = m_groupLookup.find(r);
+        if (it == m_groupLookup.end()) {
+            int gIdx = static_cast<int>(m_groups.size());
+            m_groupLookup[r] = gIdx;
+            NewGroup g;
+            g.rootPid = r;
+            g.rssUpperBound = proc.rssPagesKb;
+            g.cpuDelta = proc.cpuDelta;
+            g.count = 1;
+            m_groups.push_back(g);
+        } else {
+            auto &g = m_groups[it->second];
+            g.rssUpperBound += proc.rssPagesKb;
+            g.cpuDelta += proc.cpuDelta;
+            g.count++;
         }
     }
 
+    m_groupIndices.resize(m_groups.size());
+    for (size_t i = 0; i < m_groups.size(); ++i) {
+        m_groupIndices[i] = static_cast<int>(i);
+    }
+    std::sort(m_groupIndices.begin(), m_groupIndices.end(), [&](int a, int b) {
+        return m_groups[a].rssUpperBound > m_groups[b].rssUpperBound;
+    });
+
+    std::vector<int> nextMember(m_rawProcs.size(), -1);
+    std::vector<int> groupHead(m_groups.size(), -1);
+    for (size_t i = 0; i < m_rawProcs.size(); ++i) {
+        int gIdx = m_groupLookup[m_rawProcs[i].rootPid];
+        nextMember[i] = groupHead[gIdx];
+        groupHead[gIdx] = static_cast<int>(i);
+    }
+
+    std::vector<int> groupsToResolve;
+    groupsToResolve.reserve(24);
+
+    size_t initialN = std::min<size_t>(10, m_groupIndices.size());
+    for (size_t i = 0; i < initialN; ++i) {
+        groupsToResolve.push_back(m_groupIndices[i]);
+    }
+
+    std::vector<int> procIndicesToResolve;
+    procIndicesToResolve.reserve(64);
+
+    for (int gIdx : groupsToResolve) {
+        m_groups[gIdx].pssResolved = true;
+        int pIdx = groupHead[gIdx];
+        while (pIdx != -1) {
+            procIndicesToResolve.push_back(pIdx);
+            pIdx = nextMember[pIdx];
+        }
+    }
+
+    if (!procIndicesToResolve.empty()) {
+        std::atomic<int> remaining(static_cast<int>(procIndicesToResolve.size()));
+        std::mutex doneMutex;
+        std::condition_variable doneCv;
+
+        for (int pIdx : procIndicesToResolve) {
+            m_pool->enqueue([&, pIdx, procFd] {
+                char pbuf[64];
+                snprintf(pbuf, sizeof(pbuf), "%d/smaps_rollup", m_rawProcs[pIdx].pid);
+                int smapsFd = openat(procFd, pbuf, O_RDONLY);
+                if (smapsFd >= 0) {
+                    char smapsBuf[384];
+                    ssize_t sn = read(smapsFd, smapsBuf, sizeof(smapsBuf) - 1);
+                    close(smapsFd);
+                    if (sn > 0) {
+                        smapsBuf[sn] = '\0';
+                        const char *pssPtr = strstr(smapsBuf, "\nPss:");
+                        if (pssPtr) {
+                            m_rawProcs[pIdx].finalMemKb = std::strtoull(pssPtr + 5, nullptr, 10);
+                        }
+                    }
+                }
+                if (--remaining == 0) {
+                    std::unique_lock<std::mutex> lk(doneMutex);
+                    doneCv.notify_one();
+                }
+            });
+        }
+
+        {
+            std::unique_lock<std::mutex> lk(doneMutex);
+            doneCv.wait(lk, [&] { return remaining.load() == 0; });
+        }
+    }
+
+    for (int gIdx : groupsToResolve) {
+        auto &g = m_groups[gIdx];
+        g.actualMem = 0;
+        g.maxChildMem = 0;
+        g.maxChildPid = 0;
+        g.maxChildComm = nullptr;
+
+        int pIdx = groupHead[gIdx];
+        while (pIdx != -1) {
+            const auto &proc = m_rawProcs[pIdx];
+            g.actualMem += proc.finalMemKb;
+            if (g.maxChildComm == nullptr || proc.finalMemKb >= g.maxChildMem) {
+                g.maxChildMem = proc.finalMemKb;
+                g.maxChildComm = proc.comm;
+                g.maxChildPid = proc.pid;
+            }
+            pIdx = nextMember[pIdx];
+        }
+    }
+
+    std::vector<unsigned long long> topMems;
+    topMems.reserve(groupsToResolve.size());
+    for (int gIdx : groupsToResolve) {
+        topMems.push_back(m_groups[gIdx].actualMem);
+    }
+    unsigned long long threshold = 0;
+    if (topMems.size() >= 10) {
+        std::nth_element(topMems.begin(), topMems.begin() + 9, topMems.end(), std::greater<unsigned long long>());
+        threshold = topMems[9];
+    }
+
+    std::vector<int> secondaryGroups;
+    for (size_t i = initialN; i < m_groupIndices.size(); ++i) {
+        int gIdx = m_groupIndices[i];
+        if (m_groups[gIdx].rssUpperBound <= threshold) break;
+        secondaryGroups.push_back(gIdx);
+    }
+
+    if (!secondaryGroups.empty()) {
+        std::vector<int> secProcs;
+        for (int gIdx : secondaryGroups) {
+            m_groups[gIdx].pssResolved = true;
+            int pIdx = groupHead[gIdx];
+            while (pIdx != -1) {
+                secProcs.push_back(pIdx);
+                pIdx = nextMember[pIdx];
+            }
+        }
+
+        std::atomic<int> remaining(static_cast<int>(secProcs.size()));
+        std::mutex doneMutex;
+        std::condition_variable doneCv;
+
+        for (int pIdx : secProcs) {
+            m_pool->enqueue([&, pIdx, procFd] {
+                char pbuf[64];
+                snprintf(pbuf, sizeof(pbuf), "%d/smaps_rollup", m_rawProcs[pIdx].pid);
+                int smapsFd = openat(procFd, pbuf, O_RDONLY);
+                if (smapsFd >= 0) {
+                    char smapsBuf[384];
+                    ssize_t sn = read(smapsFd, smapsBuf, sizeof(smapsBuf) - 1);
+                    close(smapsFd);
+                    if (sn > 0) {
+                        smapsBuf[sn] = '\0';
+                        const char *pssPtr = strstr(smapsBuf, "\nPss:");
+                        if (pssPtr) {
+                            m_rawProcs[pIdx].finalMemKb = std::strtoull(pssPtr + 5, nullptr, 10);
+                        }
+                    }
+                }
+                if (--remaining == 0) {
+                    std::unique_lock<std::mutex> lk(doneMutex);
+                    doneCv.notify_one();
+                }
+            });
+        }
+
+        {
+            std::unique_lock<std::mutex> lk(doneMutex);
+            doneCv.wait(lk, [&] { return remaining.load() == 0; });
+        }
+
+        for (int gIdx : secondaryGroups) {
+            auto &g = m_groups[gIdx];
+            g.actualMem = 0;
+            g.maxChildMem = 0;
+            g.maxChildPid = 0;
+            g.maxChildComm = nullptr;
+
+            int pIdx = groupHead[gIdx];
+            while (pIdx != -1) {
+                const auto &proc = m_rawProcs[pIdx];
+                g.actualMem += proc.finalMemKb;
+                if (g.maxChildComm == nullptr || proc.finalMemKb >= g.maxChildMem) {
+                    g.maxChildMem = proc.finalMemKb;
+                    g.maxChildComm = proc.comm;
+                    g.maxChildPid = proc.pid;
+                }
+                pIdx = nextMember[pIdx];
+            }
+        }
+    }
+
+    closedir(procDir);
+
     m_items.clear();
-    for (const auto &[rootPid, g] : m_groups) {
-        double memPct = (memTotalKb > 0) ? (100.0 * static_cast<double>(g.rss) / static_cast<double>(memTotalKb)) : 0.0;
+    for (const auto &g : m_groups) {
+        if (!g.pssResolved) continue;
+        double memPct = (m_memTotalKb > 0) ? (100.0 * static_cast<double>(g.actualMem) / static_cast<double>(m_memTotalKb)) : 0.0;
         double cpuPct = (deltaTotalJiffies > 0) ? (100.0 * static_cast<double>(g.cpuDelta) * static_cast<double>(m_nCpu) / static_cast<double>(deltaTotalJiffies)) : 0.0;
 
         ProcessItem item;
-        item.name = g.maxChildName;
+        item.name = g.maxChildComm ? g.maxChildComm : "";
         item.mem = memPct;
         item.cpu = cpuPct;
-        item.rss = g.rss;
+        item.rss = g.actualMem;
         item.count = g.count;
         item.mpid = g.maxChildPid;
         m_items.push_back(std::move(item));
