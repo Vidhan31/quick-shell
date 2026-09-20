@@ -1,5 +1,5 @@
 //@ pragma UseQApplication
-//@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/plugins/topprocesses/build/imports:/home/dev/Projects/quick-shell/plugins/privacy/build/imports:/home/dev/Projects/quick-shell/plugins/ethernet/build/imports:/home/dev/Projects/quick-shell/plugins/tailscale/build/imports:/home/dev/Projects/quick-shell/plugins/media/build/imports:/home/dev/Projects/quick-shell/plugins/notifications/build/imports
+//@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/plugins/topprocesses/build/imports:/home/dev/Projects/quick-shell/plugins/privacy/build/imports:/home/dev/Projects/quick-shell/plugins/ethernet/build/imports:/home/dev/Projects/quick-shell/plugins/tailscale/build/imports:/home/dev/Projects/quick-shell/plugins/media/build/imports:/home/dev/Projects/quick-shell/plugins/notifications/build/imports:/home/dev/Projects/quick-shell/plugins/tokenusage/build/imports
 // Shell.qml — Main Quickshell entrypoint for the desktop bar.
 // Docs:
 // - PanelWindow: anchors, height, color, screen
@@ -101,8 +101,82 @@ ShellRoot {
             ethPopup.visible = false;
             privacyPopup.visible = false;
             notifPopup.visible = false;
+            tokenPopup.visible = false;
             procPopup.visible = !procPopup.visible;
           }
+        }
+      }
+
+      // OpenCode token chip — manual refresh only, popup below.
+      Item {
+        id: tokenHit
+        anchors {
+          left: sysStatsHit.right
+          leftMargin: 8
+          verticalCenter: parent.verticalCenter
+        }
+        width: tokenBarWidget.width + 16
+        height: 24
+
+        Rectangle {
+          id: tokenBg
+          anchors.fill: parent
+          radius: 6
+          color: tokenPopup.visible ? "#45475a" : (tokenMouse.containsMouse ? "#3b3e52" : "#313244")
+          border.color: tokenPopup.visible ? "#89b4fa" : (tokenMouse.containsMouse ? "#585b70" : "transparent")
+          border.width: 1
+
+          Behavior on color { ColorAnimation { duration: 120 } }
+          Behavior on border.color { ColorAnimation { duration: 120 } }
+        }
+
+        TokenWidget {
+          id: tokenBarWidget
+          anchors.centerIn: parent
+        }
+
+        MouseArea {
+          id: tokenMouse
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          hoverEnabled: true
+          onClicked: {
+            trayWidget.closePopup();
+            procPopup.visible = false;
+            mediaPopup.visible = false;
+            calPopup.visible = false;
+            tsPopup.visible = false;
+            ethPopup.visible = false;
+            privacyPopup.visible = false;
+            notifPopup.visible = false;
+            tokenPopup.visible = !tokenPopup.visible;
+          }
+        }
+      }
+
+      PopupWindow {
+        id: tokenPopup
+        anchor.window: bar
+        anchor.rect.x: Math.max(8, Math.min(tokenHit.x + tokenHit.width / 2 - tokenControlCenter.implicitWidth / 2, bar.width - tokenControlCenter.implicitWidth - 12))
+        anchor.rect.y: bar.implicitHeight + 6
+        visible: false
+        grabFocus: true
+        implicitWidth: tokenControlCenter.implicitWidth
+        implicitHeight: tokenControlCenter.implicitHeight
+        color: "transparent"
+
+        onVisibleChanged: {
+          if (!visible)
+            tokenControlCenter.hideTip();
+        }
+
+        TokenControlCenter {
+          id: tokenControlCenter
+          anchors.fill: parent
+          monitor: tokenBarWidget.monitor
+          barWindow: bar
+          popupWindow: tokenPopup
+          onTriggerRefresh: tokenBarWidget.refresh()
         }
       }
 
@@ -142,6 +216,7 @@ ShellRoot {
           privacyPopup.visible = false;
           notifPopup.visible = false;
           calPopup.visible = false;
+          tokenPopup.visible = false;
         }
       }
 
@@ -192,6 +267,7 @@ ShellRoot {
               ethPopup.visible = false;
               privacyPopup.visible = false;
               notifPopup.visible = false;
+              tokenPopup.visible = false;
               mediaPopup.visible = !mediaPopup.visible;
             }
           }
@@ -220,7 +296,7 @@ ShellRoot {
       Item {
         id: tsHit
         anchors {
-          left: sysStatsHit.right
+          left: tokenHit.right
           leftMargin: 8
           verticalCenter: parent.verticalCenter
         }
@@ -257,6 +333,7 @@ ShellRoot {
             ethPopup.visible = false;
             privacyPopup.visible = false;
             notifPopup.visible = false;
+            tokenPopup.visible = false;
             tsPopup.visible = !tsPopup.visible;
           }
         }
@@ -323,6 +400,7 @@ ShellRoot {
             calPopup.visible = false;
             privacyPopup.visible = false;
             notifPopup.visible = false;
+            tokenPopup.visible = false;
             ethPopup.visible = !ethPopup.visible;
           }
         }
@@ -376,6 +454,7 @@ ShellRoot {
             ethPopup.visible = false;
             tsPopup.visible = false;
             notifPopup.visible = false;
+            tokenPopup.visible = false;
             privacyPopup.visible = !privacyPopup.visible;
           }
         }
@@ -441,6 +520,7 @@ ShellRoot {
             tsPopup.visible = false;
             ethPopup.visible = false;
             privacyPopup.visible = false;
+            tokenPopup.visible = false;
             notifPopup.visible = !notifPopup.visible;
           }
         }
@@ -539,6 +619,7 @@ ShellRoot {
             ethPopup.visible = false;
             privacyPopup.visible = false;
             notifPopup.visible = false;
+            tokenPopup.visible = false;
             calPopup.visible = !calPopup.visible;
           }
         }
