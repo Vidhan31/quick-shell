@@ -1,5 +1,5 @@
 //@ pragma UseQApplication
-//@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/plugins/topprocesses/build/imports:/home/dev/Projects/quick-shell/plugins/privacy/build/imports:/home/dev/Projects/quick-shell/plugins/ethernet/build/imports:/home/dev/Projects/quick-shell/plugins/tailscale/build/imports:/home/dev/Projects/quick-shell/plugins/media/build/imports:/home/dev/Projects/quick-shell/plugins/notifications/build/imports:/home/dev/Projects/quick-shell/plugins/tokenusage/build/imports
+//@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/plugins/topprocesses/build/imports:/home/dev/Projects/quick-shell/plugins/privacy/build/imports:/home/dev/Projects/quick-shell/plugins/ethernet/build/imports:/home/dev/Projects/quick-shell/plugins/tailscale/build/imports:/home/dev/Projects/quick-shell/plugins/media/build/imports:/home/dev/Projects/quick-shell/plugins/notifications/build/imports:/home/dev/Projects/quick-shell/plugins/tokenusage/build/imports:/home/dev/Projects/quick-shell/plugins/antigravityusage/build/imports
 // Shell.qml — Main Quickshell entrypoint for the desktop bar.
 // Docs:
 // - PanelWindow: anchors, height, color, screen
@@ -102,6 +102,7 @@ ShellRoot {
             privacyPopup.visible = false;
             notifPopup.visible = false;
             tokenPopup.visible = false;
+            agPopup.visible = false;
             procPopup.visible = !procPopup.visible;
           }
         }
@@ -149,6 +150,7 @@ ShellRoot {
             ethPopup.visible = false;
             privacyPopup.visible = false;
             notifPopup.visible = false;
+            agPopup.visible = false;
             tokenPopup.visible = !tokenPopup.visible;
           }
         }
@@ -177,6 +179,80 @@ ShellRoot {
           barWindow: bar
           popupWindow: tokenPopup
           onTriggerRefresh: tokenBarWidget.refresh()
+        }
+      }
+
+      // Antigravity token chip — fully separate from the OpenCode chip above.
+      Item {
+        id: agHit
+        anchors {
+          left: tokenHit.right
+          leftMargin: 8
+          verticalCenter: parent.verticalCenter
+        }
+        width: agBarWidget.width + 16
+        height: 24
+
+        Rectangle {
+          id: agBg
+          anchors.fill: parent
+          radius: 6
+          color: agPopup.visible ? "#45475a" : (agMouse.containsMouse ? "#3b3e52" : "#313244")
+          border.color: agPopup.visible ? "#89b4fa" : (agMouse.containsMouse ? "#585b70" : "transparent")
+          border.width: 1
+
+          Behavior on color { ColorAnimation { duration: 120 } }
+          Behavior on border.color { ColorAnimation { duration: 120 } }
+        }
+
+        AntigravityWidget {
+          id: agBarWidget
+          anchors.centerIn: parent
+        }
+
+        MouseArea {
+          id: agMouse
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          hoverEnabled: true
+          onClicked: {
+            trayWidget.closePopup();
+            procPopup.visible = false;
+            mediaPopup.visible = false;
+            calPopup.visible = false;
+            tsPopup.visible = false;
+            ethPopup.visible = false;
+            privacyPopup.visible = false;
+            notifPopup.visible = false;
+            tokenPopup.visible = false;
+            agPopup.visible = !agPopup.visible;
+          }
+        }
+      }
+
+      PopupWindow {
+        id: agPopup
+        anchor.window: bar
+        anchor.rect.x: Math.max(8, Math.min(agHit.x + agHit.width / 2 - agControlCenter.implicitWidth / 2, bar.width - agControlCenter.implicitWidth - 12))
+        anchor.rect.y: bar.implicitHeight + 6
+        visible: false
+        grabFocus: true
+        implicitWidth: agControlCenter.implicitWidth
+        implicitHeight: agControlCenter.implicitHeight
+        color: "transparent"
+
+        onVisibleChanged: {
+          if (!visible)
+            agControlCenter.hideTip();
+        }
+
+        AntigravityControlCenter {
+          id: agControlCenter
+          anchors.fill: parent
+          monitor: agBarWidget.monitor
+          barWindow: bar
+          popupWindow: agPopup
+          onTriggerRefresh: agBarWidget.refresh()
         }
       }
 
@@ -217,6 +293,7 @@ ShellRoot {
           notifPopup.visible = false;
           calPopup.visible = false;
           tokenPopup.visible = false;
+            agPopup.visible = false;
         }
       }
 
@@ -268,6 +345,7 @@ ShellRoot {
               privacyPopup.visible = false;
               notifPopup.visible = false;
               tokenPopup.visible = false;
+            agPopup.visible = false;
               mediaPopup.visible = !mediaPopup.visible;
             }
           }
@@ -296,7 +374,7 @@ ShellRoot {
       Item {
         id: tsHit
         anchors {
-          left: tokenHit.right
+          left: agHit.right
           leftMargin: 8
           verticalCenter: parent.verticalCenter
         }
@@ -334,6 +412,7 @@ ShellRoot {
             privacyPopup.visible = false;
             notifPopup.visible = false;
             tokenPopup.visible = false;
+            agPopup.visible = false;
             tsPopup.visible = !tsPopup.visible;
           }
         }
@@ -401,6 +480,7 @@ ShellRoot {
             privacyPopup.visible = false;
             notifPopup.visible = false;
             tokenPopup.visible = false;
+            agPopup.visible = false;
             ethPopup.visible = !ethPopup.visible;
           }
         }
@@ -455,6 +535,7 @@ ShellRoot {
             tsPopup.visible = false;
             notifPopup.visible = false;
             tokenPopup.visible = false;
+            agPopup.visible = false;
             privacyPopup.visible = !privacyPopup.visible;
           }
         }
@@ -521,6 +602,7 @@ ShellRoot {
             ethPopup.visible = false;
             privacyPopup.visible = false;
             tokenPopup.visible = false;
+            agPopup.visible = false;
             notifPopup.visible = !notifPopup.visible;
           }
         }
@@ -620,6 +702,7 @@ ShellRoot {
             privacyPopup.visible = false;
             notifPopup.visible = false;
             tokenPopup.visible = false;
+            agPopup.visible = false;
             calPopup.visible = !calPopup.visible;
           }
         }

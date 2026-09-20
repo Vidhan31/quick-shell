@@ -155,10 +155,9 @@ bool collectFromDb(const QString &path,
     {
         QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
         db.setDatabaseName(path);
-        // Documented QSQLITE options: read-only open that fails when the file
-        // is missing, plus a bounded wait on a locked writer.
-        // https://doc.qt.io/qt-6/sql-driver.html
-        db.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY=1;QSQLITE_BUSY_TIMEOUT=250"));
+        // QSQLITE_OPEN_READONLY is a flag (not key=value) documented in Qt SQL:
+        // https://doc.qt.io/qt-6/sql-driver.html#qsqlite
+        db.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY;QSQLITE_BUSY_TIMEOUT=250"));
         if (!db.open()) {
             *error = db.lastError().text();
             QSqlDatabase::removeDatabase(connectionName);
