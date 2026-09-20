@@ -53,6 +53,7 @@ public:
     static void checkWpctl(PrivacyState &state);
 
     static QString getV4LDeviceName(const QString &vname);
+    static bool isPipeWireRunning();
 };
 
 } // namespace qs::plugins

@@ -38,6 +38,20 @@ QString PrivacyProbe::getV4LDeviceName(const QString &vname) {
     return QStringLiteral("Camera (") + vname + QStringLiteral(")");
 }
 
+bool PrivacyProbe::isPipeWireRunning() {
+    const char *runtimeDir = getenv("XDG_RUNTIME_DIR");
+    if (runtimeDir && *runtimeDir) {
+        char socketPath[PATH_MAX];
+        snprintf(socketPath, sizeof(socketPath), "%s/pipewire-0", runtimeDir);
+        if (access(socketPath, F_OK) == 0) {
+            return true;
+        }
+    }
+    char fallbackPath[PATH_MAX];
+    snprintf(fallbackPath, sizeof(fallbackPath), "/run/user/%u/pipewire-0", getuid());
+    return access(fallbackPath, F_OK) == 0;
+}
+
 bool PrivacyProbe::checkAlsaCapture(PrivacyState &state) {
     DIR *asoundDir = opendir("/proc/asound");
     if (!asoundDir) {
@@ -76,34 +90,96 @@ bool PrivacyProbe::checkAlsaCapture(PrivacyState &state) {
                     sbuf[sn] = '\0';
                     if (strstr(sbuf, "RUNNING") != nullptr) {
                         activeFound = true;
-                        state.micActive = true;
-
-                        char idPath[PATH_MAX];
-                        snprintf(idPath, sizeof(idPath), "/proc/asound/%s/id", cardEntry->d_name);
-                        const int ifd = open(idPath, O_RDONLY);
-                        QString cardName = QStringLiteral("Microphone");
-                        if (ifd >= 0) {
-                            char ibuf[64] = {0};
-                            ssize_t in = read(ifd, ibuf, sizeof(ibuf) - 1);
-                            close(ifd);
-                            if (in > 0) {
-                                while (in > 0 && (ibuf[in - 1] == '\n' || ibuf[in - 1] == '\r')) {
-                                    ibuf[--in] = '\0';
-                                }
-                                cardName = QString::fromUtf8(ibuf);
-                            }
-                        }
-                        if (!state.micDevices.contains(cardName)) {
-                            state.micDevices.append(cardName);
-                        }
+                        break;
                     }
                 }
             }
         }
         closedir(cardDir);
+        if (activeFound) break;
     }
     closedir(asoundDir);
-    return activeFound;
+
+    if (!activeFound) {
+        return false;
+    }
+
+    // If PipeWire is running, PipeWire is the audio server and manages ALSA capture devices.
+    // To avoid false positives (e.g. suspend timeouts, loopbacks, or noise filters),
+    // we only flag direct ALSA capture if a process OTHER than pipewire/wireplumber
+    // holds /dev/snd/pcm*c open.
+    if (isPipeWireRunning()) {
+        DIR *procDir = opendir("/proc");
+        if (!procDir) return false;
+
+        const uid_t myUid = getuid();
+        const int procFd = dirfd(procDir);
+        struct dirent *procEntry;
+        bool nonPwFound = false;
+
+        while ((procEntry = readdir(procDir)) != nullptr) {
+            if (procEntry->d_name[0] < '0' || procEntry->d_name[0] > '9') continue;
+
+            struct stat st;
+            if (fstatat(procFd, procEntry->d_name, &st, AT_SYMLINK_NOFOLLOW) != 0) continue;
+            if (st.st_uid != myUid) continue;
+
+            const int pid = atoi(procEntry->d_name);
+            char fdPath[64];
+            snprintf(fdPath, sizeof(fdPath), "/proc/%d/fd", pid);
+            DIR *d = opendir(fdPath);
+            if (!d) continue;
+
+            const int dfd = dirfd(d);
+            struct dirent *fe;
+            char target[PATH_MAX];
+
+            while ((fe = readdir(d)) != nullptr) {
+                if (fe->d_name[0] == '.') continue;
+                const ssize_t len = readlinkat(dfd, fe->d_name, target, sizeof(target) - 1);
+                if (len > 12 && strncmp(target, "/dev/snd/pcm", 12) == 0 && target[len - 1] == 'c') {
+                    target[len] = '\0';
+
+                    char commPath[64];
+                    snprintf(commPath, sizeof(commPath), "/proc/%d/comm", pid);
+                    char commBuf[64] = {0};
+                    const int cfd = open(commPath, O_RDONLY);
+                    if (cfd >= 0) {
+                        ssize_t clen = read(cfd, commBuf, sizeof(commBuf) - 1);
+                        close(cfd);
+                        if (clen > 0) {
+                            while (clen > 0 && (commBuf[clen - 1] == '\n' || commBuf[clen - 1] == '\r')) {
+                                commBuf[--clen] = '\0';
+                            }
+                        }
+                    }
+
+                    if (strcmp(commBuf, "pipewire") == 0 || strcmp(commBuf, "wireplumber") == 0) {
+                        continue;
+                    }
+
+                    const QString appName = (commBuf[0] != '\0') ? QString::fromUtf8(commBuf) : QStringLiteral("ALSA App");
+                    if (!state.micApps.contains(appName)) {
+                        state.micApps.append(appName);
+                    }
+                    if (!state.micDevices.contains(QStringLiteral("Direct ALSA Capture"))) {
+                        state.micDevices.append(QStringLiteral("Direct ALSA Capture"));
+                    }
+                    state.micActive = true;
+                    nonPwFound = true;
+                }
+            }
+            closedir(d);
+        }
+        closedir(procDir);
+        return nonPwFound;
+    }
+
+    state.micActive = true;
+    if (state.micDevices.isEmpty()) {
+        state.micDevices.append(QStringLiteral("Microphone"));
+    }
+    return true;
 }
 
 bool PrivacyProbe::checkV4L2Fast(PrivacyState &state) {
@@ -257,9 +333,14 @@ void PrivacyProbe::resolvePipeWireMetadata(PrivacyState &state) {
 
     for (const auto &link : links) {
         const QJsonObject info = link.value(QStringLiteral("info")).toObject();
+        const QString linkState = info.value(QStringLiteral("state")).toString();
         const QJsonObject props = info.value(QStringLiteral("props")).toObject();
-        const int outId = props.value(QStringLiteral("link.output.node")).toInt();
-        const int inId = props.value(QStringLiteral("link.input.node")).toInt();
+
+        int outId = props.value(QStringLiteral("link.output.node")).toInt();
+        if (outId <= 0) outId = info.value(QStringLiteral("output-node-id")).toInt();
+
+        int inId = props.value(QStringLiteral("link.input.node")).toInt();
+        if (inId <= 0) inId = info.value(QStringLiteral("input-node-id")).toInt();
 
         const auto outIt = nodes.constFind(outId);
         const auto inIt = nodes.constFind(inId);
@@ -269,20 +350,62 @@ void PrivacyProbe::resolvePipeWireMetadata(PrivacyState &state) {
 
         const QJsonObject outNode = *outIt;
         const QJsonObject inNode = *inIt;
-        const QJsonObject outProps = outNode.value(QStringLiteral("info")).toObject().value(QStringLiteral("props")).toObject();
-        const QJsonObject inProps = inNode.value(QStringLiteral("info")).toObject().value(QStringLiteral("props")).toObject();
+        const QJsonObject outInfo = outNode.value(QStringLiteral("info")).toObject();
+        const QJsonObject inInfo = inNode.value(QStringLiteral("info")).toObject();
+
+        const QJsonObject outProps = outInfo.value(QStringLiteral("props")).toObject();
+        const QJsonObject inProps = inInfo.value(QStringLiteral("props")).toObject();
 
         const QString outClass = outProps.value(QStringLiteral("media.class")).toString();
         const QString inClass = inProps.value(QStringLiteral("media.class")).toString();
+        const QString inNodeState = inInfo.value(QStringLiteral("state")).toString();
+        const QString outNodeState = outInfo.value(QStringLiteral("state")).toString();
+
+        const bool linkIsActive = (linkState == QLatin1String("active"));
+        const bool inIsRunning = (inNodeState == QLatin1String("running"));
+        const bool outIsRunning = (outNodeState == QLatin1String("running"));
 
         // 1. Microphone recording link
-        if (outClass == QLatin1String("Audio/Source") && inClass == QLatin1String("Stream/Input/Audio")) {
-            state.micActive = true;
+        if (outClass == QLatin1String("Audio/Source") &&
+            (inClass.startsWith(QLatin1String("Stream/Input/Audio")) || inClass == QLatin1String("Stream/Input"))) {
+
+            // Exclude monitor sources (e.g. system playback capture)
+            const bool isMonitor = (outProps.value(QStringLiteral("device.class")).toString() == QLatin1String("monitor")) ||
+                                   outProps.value(QStringLiteral("node.name")).toString().endsWith(QLatin1String(".monitor")) ||
+                                   inProps.value(QStringLiteral("stream.is-monitor")).toBool() ||
+                                   inProps.value(QStringLiteral("node.name")).toString().endsWith(QLatin1String(".monitor"));
+
+            if (isMonitor) continue;
+
+            const bool isActiveCapture = linkIsActive && (inIsRunning || inNodeState.isEmpty()) &&
+                                         (inNodeState != QLatin1String("paused")) &&
+                                         (inNodeState != QLatin1String("suspended"));
+
+            if (!isActiveCapture) continue;
 
             QString appName = inProps.value(QStringLiteral("application.name")).toString();
+            if (appName.isEmpty()) appName = inProps.value(QStringLiteral("pipewire.access.portal.app_id")).toString();
+            if (appName.isEmpty()) appName = inProps.value(QStringLiteral("application.process.binary")).toString();
             if (appName.isEmpty()) appName = inProps.value(QStringLiteral("node.name")).toString();
             if (appName.isEmpty()) appName = inNode.value(QStringLiteral("info")).toObject().value(QStringLiteral("name")).toString();
             if (appName.isEmpty()) appName = QStringLiteral("Recording App");
+
+            static const QStringList ignoredApps = {
+                QStringLiteral("pavucontrol"),
+                QStringLiteral("plasma-pa"),
+                QStringLiteral("systemsettings"),
+                QStringLiteral("gnome-control-center")
+            };
+            bool ignoreApp = false;
+            for (const auto &ign : ignoredApps) {
+                if (appName.compare(ign, Qt::CaseInsensitive) == 0) {
+                    ignoreApp = true;
+                    break;
+                }
+            }
+            if (ignoreApp) continue;
+
+            state.micActive = true;
 
             QString sourceDesc = outProps.value(QStringLiteral("node.description")).toString();
             if (sourceDesc.isEmpty()) sourceDesc = outProps.value(QStringLiteral("node.nick")).toString();
@@ -293,10 +416,18 @@ void PrivacyProbe::resolvePipeWireMetadata(PrivacyState &state) {
         }
 
         // 2. Video capture link
-        if (outClass == QLatin1String("Video/Source")) {
+        if (outClass == QLatin1String("Video/Source") || inClass.startsWith(QLatin1String("Stream/Input/Video"))) {
+            const bool isActiveVideo = (linkIsActive || inIsRunning || outIsRunning) &&
+                                       (linkState != QLatin1String("paused")) &&
+                                       (inNodeState != QLatin1String("paused"));
+
+            if (!isActiveVideo) continue;
+
             state.cameraActive = true;
 
             QString appName = inProps.value(QStringLiteral("application.name")).toString();
+            if (appName.isEmpty()) appName = inProps.value(QStringLiteral("pipewire.access.portal.app_id")).toString();
+            if (appName.isEmpty()) appName = inProps.value(QStringLiteral("application.process.binary")).toString();
             if (appName.isEmpty()) appName = inProps.value(QStringLiteral("node.name")).toString();
             if (appName.isEmpty()) appName = inNode.value(QStringLiteral("info")).toObject().value(QStringLiteral("name")).toString();
             if (appName.isEmpty()) appName = QStringLiteral("Camera App");
@@ -306,6 +437,22 @@ void PrivacyProbe::resolvePipeWireMetadata(PrivacyState &state) {
             if (camDesc.isEmpty()) camDesc = QStringLiteral("Webcam");
 
             if (!state.cameraApps.contains(appName)) state.cameraApps.append(appName);
+            if (!state.cameraDevices.contains(camDesc)) state.cameraDevices.append(camDesc);
+        }
+    }
+
+    for (auto it = nodes.constBegin(); it != nodes.constEnd(); ++it) {
+        const QJsonObject node = it.value();
+        const QJsonObject info = node.value(QStringLiteral("info")).toObject();
+        const QString nodeState = info.value(QStringLiteral("state")).toString();
+        const QJsonObject props = info.value(QStringLiteral("props")).toObject();
+        const QString mediaClass = props.value(QStringLiteral("media.class")).toString();
+
+        if (mediaClass == QLatin1String("Video/Source") && nodeState == QLatin1String("running")) {
+            state.cameraActive = true;
+            QString camDesc = props.value(QStringLiteral("node.description")).toString();
+            if (camDesc.isEmpty()) camDesc = props.value(QStringLiteral("node.nick")).toString();
+            if (camDesc.isEmpty()) camDesc = QStringLiteral("Webcam");
             if (!state.cameraDevices.contains(camDesc)) state.cameraDevices.append(camDesc);
         }
     }
@@ -348,6 +495,21 @@ void PrivacyProbe::checkWpctl(PrivacyState &state) {
                 currApp = match.captured(2).trimmed();
             }
             if (line.contains(QLatin1Char('<')) && line.contains(QLatin1String("[active]"))) {
+                static const QStringList ignoredApps = {
+                    QStringLiteral("pavucontrol"),
+                    QStringLiteral("plasma-pa"),
+                    QStringLiteral("systemsettings"),
+                    QStringLiteral("gnome-control-center")
+                };
+                bool ignoreApp = false;
+                for (const auto &ign : ignoredApps) {
+                    if (currApp.compare(ign, Qt::CaseInsensitive) == 0) {
+                        ignoreApp = true;
+                        break;
+                    }
+                }
+                if (ignoreApp) continue;
+
                 state.micActive = true;
                 if (!currApp.isEmpty() && !state.micApps.contains(currApp)) {
                     state.micApps.append(currApp);
@@ -363,11 +525,16 @@ void PrivacyProbe::checkWpctl(PrivacyState &state) {
 PrivacyState PrivacyProbe::probe(bool forceDeepQuery) {
     PrivacyState state;
 
-    const bool alsaActive = checkAlsaCapture(state);
-    const bool v4lActive = checkV4L2Fast(state);
-
-    if (forceDeepQuery || alsaActive || v4lActive) {
+    const bool pwRunning = isPipeWireRunning();
+    if (pwRunning || forceDeepQuery) {
         resolvePipeWireMetadata(state);
+    }
+
+    if (!state.cameraActive) {
+        checkV4L2Fast(state);
+    }
+    if (!state.micActive) {
+        checkAlsaCapture(state);
     }
 
     return state;

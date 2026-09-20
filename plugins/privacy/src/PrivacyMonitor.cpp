@@ -24,9 +24,25 @@ PrivacyWorker::~PrivacyWorker() {
 void PrivacyWorker::start() {
     setupInotify();
     setupPwProcess();
+
+    if (!m_pollTimer) {
+        m_pollTimer = new QTimer(this);
+        connect(m_pollTimer, &QTimer::timeout, this, [this]() {
+            if (!m_pwProcess || m_pwProcess->state() == QProcess::NotRunning) {
+                setupPwProcess();
+            } else if (m_lastState.micActive || m_lastState.cameraActive) {
+                // Periodically re-evaluate active state to ensure no stale flags
+                evaluatePrivacyState();
+            }
+        });
+    }
+    m_pollTimer->start(m_intervalMs > 0 ? m_intervalMs : 800);
 }
 
 void PrivacyWorker::stop() {
+    if (m_pollTimer) {
+        m_pollTimer->stop();
+    }
     if (m_debounceTimer) {
         m_debounceTimer->stop();
     }
@@ -36,6 +52,9 @@ void PrivacyWorker::stop() {
 
 void PrivacyWorker::setInterval(int intervalMs) {
     m_intervalMs = intervalMs;
+    if (m_pollTimer && m_pollTimer->isActive()) {
+        m_pollTimer->start(m_intervalMs > 0 ? m_intervalMs : 800);
+    }
 }
 
 void PrivacyWorker::sample() {
@@ -51,6 +70,7 @@ void PrivacyWorker::setupPwProcess() {
     stopPwProcess();
 
     m_pwBuffer.clear();
+    m_scannedIdx = 0;
     m_bracketDepth = 0;
     m_inString = false;
     m_escape = false;
@@ -85,6 +105,7 @@ void PrivacyWorker::stopPwProcess() {
     m_nodes.clear();
     m_links.clear();
     m_pwBuffer.clear();
+    m_scannedIdx = 0;
     m_bracketDepth = 0;
     m_inString = false;
     m_escape = false;
@@ -98,6 +119,14 @@ void PrivacyWorker::onPwStdoutReady() {
 
 void PrivacyWorker::onPwError(QProcess::ProcessError error) {
     Q_UNUSED(error);
+    if (!m_restartTimer) {
+        m_restartTimer = new QTimer(this);
+        m_restartTimer->setSingleShot(true);
+        connect(m_restartTimer, &QTimer::timeout, this, &PrivacyWorker::setupPwProcess);
+    }
+    if (!m_restartTimer->isActive()) {
+        m_restartTimer->start(1000);
+    }
 }
 
 void PrivacyWorker::onPwFinished(int exitCode, QProcess::ExitStatus exitStatus) {
@@ -106,9 +135,12 @@ void PrivacyWorker::onPwFinished(int exitCode, QProcess::ExitStatus exitStatus) 
     m_nodes.clear();
     m_links.clear();
     m_pwBuffer.clear();
+    m_scannedIdx = 0;
     m_bracketDepth = 0;
     m_inString = false;
     m_escape = false;
+
+    evaluatePrivacyState();
 
     if (!m_restartTimer) {
         m_restartTimer = new QTimer(this);
@@ -119,40 +151,73 @@ void PrivacyWorker::onPwFinished(int exitCode, QProcess::ExitStatus exitStatus) 
 }
 
 void PrivacyWorker::processPwBuffer() {
-    int startIdx = -1;
     bool graphChanged = false;
 
-    for (int i = 0; i < m_pwBuffer.size(); ++i) {
-        char ch = m_pwBuffer.at(i);
-
-        if (m_inString) {
-            if (m_escape) {
-                m_escape = false;
-            } else if (ch == '\\') {
-                m_escape = true;
-            } else if (ch == '"') {
+    while (!m_pwBuffer.isEmpty()) {
+        if (m_bracketDepth == 0) {
+            int firstBracket = -1;
+            for (int i = 0; i < m_pwBuffer.size(); ++i) {
+                if (m_pwBuffer.at(i) == '[') {
+                    firstBracket = i;
+                    break;
+                }
+            }
+            if (firstBracket < 0) {
+                m_pwBuffer.clear();
+                m_scannedIdx = 0;
                 m_inString = false;
+                m_escape = false;
+                break;
             }
-        } else {
-            if (ch == '"') {
-                m_inString = true;
-            } else if (ch == '[') {
-                if (m_bracketDepth == 0) {
-                    startIdx = i;
+            if (firstBracket > 0) {
+                m_pwBuffer.remove(0, firstBracket);
+            }
+            m_scannedIdx = 0;
+            m_bracketDepth = 0;
+            m_inString = false;
+            m_escape = false;
+        }
+
+        int matchEnd = -1;
+        for (int i = m_scannedIdx; i < m_pwBuffer.size(); ++i) {
+            const char ch = m_pwBuffer.at(i);
+
+            if (m_inString) {
+                if (m_escape) {
+                    m_escape = false;
+                } else if (ch == '\\') {
+                    m_escape = true;
+                } else if (ch == '"') {
+                    m_inString = false;
                 }
-                m_bracketDepth++;
-            } else if (ch == ']') {
-                m_bracketDepth--;
-                if (m_bracketDepth == 0 && startIdx != -1) {
-                    const QByteArray chunk = m_pwBuffer.mid(startIdx, i - startIdx + 1);
-                    if (handleJsonArray(chunk)) {
-                        graphChanged = true;
+            } else {
+                if (ch == '"') {
+                    m_inString = true;
+                } else if (ch == '[') {
+                    m_bracketDepth++;
+                } else if (ch == ']') {
+                    m_bracketDepth--;
+                    if (m_bracketDepth == 0) {
+                        matchEnd = i;
+                        break;
                     }
-                    startIdx = -1;
-                    m_pwBuffer.remove(0, i + 1);
-                    i = -1;
                 }
             }
+        }
+
+        if (matchEnd >= 0) {
+            const QByteArray chunk = m_pwBuffer.left(matchEnd + 1);
+            if (handleJsonArray(chunk)) {
+                graphChanged = true;
+            }
+            m_pwBuffer.remove(0, matchEnd + 1);
+            m_scannedIdx = 0;
+            m_bracketDepth = 0;
+            m_inString = false;
+            m_escape = false;
+        } else {
+            m_scannedIdx = m_pwBuffer.size();
+            break;
         }
     }
 
@@ -185,10 +250,28 @@ bool PrivacyWorker::handleJsonArray(const QByteArray &chunk) {
         if (id <= 0) continue;
 
         const bool isRemoval = (obj.contains(QStringLiteral("info")) && obj.value(QStringLiteral("info")).isNull()) ||
+                              (obj.contains(QStringLiteral("props")) && obj.value(QStringLiteral("props")).isNull()) ||
                               (!obj.contains(QStringLiteral("type")) && !obj.contains(QStringLiteral("info")));
 
         if (isRemoval) {
-            if (m_nodes.remove(id) > 0 || m_links.remove(id) > 0) {
+            if (m_nodes.remove(id) > 0) {
+                changed = true;
+                for (auto it = m_links.begin(); it != m_links.end();) {
+                    const QJsonObject lInfo = it.value().value(QStringLiteral("info")).toObject();
+                    const QJsonObject lProps = lInfo.value(QStringLiteral("props")).toObject();
+                    int outId = lProps.value(QStringLiteral("link.output.node")).toInt();
+                    if (outId <= 0) outId = lInfo.value(QStringLiteral("output-node-id")).toInt();
+                    int inId = lProps.value(QStringLiteral("link.input.node")).toInt();
+                    if (inId <= 0) inId = lInfo.value(QStringLiteral("input-node-id")).toInt();
+
+                    if (outId == id || inId == id) {
+                        it = m_links.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+            }
+            if (m_links.remove(id) > 0) {
                 changed = true;
             }
             continue;
@@ -212,10 +295,15 @@ void PrivacyWorker::evaluatePrivacyState() {
     // 1. Check all active PipeWire links
     for (auto it = m_links.constBegin(); it != m_links.constEnd(); ++it) {
         const QJsonObject link = it.value();
-        const QJsonObject info = link.value(QStringLiteral("info")).toObject();
-        const QJsonObject props = info.value(QStringLiteral("props")).toObject();
-        const int outId = props.value(QStringLiteral("link.output.node")).toInt();
-        const int inId = props.value(QStringLiteral("link.input.node")).toInt();
+        const QJsonObject linkInfo = link.value(QStringLiteral("info")).toObject();
+        const QString linkState = linkInfo.value(QStringLiteral("state")).toString();
+        const QJsonObject linkProps = linkInfo.value(QStringLiteral("props")).toObject();
+
+        int outId = linkProps.value(QStringLiteral("link.output.node")).toInt();
+        if (outId <= 0) outId = linkInfo.value(QStringLiteral("output-node-id")).toInt();
+
+        int inId = linkProps.value(QStringLiteral("link.input.node")).toInt();
+        if (inId <= 0) inId = linkInfo.value(QStringLiteral("input-node-id")).toInt();
 
         const auto outIt = m_nodes.constFind(outId);
         const auto inIt = m_nodes.constFind(inId);
@@ -225,48 +313,100 @@ void PrivacyWorker::evaluatePrivacyState() {
 
         const QJsonObject outNode = *outIt;
         const QJsonObject inNode = *inIt;
-        const QJsonObject outProps = outNode.value(QStringLiteral("info")).toObject().value(QStringLiteral("props")).toObject();
-        const QJsonObject inProps = inNode.value(QStringLiteral("info")).toObject().value(QStringLiteral("props")).toObject();
+        const QJsonObject outInfo = outNode.value(QStringLiteral("info")).toObject();
+        const QJsonObject inInfo = inNode.value(QStringLiteral("info")).toObject();
+
+        const QJsonObject outProps = outInfo.value(QStringLiteral("props")).toObject();
+        const QJsonObject inProps = inInfo.value(QStringLiteral("props")).toObject();
 
         const QString outClass = outProps.value(QStringLiteral("media.class")).toString();
         const QString inClass = inProps.value(QStringLiteral("media.class")).toString();
+        const QString inNodeState = inInfo.value(QStringLiteral("state")).toString();
+        const QString outNodeState = outInfo.value(QStringLiteral("state")).toString();
+
+        const bool linkIsActive = (linkState == QLatin1String("active"));
+        const bool inIsRunning = (inNodeState == QLatin1String("running"));
+        const bool outIsRunning = (outNodeState == QLatin1String("running"));
 
         // Microphone recording stream
-        if (outClass == QLatin1String("Audio/Source") && (inClass.startsWith(QLatin1String("Stream/Input")) || inClass == QLatin1String("Stream/Input/Audio"))) {
-            state.micActive = true;
+        if (outClass == QLatin1String("Audio/Source") &&
+            (inClass.startsWith(QLatin1String("Stream/Input/Audio")) || inClass == QLatin1String("Stream/Input"))) {
 
-            QString appName = inProps.value(QStringLiteral("application.name")).toString();
-            if (appName.isEmpty()) appName = inProps.value(QStringLiteral("node.name")).toString();
-            if (appName.isEmpty()) appName = inNode.value(QStringLiteral("info")).toObject().value(QStringLiteral("name")).toString();
-            if (appName.isEmpty()) appName = QStringLiteral("Recording App");
+            // Exclude monitor sources (e.g. system playback capture)
+            const bool isMonitor = (outProps.value(QStringLiteral("device.class")).toString() == QLatin1String("monitor")) ||
+                                   outProps.value(QStringLiteral("node.name")).toString().endsWith(QLatin1String(".monitor")) ||
+                                   inProps.value(QStringLiteral("stream.is-monitor")).toBool() ||
+                                   inProps.value(QStringLiteral("node.name")).toString().endsWith(QLatin1String(".monitor"));
 
-            QString sourceDesc = outProps.value(QStringLiteral("node.description")).toString();
-            if (sourceDesc.isEmpty()) sourceDesc = outProps.value(QStringLiteral("node.nick")).toString();
-            if (sourceDesc.isEmpty()) sourceDesc = QStringLiteral("Microphone");
+            if (!isMonitor) {
+                const bool isActiveCapture = linkIsActive && (inIsRunning || inNodeState.isEmpty()) &&
+                                             (inNodeState != QLatin1String("paused")) &&
+                                             (inNodeState != QLatin1String("suspended"));
 
-            if (!state.micApps.contains(appName)) state.micApps.append(appName);
-            if (!state.micDevices.contains(sourceDesc)) state.micDevices.append(sourceDesc);
+                if (isActiveCapture) {
+                    QString appName = inProps.value(QStringLiteral("application.name")).toString();
+                    if (appName.isEmpty()) appName = inProps.value(QStringLiteral("pipewire.access.portal.app_id")).toString();
+                    if (appName.isEmpty()) appName = inProps.value(QStringLiteral("application.process.binary")).toString();
+                    if (appName.isEmpty()) appName = inProps.value(QStringLiteral("node.name")).toString();
+                    if (appName.isEmpty()) appName = inInfo.value(QStringLiteral("name")).toString();
+                    if (appName.isEmpty()) appName = QStringLiteral("Recording App");
+
+                    static const QStringList ignoredApps = {
+                        QStringLiteral("pavucontrol"),
+                        QStringLiteral("plasma-pa"),
+                        QStringLiteral("systemsettings"),
+                        QStringLiteral("gnome-control-center")
+                    };
+
+                    bool ignoreApp = false;
+                    for (const auto &ign : ignoredApps) {
+                        if (appName.compare(ign, Qt::CaseInsensitive) == 0) {
+                            ignoreApp = true;
+                            break;
+                        }
+                    }
+
+                    if (!ignoreApp) {
+                        state.micActive = true;
+
+                        QString sourceDesc = outProps.value(QStringLiteral("node.description")).toString();
+                        if (sourceDesc.isEmpty()) sourceDesc = outProps.value(QStringLiteral("node.nick")).toString();
+                        if (sourceDesc.isEmpty()) sourceDesc = QStringLiteral("Microphone");
+
+                        if (!state.micApps.contains(appName)) state.micApps.append(appName);
+                        if (!state.micDevices.contains(sourceDesc)) state.micDevices.append(sourceDesc);
+                    }
+                }
+            }
         }
 
         // Camera capture stream
         if (outClass == QLatin1String("Video/Source") || inClass.startsWith(QLatin1String("Stream/Input/Video"))) {
-            state.cameraActive = true;
+            const bool isActiveVideo = (linkIsActive || inIsRunning || outIsRunning) &&
+                                       (linkState != QLatin1String("paused")) &&
+                                       (inNodeState != QLatin1String("paused"));
 
-            QString appName = inProps.value(QStringLiteral("application.name")).toString();
-            if (appName.isEmpty()) appName = inProps.value(QStringLiteral("node.name")).toString();
-            if (appName.isEmpty()) appName = inNode.value(QStringLiteral("info")).toObject().value(QStringLiteral("name")).toString();
-            if (appName.isEmpty()) appName = QStringLiteral("Camera App");
+            if (isActiveVideo) {
+                state.cameraActive = true;
 
-            QString camDesc = outProps.value(QStringLiteral("node.description")).toString();
-            if (camDesc.isEmpty()) camDesc = outProps.value(QStringLiteral("node.nick")).toString();
-            if (camDesc.isEmpty()) camDesc = QStringLiteral("Webcam");
+                QString appName = inProps.value(QStringLiteral("application.name")).toString();
+                if (appName.isEmpty()) appName = inProps.value(QStringLiteral("pipewire.access.portal.app_id")).toString();
+                if (appName.isEmpty()) appName = inProps.value(QStringLiteral("application.process.binary")).toString();
+                if (appName.isEmpty()) appName = inProps.value(QStringLiteral("node.name")).toString();
+                if (appName.isEmpty()) appName = inInfo.value(QStringLiteral("name")).toString();
+                if (appName.isEmpty()) appName = QStringLiteral("Camera App");
 
-            if (!state.cameraApps.contains(appName)) state.cameraApps.append(appName);
-            if (!state.cameraDevices.contains(camDesc)) state.cameraDevices.append(camDesc);
+                QString camDesc = outProps.value(QStringLiteral("node.description")).toString();
+                if (camDesc.isEmpty()) camDesc = outProps.value(QStringLiteral("node.nick")).toString();
+                if (camDesc.isEmpty()) camDesc = QStringLiteral("Webcam");
+
+                if (!state.cameraApps.contains(appName)) state.cameraApps.append(appName);
+                if (!state.cameraDevices.contains(camDesc)) state.cameraDevices.append(camDesc);
+            }
         }
     }
 
-    // 2. Check node running states
+    // 2. Check direct Video/Source node running state
     for (auto it = m_nodes.constBegin(); it != m_nodes.constEnd(); ++it) {
         const QJsonObject node = it.value();
         const QJsonObject info = node.value(QStringLiteral("info")).toObject();
@@ -280,12 +420,6 @@ void PrivacyWorker::evaluatePrivacyState() {
             if (camDesc.isEmpty()) camDesc = props.value(QStringLiteral("node.nick")).toString();
             if (camDesc.isEmpty()) camDesc = QStringLiteral("Webcam");
             if (!state.cameraDevices.contains(camDesc)) state.cameraDevices.append(camDesc);
-        } else if (mediaClass == QLatin1String("Audio/Source") && nodeState == QLatin1String("running")) {
-            state.micActive = true;
-            QString micDesc = props.value(QStringLiteral("node.description")).toString();
-            if (micDesc.isEmpty()) micDesc = props.value(QStringLiteral("node.nick")).toString();
-            if (micDesc.isEmpty()) micDesc = QStringLiteral("Microphone");
-            if (!state.micDevices.contains(micDesc)) state.micDevices.append(micDesc);
         }
     }
 

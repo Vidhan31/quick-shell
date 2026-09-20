@@ -54,6 +54,7 @@ private:
 
     QProcess *m_pwProcess{nullptr};
     QByteArray m_pwBuffer;
+    int m_scannedIdx{0};
     int m_bracketDepth{0};
     bool m_inString{false};
     bool m_escape{false};
@@ -67,6 +68,7 @@ private:
 
     QTimer *m_restartTimer{nullptr};
     QTimer *m_debounceTimer{nullptr};
+    QTimer *m_pollTimer{nullptr};
 };
 
 class PrivacyMonitor : public QObject {
