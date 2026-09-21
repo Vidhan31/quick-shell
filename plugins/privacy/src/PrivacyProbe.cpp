@@ -415,8 +415,47 @@ void PrivacyProbe::resolvePipeWireMetadata(PrivacyState &state) {
             if (!state.micDevices.contains(sourceDesc)) state.micDevices.append(sourceDesc);
         }
 
-        // 2. Video capture link
-        if (outClass == QLatin1String("Video/Source") || inClass.startsWith(QLatin1String("Stream/Input/Video"))) {
+        // 2. Video capture link — only real v4l2/libcamera sources.
+        // Plasma task-manager hover previews create transient KWin screencast
+        // PipeWire streams (Stream/Input/Video consumed by plasmashell) which
+        // must NOT be treated as camera use.
+        if (outClass == QLatin1String("Video/Source")
+            && (inClass.startsWith(QLatin1String("Stream/Input/Video"))
+                || inClass == QLatin1String("Stream/Input"))) {
+            const QString deviceApi = outProps.value(QStringLiteral("device.api")).toString().toLower();
+            const bool isV4l2 = (deviceApi == QLatin1String("v4l2") || deviceApi == QLatin1String("libcamera"));
+            const QString factory = outProps.value(QStringLiteral("factory.name")).toString().toLower();
+            const bool factoryIsCam = factory.contains(QLatin1String("v4l2")) || factory.contains(QLatin1String("libcamera"));
+            const bool hasCamPath = !outProps.value(QStringLiteral("api.v4l2.path")).toString().isEmpty()
+                                    || !outProps.value(QStringLiteral("api.libcamera.path")).toString().isEmpty();
+            const QString outNodeName = outProps.value(QStringLiteral("node.name")).toString().toLower();
+            const bool nodeIsCam = outNodeName.startsWith(QLatin1String("v4l2_input"))
+                                   || outNodeName.startsWith(QLatin1String("libcamera_input"))
+                                   || outProps.value(QStringLiteral("media.role")).toString().toLower() == QLatin1String("camera");
+            if (!(isV4l2 || factoryIsCam || hasCamPath || nodeIsCam)) {
+                continue;
+            }
+            const QString inApp = inProps.value(QStringLiteral("application.name")).toString().toLower();
+            const QString inBin = inProps.value(QStringLiteral("application.process.binary")).toString().toLower();
+            static const QStringList screenOwners = {
+                QStringLiteral("plasmashell"),
+                QStringLiteral("kwin_wayland"),
+                QStringLiteral("kwin"),
+                QStringLiteral("xdg-desktop-portal"),
+                QStringLiteral("xdg-desktop-portal-kde"),
+                QStringLiteral("xdg-desktop-portal-wlr"),
+                QStringLiteral("xdg-desktop-portal-gtk"),
+            };
+            bool isScreenConsumer = false;
+            for (const auto &o : screenOwners) {
+                if (inApp == o || inBin == o || inApp.contains(o) || inBin.contains(o)) {
+                    isScreenConsumer = true;
+                    break;
+                }
+            }
+            if (isScreenConsumer) {
+                continue;
+            }
             const bool isActiveVideo = (linkIsActive || inIsRunning || outIsRunning) &&
                                        (linkState != QLatin1String("paused")) &&
                                        (inNodeState != QLatin1String("paused"));
@@ -449,6 +488,19 @@ void PrivacyProbe::resolvePipeWireMetadata(PrivacyState &state) {
         const QString mediaClass = props.value(QStringLiteral("media.class")).toString();
 
         if (mediaClass == QLatin1String("Video/Source") && nodeState == QLatin1String("running")) {
+            const QString deviceApi = props.value(QStringLiteral("device.api")).toString().toLower();
+            const QString factory = props.value(QStringLiteral("factory.name")).toString().toLower();
+            const QString nodeName = props.value(QStringLiteral("node.name")).toString().toLower();
+            const bool isCam = (deviceApi == QLatin1String("v4l2") || deviceApi == QLatin1String("libcamera"))
+                               || factory.contains(QLatin1String("v4l2")) || factory.contains(QLatin1String("libcamera"))
+                               || !props.value(QStringLiteral("api.v4l2.path")).toString().isEmpty()
+                               || !props.value(QStringLiteral("api.libcamera.path")).toString().isEmpty()
+                               || nodeName.startsWith(QLatin1String("v4l2_input"))
+                               || nodeName.startsWith(QLatin1String("libcamera_input"))
+                               || props.value(QStringLiteral("media.role")).toString().toLower() == QLatin1String("camera");
+            if (!isCam) {
+                continue;
+            }
             state.cameraActive = true;
             QString camDesc = props.value(QStringLiteral("node.description")).toString();
             if (camDesc.isEmpty()) camDesc = props.value(QStringLiteral("node.nick")).toString();

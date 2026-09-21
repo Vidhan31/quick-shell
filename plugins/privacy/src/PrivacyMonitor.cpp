@@ -292,6 +292,58 @@ bool PrivacyWorker::handleJsonArray(const QByteArray &chunk) {
 void PrivacyWorker::evaluatePrivacyState() {
     PrivacyState state;
 
+    auto isCameraSource = [](const QJsonObject &props) -> bool {
+        const QString deviceApi = props.value(QStringLiteral("device.api")).toString().toLower();
+        if (deviceApi == QLatin1String("v4l2") || deviceApi == QLatin1String("libcamera")) {
+            return true;
+        }
+        const QString factory = props.value(QStringLiteral("factory.name")).toString().toLower();
+        if (factory.contains(QLatin1String("v4l2")) || factory.contains(QLatin1String("libcamera"))) {
+            return true;
+        }
+        if (!props.value(QStringLiteral("api.v4l2.path")).toString().isEmpty()
+            || !props.value(QStringLiteral("api.libcamera.path")).toString().isEmpty()) {
+            return true;
+        }
+        const QString nodeName = props.value(QStringLiteral("node.name")).toString().toLower();
+        if (nodeName.startsWith(QLatin1String("v4l2_input"))
+            || nodeName.startsWith(QLatin1String("libcamera_input"))) {
+            return true;
+        }
+        // Explicit camera role (real cameras set media.role=Camera).
+        // KWin screencast / portal streams never set this.
+        const QString mediaRole = props.value(QStringLiteral("media.role")).toString().toLower();
+        if (mediaRole == QLatin1String("camera")) {
+            return true;
+        }
+        return false;
+    };
+
+    auto isScreencastConsumer = [](const QJsonObject &props) -> bool {
+        const QString app = props.value(QStringLiteral("application.name")).toString().toLower();
+        const QString bin = props.value(QStringLiteral("application.process.binary")).toString().toLower();
+        const QString node = props.value(QStringLiteral("node.name")).toString().toLower();
+        static const QStringList owners = {
+            QStringLiteral("plasmashell"),
+            QStringLiteral("kwin_wayland"),
+            QStringLiteral("kwin"),
+            QStringLiteral("xdg-desktop-portal"),
+            QStringLiteral("xdg-desktop-portal-kde"),
+            QStringLiteral("xdg-desktop-portal-wlr"),
+            QStringLiteral("xdg-desktop-portal-gtk"),
+        };
+        for (const auto &o : owners) {
+            if (app == o || bin == o || app.contains(o) || bin.contains(o)) {
+                return true;
+            }
+        }
+        if (node.startsWith(QLatin1String("kwin-screencast"))
+            || node.contains(QLatin1String("screencast"))) {
+            return true;
+        }
+        return false;
+    };
+
     // 1. Check all active PipeWire links
     for (auto it = m_links.constBegin(); it != m_links.constEnd(); ++it) {
         const QJsonObject link = it.value();
@@ -380,8 +432,16 @@ void PrivacyWorker::evaluatePrivacyState() {
             }
         }
 
-        // Camera capture stream
-        if (outClass == QLatin1String("Video/Source") || inClass.startsWith(QLatin1String("Stream/Input/Video"))) {
+        // Camera capture stream — only real v4l2/libcamera sources.
+        // Plasma task-manager hover previews create transient KWin screencast
+        // PipeWire streams (Stream/Input/Video consumed by plasmashell) which
+        // must NOT be treated as camera use.
+        if (outClass == QLatin1String("Video/Source")
+            && (inClass.startsWith(QLatin1String("Stream/Input/Video"))
+                || inClass == QLatin1String("Stream/Input"))) {
+            if (!isCameraSource(outProps) || isScreencastConsumer(inProps)) {
+                continue;
+            }
             const bool isActiveVideo = (linkIsActive || inIsRunning || outIsRunning) &&
                                        (linkState != QLatin1String("paused")) &&
                                        (inNodeState != QLatin1String("paused"));
@@ -406,7 +466,7 @@ void PrivacyWorker::evaluatePrivacyState() {
         }
     }
 
-    // 2. Check direct Video/Source node running state
+    // 2. Check direct Video/Source node running state (cameras only, not screencast)
     for (auto it = m_nodes.constBegin(); it != m_nodes.constEnd(); ++it) {
         const QJsonObject node = it.value();
         const QJsonObject info = node.value(QStringLiteral("info")).toObject();
@@ -414,7 +474,8 @@ void PrivacyWorker::evaluatePrivacyState() {
         const QJsonObject props = info.value(QStringLiteral("props")).toObject();
         const QString mediaClass = props.value(QStringLiteral("media.class")).toString();
 
-        if (mediaClass == QLatin1String("Video/Source") && nodeState == QLatin1String("running")) {
+        if (mediaClass == QLatin1String("Video/Source") && nodeState == QLatin1String("running")
+            && isCameraSource(props)) {
             state.cameraActive = true;
             QString camDesc = props.value(QStringLiteral("node.description")).toString();
             if (camDesc.isEmpty()) camDesc = props.value(QStringLiteral("node.nick")).toString();
