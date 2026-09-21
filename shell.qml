@@ -101,43 +101,43 @@ ShellRoot {
             ethPopup.visible = false;
             privacyPopup.visible = false;
             notifPopup.visible = false;
-            tokenPopup.visible = false;
-            agPopup.visible = false;
+            aiPopup.visible = false;
             procPopup.visible = !procPopup.visible;
           }
         }
       }
 
-      // OpenCode token chip — manual refresh only, popup below.
+      // Combined AI usage chip (OpenCode Σ + Antigravity ✦) — manual
+      // refresh only, single tabbed popup below.
       Item {
-        id: tokenHit
+        id: aiHit
         anchors {
           left: sysStatsHit.right
           leftMargin: 8
           verticalCenter: parent.verticalCenter
         }
-        width: tokenBarWidget.width + 16
+        width: aiBarWidget.width + 16
         height: 24
 
         Rectangle {
-          id: tokenBg
+          id: aiBg
           anchors.fill: parent
           radius: 6
-          color: tokenPopup.visible ? "#45475a" : (tokenMouse.containsMouse ? "#3b3e52" : "#313244")
-          border.color: tokenPopup.visible ? "#89b4fa" : (tokenMouse.containsMouse ? "#585b70" : "transparent")
+          color: aiPopup.visible ? "#45475a" : (aiMouse.containsMouse ? "#3b3e52" : "#313244")
+          border.color: aiPopup.visible ? "#89b4fa" : (aiMouse.containsMouse ? "#585b70" : "transparent")
           border.width: 1
 
           Behavior on color { ColorAnimation { duration: 120 } }
           Behavior on border.color { ColorAnimation { duration: 120 } }
         }
 
-        TokenWidget {
-          id: tokenBarWidget
+        AiUsageWidget {
+          id: aiBarWidget
           anchors.centerIn: parent
         }
 
         MouseArea {
-          id: tokenMouse
+          id: aiMouse
           anchors.fill: parent
           cursorShape: Qt.PointingHandCursor
           hoverEnabled: true
@@ -150,109 +150,35 @@ ShellRoot {
             ethPopup.visible = false;
             privacyPopup.visible = false;
             notifPopup.visible = false;
-            agPopup.visible = false;
-            tokenPopup.visible = !tokenPopup.visible;
+            aiPopup.visible = !aiPopup.visible;
           }
         }
       }
 
       PopupWindow {
-        id: tokenPopup
+        id: aiPopup
         anchor.window: bar
-        anchor.rect.x: Math.max(8, Math.min(tokenHit.x + tokenHit.width / 2 - tokenControlCenter.implicitWidth / 2, bar.width - tokenControlCenter.implicitWidth - 12))
+        anchor.rect.x: Math.max(8, Math.min(aiHit.x + aiHit.width / 2 - aiControlCenter.implicitWidth / 2, bar.width - aiControlCenter.implicitWidth - 12))
         anchor.rect.y: bar.implicitHeight + 6
         visible: false
         grabFocus: true
-        implicitWidth: tokenControlCenter.implicitWidth
-        implicitHeight: tokenControlCenter.implicitHeight
+        implicitWidth: aiControlCenter.implicitWidth
+        implicitHeight: aiControlCenter.implicitHeight
         color: "transparent"
 
         onVisibleChanged: {
           if (!visible)
-            tokenControlCenter.hideTip();
+            aiControlCenter.hideTip();
         }
 
-        TokenControlCenter {
-          id: tokenControlCenter
+        AiUsageControlCenter {
+          id: aiControlCenter
           anchors.fill: parent
-          monitor: tokenBarWidget.monitor
+          ocMonitor: aiBarWidget.oc
+          agyMonitor: aiBarWidget.agy
           barWindow: bar
-          popupWindow: tokenPopup
-          onTriggerRefresh: tokenBarWidget.refresh()
-        }
-      }
-
-      // Antigravity token chip — fully separate from the OpenCode chip above.
-      Item {
-        id: agHit
-        anchors {
-          left: tokenHit.right
-          leftMargin: 8
-          verticalCenter: parent.verticalCenter
-        }
-        width: agBarWidget.width + 16
-        height: 24
-
-        Rectangle {
-          id: agBg
-          anchors.fill: parent
-          radius: 6
-          color: agPopup.visible ? "#45475a" : (agMouse.containsMouse ? "#3b3e52" : "#313244")
-          border.color: agPopup.visible ? "#89b4fa" : (agMouse.containsMouse ? "#585b70" : "transparent")
-          border.width: 1
-
-          Behavior on color { ColorAnimation { duration: 120 } }
-          Behavior on border.color { ColorAnimation { duration: 120 } }
-        }
-
-        AntigravityWidget {
-          id: agBarWidget
-          anchors.centerIn: parent
-        }
-
-        MouseArea {
-          id: agMouse
-          anchors.fill: parent
-          cursorShape: Qt.PointingHandCursor
-          hoverEnabled: true
-          onClicked: {
-            trayWidget.closePopup();
-            procPopup.visible = false;
-            mediaPopup.visible = false;
-            calPopup.visible = false;
-            tsPopup.visible = false;
-            ethPopup.visible = false;
-            privacyPopup.visible = false;
-            notifPopup.visible = false;
-            tokenPopup.visible = false;
-            agPopup.visible = !agPopup.visible;
-          }
-        }
-      }
-
-      PopupWindow {
-        id: agPopup
-        anchor.window: bar
-        anchor.rect.x: Math.max(8, Math.min(agHit.x + agHit.width / 2 - agControlCenter.implicitWidth / 2, bar.width - agControlCenter.implicitWidth - 12))
-        anchor.rect.y: bar.implicitHeight + 6
-        visible: false
-        grabFocus: true
-        implicitWidth: agControlCenter.implicitWidth
-        implicitHeight: agControlCenter.implicitHeight
-        color: "transparent"
-
-        onVisibleChanged: {
-          if (!visible)
-            agControlCenter.hideTip();
-        }
-
-        AntigravityControlCenter {
-          id: agControlCenter
-          anchors.fill: parent
-          monitor: agBarWidget.monitor
-          barWindow: bar
-          popupWindow: agPopup
-          onTriggerRefresh: agBarWidget.refresh()
+          popupWindow: aiPopup
+          onTriggerRefreshAll: aiBarWidget.refreshAll()
         }
       }
 
@@ -292,8 +218,7 @@ ShellRoot {
           privacyPopup.visible = false;
           notifPopup.visible = false;
           calPopup.visible = false;
-          tokenPopup.visible = false;
-            agPopup.visible = false;
+          aiPopup.visible = false;
         }
       }
 
@@ -344,8 +269,7 @@ ShellRoot {
               ethPopup.visible = false;
               privacyPopup.visible = false;
               notifPopup.visible = false;
-              tokenPopup.visible = false;
-            agPopup.visible = false;
+              aiPopup.visible = false;
               mediaPopup.visible = !mediaPopup.visible;
             }
           }
@@ -374,7 +298,7 @@ ShellRoot {
       Item {
         id: tsHit
         anchors {
-          left: agHit.right
+          left: aiHit.right
           leftMargin: 8
           verticalCenter: parent.verticalCenter
         }
@@ -411,8 +335,7 @@ ShellRoot {
             ethPopup.visible = false;
             privacyPopup.visible = false;
             notifPopup.visible = false;
-            tokenPopup.visible = false;
-            agPopup.visible = false;
+            aiPopup.visible = false;
             tsPopup.visible = !tsPopup.visible;
           }
         }
@@ -479,8 +402,7 @@ ShellRoot {
             calPopup.visible = false;
             privacyPopup.visible = false;
             notifPopup.visible = false;
-            tokenPopup.visible = false;
-            agPopup.visible = false;
+            aiPopup.visible = false;
             ethPopup.visible = !ethPopup.visible;
           }
         }
@@ -534,8 +456,7 @@ ShellRoot {
             ethPopup.visible = false;
             tsPopup.visible = false;
             notifPopup.visible = false;
-            tokenPopup.visible = false;
-            agPopup.visible = false;
+            aiPopup.visible = false;
             privacyPopup.visible = !privacyPopup.visible;
           }
         }
@@ -601,8 +522,7 @@ ShellRoot {
             tsPopup.visible = false;
             ethPopup.visible = false;
             privacyPopup.visible = false;
-            tokenPopup.visible = false;
-            agPopup.visible = false;
+            aiPopup.visible = false;
             notifPopup.visible = !notifPopup.visible;
           }
         }
@@ -701,8 +621,7 @@ ShellRoot {
             ethPopup.visible = false;
             privacyPopup.visible = false;
             notifPopup.visible = false;
-            tokenPopup.visible = false;
-            agPopup.visible = false;
+            aiPopup.visible = false;
             calPopup.visible = !calPopup.visible;
           }
         }

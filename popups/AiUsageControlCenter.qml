@@ -1,0 +1,1193 @@
+pragma ComponentBehavior: Bound
+// AiUsageControlCenter.qml — Combined OpenCode + Antigravity usage.
+// Tailscale visual system: same tokens, Segments, RowBase, SectionHead,
+// IconBtn, Hairline. Fixed 620 height on detail tabs (internal scroll);
+// the Overview tab hugs its content like the Tailscale Sharing tab:
+// outer height is derived from content height (overviewCol.height),
+// never from the viewport, so no binding loop is possible.
+import QtQuick
+import QtQuick.Layouts
+import Quickshell
+
+Item {
+  id: root
+
+  // var (not typed): if a plugin ever fails to load, the popover still
+  // instantiates and degrades to "--" instead of breaking the whole bar.
+  property var ocMonitor: null
+  property var agyMonitor: null
+  property var barWindow: null
+  property var popupWindow: null
+
+  signal triggerRefreshAll()
+
+  property int currentTab: 0 // 0: Overview, 1: OpenCode, 2: Antigravity
+
+  implicitWidth: 440
+  // Chrome: card margins 32 + header 40 + gap 14 + segments 34 + gap 12 = 132.
+  implicitHeight: root.currentTab === 0 ? Math.min(620, Math.max(380, 132 + overviewCol.height)) : 620
+  width: implicitWidth
+  height: implicitHeight
+
+  // ---- Shared tooltip state (one system for all tabs) ----
+  property var tipDetails: null
+  property Item tipTarget: null
+  property int tipX: 0
+  property int tipY: 0
+
+  Timer {
+    id: tipTimer
+    interval: 350
+    repeat: false
+    onTriggered: root.showTip()
+  }
+
+  function showTip(): void {
+    if (root.tipDetails === null || root.tipTarget === null) {
+      return;
+    }
+    if (root.barWindow === null || root.popupWindow === null) {
+      return;
+    }
+    const pt = root.tipTarget.mapToItem(root, root.tipTarget.width / 2, root.tipTarget.height);
+    const frame = root.popupWindow.anchor.rect;
+    root.tipX = frame.x + pt.x;
+    root.tipY = frame.y + pt.y;
+    tip.visible = true;
+  }
+
+  function hideTip(): void {
+    tipTimer.stop();
+    tip.visible = false;
+    root.tipDetails = null;
+    root.tipTarget = null;
+  }
+
+  onCurrentTabChanged: root.hideTip()
+
+  // ---- Derived state ----
+  readonly property bool busy: (root.ocMonitor ? root.ocMonitor.busy : false) || (root.agyMonitor ? root.agyMonitor.busy : false)
+  readonly property string ocError: root.ocMonitor ? root.ocMonitor.error : ""
+  readonly property string agyError: root.agyMonitor ? root.agyMonitor.error : ""
+  readonly property bool hasError: root.ocError !== "" || root.agyError !== ""
+  readonly property string ocUpdated: (root.ocMonitor && root.ocMonitor.lastRefresh !== "") ? root.ocMonitor.lastRefresh : "never"
+  readonly property string agyUpdated: (root.agyMonitor && root.agyMonitor.lastRefresh !== "") ? root.agyMonitor.lastRefresh : "never"
+
+  readonly property string combinedToday: {
+    if (root.ocMonitor === null || root.agyMonitor === null) return "--";
+    if (root.ocMonitor.lastRefresh === "" && root.agyMonitor.lastRefresh === "") return "--";
+    return root.ocMonitor.compact(root.ocMonitor.todayTokens + root.agyMonitor.todayTokens);
+  }
+
+  readonly property string subtitleText: {
+    if (root.ocMonitor === null || root.agyMonitor === null) return "Not connected";
+    return "Today " + root.combinedToday + " · Σ " + root.ocText(root.ocMonitor.todayTokens, root.ocMonitor.lastRefresh) + " + ✦ " + root.agyText(root.agyMonitor.todayTokens, root.agyMonitor.lastRefresh);
+  }
+
+  function ocText(tokens: double, stamp: string): string {
+    if (root.ocMonitor === null || stamp === "") return "--";
+    return root.ocMonitor.compact(tokens);
+  }
+
+  function agyText(tokens: double, stamp: string): string {
+    if (root.agyMonitor === null || stamp === "") return "--";
+    return root.agyMonitor.compact(tokens);
+  }
+
+  function money(value: double): string {
+    return "$" + value.toFixed(2);
+  }
+
+  // ---- Per-source detail rows (same semantics as the old separate cards) ----
+  function ocSplitDetails(split: var, cost: double, messages: double): var {
+    return [
+      { k: "Input", v: root.ocMonitor.compact(split.input) },
+      { k: "Output", v: root.ocMonitor.compact(split.output) },
+      { k: "Cache read", v: root.ocMonitor.compact(split.cacheRead) },
+      { k: "Cache write", v: root.ocMonitor.compact(split.cacheWrite) },
+      { k: "Reasoning", v: root.ocMonitor.compact(split.reasoning) },
+      { k: "Messages", v: root.ocMonitor.compact(messages) },
+      { k: "Cost", v: root.money(cost) }
+    ];
+  }
+
+  function agySplitDetails(split: var, messages: double): var {
+    return [
+      { k: "Input", v: root.agyMonitor.compact(split.input) },
+      { k: "Output", v: root.agyMonitor.compact(split.output) },
+      { k: "Cache read", v: root.agyMonitor.compact(split.cacheRead) },
+      { k: "Reasoning", v: root.agyMonitor.compact(split.reasoning) },
+      { k: "Messages", v: root.agyMonitor.compact(messages) }
+    ];
+  }
+
+  readonly property var ocRows: root.ocMonitor === null ? [] : [
+    { label: "Today", tokens: root.ocMonitor.compact(root.ocMonitor.todayTokens), details: root.ocSplitDetails(root.ocMonitor.todaySplit, root.ocMonitor.todayCost, root.ocMonitor.todayMessages) },
+    { label: "This week", tokens: root.ocMonitor.compact(root.ocMonitor.weekTokens), details: root.ocSplitDetails(root.ocMonitor.weekSplit, root.ocMonitor.weekCost, root.ocMonitor.weekMessages) },
+    { label: "This month", tokens: root.ocMonitor.compact(root.ocMonitor.monthTokens), details: root.ocSplitDetails(root.ocMonitor.monthSplit, root.ocMonitor.monthCost, root.ocMonitor.monthMessages) }
+  ]
+
+  readonly property var agyRows: root.agyMonitor === null ? [] : [
+    { label: "Today", tokens: root.agyMonitor.compact(root.agyMonitor.todayTokens), details: root.agySplitDetails(root.agyMonitor.todaySplit, root.agyMonitor.todayMessages) },
+    { label: "This week", tokens: root.agyMonitor.compact(root.agyMonitor.weekTokens), details: root.agySplitDetails(root.agyMonitor.weekSplit, root.agyMonitor.weekMessages) },
+    { label: "This month", tokens: root.agyMonitor.compact(root.agyMonitor.monthTokens), details: root.agySplitDetails(root.agyMonitor.monthSplit, root.agyMonitor.monthMessages) }
+  ]
+
+  // ---- Overview: combined period cards ----
+  function periodTotal(ocTokens: double, agyTokens: double): string {
+    if (root.ocMonitor === null || root.agyMonitor === null) return "--";
+    return root.ocMonitor.compact(ocTokens + agyTokens);
+  }
+
+  readonly property var overviewPeriods: (root.ocMonitor === null || root.agyMonitor === null) ? [] : [
+    {
+      label: "Today",
+      oc: root.ocMonitor.compact(root.ocMonitor.todayTokens),
+      ocSub: root.money(root.ocMonitor.todayCost),
+      agy: root.agyMonitor.compact(root.agyMonitor.todayTokens),
+      agySub: root.agyMonitor.compact(root.agyMonitor.todayMessages) + " msgs",
+      total: root.periodTotal(root.ocMonitor.todayTokens, root.agyMonitor.todayTokens)
+    },
+    {
+      label: "This week",
+      oc: root.ocMonitor.compact(root.ocMonitor.weekTokens),
+      ocSub: root.money(root.ocMonitor.weekCost),
+      agy: root.agyMonitor.compact(root.agyMonitor.weekTokens),
+      agySub: root.agyMonitor.compact(root.agyMonitor.weekMessages) + " msgs",
+      total: root.periodTotal(root.ocMonitor.weekTokens, root.agyMonitor.weekTokens)
+    },
+    {
+      label: "This month",
+      oc: root.ocMonitor.compact(root.ocMonitor.monthTokens),
+      ocSub: root.money(root.ocMonitor.monthCost),
+      agy: root.agyMonitor.compact(root.agyMonitor.monthTokens),
+      agySub: root.agyMonitor.compact(root.agyMonitor.monthMessages) + " msgs",
+      total: root.periodTotal(root.ocMonitor.monthTokens, root.agyMonitor.monthTokens)
+    }
+  ]
+
+  // ---- Models, tagged by source and merged for the Overview tab ----
+  readonly property var ocModelRows: root.ocMonitor === null ? [] : root.ocMonitor.monthModels.map(function (m) {
+    return { name: m.name, tokens: root.ocMonitor.compact(m.tokens), sub: root.ocMonitor.compact(m.messages) + " msgs", raw: m.tokens, src: "oc" };
+  })
+
+  readonly property var agyModelRows: root.agyMonitor === null ? [] : root.agyMonitor.monthModels.map(function (m) {
+    return { name: m.name, tokens: root.agyMonitor.compact(m.tokens), sub: root.agyMonitor.compact(m.messages) + " msgs", raw: m.tokens, src: "agy" };
+  })
+
+  readonly property var combinedModels: root.ocModelRows.concat(root.agyModelRows).slice().sort(function (a, b) { return b.raw - a.raw; }).slice(0, 12)
+
+  readonly property var agySourceRows: root.agyMonitor === null ? [] : root.agyMonitor.monthSources.map(function (s) {
+    return { name: s.name, tokens: root.agyMonitor.compact(s.tokens), sub: root.agyMonitor.compact(s.messages) + " msgs" };
+  })
+
+  readonly property var segItems: [
+    { icon: "", label: "Overview", count: 0, alert: root.hasError },
+    { icon: "Σ", label: "OpenCode", count: root.ocModelRows.length, alert: root.ocError !== "" },
+    { icon: "✦", label: "Antigravity", count: root.agyModelRows.length, alert: root.agyError !== "" }
+  ]
+
+  // ================= Design tokens (mirrors TailscaleControlCenter) =================
+  QtObject {
+    id: t
+    readonly property color bg: "#17171E"
+    readonly property color surface: "#1F202B"
+    readonly property color inset: "#121217"
+    readonly property color line: "#2B2C3A"
+    readonly property color ink1: "#F1F1F6"
+    readonly property color ink2: "#A6A6B8"
+    readonly property color ink3: "#6F6F84"
+    readonly property color accent: "#5E9DFF"
+    readonly property color green: "#46C786"
+    readonly property color amber: "#E2A63B"
+    readonly property color red: "#DF6363"
+    readonly property color violet: "#AE8CFF"
+    readonly property color teal: "#94e2d5"
+    readonly property color darkInk: "#101018"
+    readonly property string mono: "JetBrainsMono Nerd Font Mono"
+  }
+
+  // ================= Reusable quiet components (mirrors TailscaleControlCenter) =================
+  component Hairline: Rectangle {
+    color: t.line
+    height: 1
+  }
+
+  component SectionHead: Item {
+    property string label: ""
+    property string actionText: ""
+    property color actionColor: t.ink2
+    signal actionClicked
+    implicitHeight: 20
+    Text {
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      text: label
+      font.pixelSize: 11
+      font.bold: true
+      font.capitalization: Font.AllUppercase
+      font.letterSpacing: 0.8
+      color: t.ink3
+    }
+    TextBtn {
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      visible: actionText.length > 0
+      text: parent.actionText
+      fg: parent.actionColor
+      fs: 11
+      onClicked: parent.actionClicked()
+    }
+  }
+
+  component RowBase: Rectangle {
+    id: rb
+    signal clicked
+    property color base: "transparent"
+    property color hover: "#0FFFFFFF"
+    property color press: "#1AFFFFFF"
+    property real rad: 0
+    property bool actionable: true
+    radius: rb.rad
+    color: (!rb.actionable || (!ma.containsMouse && !ma.pressed)) ? base : (ma.pressed ? press : hover)
+    Behavior on color { ColorAnimation { duration: 90 } }
+    MouseArea {
+      id: ma
+      anchors.fill: parent
+      hoverEnabled: rb.actionable
+      cursorShape: rb.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onClicked: {
+        if (rb.actionable) rb.clicked();
+      }
+    }
+  }
+
+  component TextBtn: Rectangle {
+    id: tb
+    signal clicked
+    property string text: ""
+    property color fg: t.ink2
+    property int fs: 12
+    property bool bold: false
+    implicitWidth: lbl.implicitWidth + 18
+    implicitHeight: 26
+    radius: 7
+    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
+    Behavior on color { ColorAnimation { duration: 90 } }
+    Text {
+      id: lbl
+      anchors.centerIn: parent
+      text: tb.text
+      font.pixelSize: tb.fs
+      font.bold: tb.bold
+      color: (ma.containsMouse || ma.pressed) ? t.ink1 : tb.fg
+      Behavior on color { ColorAnimation { duration: 90 } }
+    }
+    MouseArea {
+      id: ma
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: tb.clicked()
+    }
+  }
+
+  component IconBtn: Rectangle {
+    id: ib
+    signal clicked
+    property string glyph: ""
+    property int fs: 14
+    property color fg: t.ink2
+    property bool spinning: false
+    width: 30
+    height: 30
+    radius: 8
+    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
+    Behavior on color { ColorAnimation { duration: 90 } }
+    Text {
+      id: ibGlyph
+      anchors.centerIn: parent
+      text: ib.glyph
+      font.family: t.mono
+      font.pixelSize: ib.fs
+      color: (ma.containsMouse || ma.pressed) ? t.ink1 : ib.fg
+      Behavior on color { ColorAnimation { duration: 90 } }
+      NumberAnimation on rotation {
+        running: ib.spinning
+        from: 0
+        to: 360
+        loops: Animation.Infinite
+        duration: 800
+      }
+    }
+    onSpinningChanged: {
+      if (!spinning) ibGlyph.rotation = 0;
+    }
+    MouseArea {
+      id: ma
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: ib.clicked()
+    }
+  }
+
+  component Segments: Item {
+    id: sg
+    property var items: []
+    property int current: 0
+    signal selected(int index)
+    implicitHeight: 34
+    Rectangle {
+      anchors.fill: parent
+      radius: 10
+      color: t.inset
+    }
+    Row {
+      anchors.fill: parent
+      anchors.margins: 3
+      spacing: 2
+      Repeater {
+        model: sg.items
+        Item {
+          required property var modelData
+          required property int index
+          width: (parent.width - 2 * (sg.items.length - 1)) / sg.items.length
+          height: parent.height
+          Rectangle {
+            anchors.fill: parent
+            radius: 7
+            color: sg.current === index ? "#2E2F42" : (segMa.containsMouse || segMa.pressed ? "#22232F" : "transparent")
+            Behavior on color { ColorAnimation { duration: 110 } }
+          }
+          Row {
+            anchors.centerIn: parent
+            spacing: 6
+            Text {
+              visible: modelData.icon && modelData.icon.length > 0
+              anchors.verticalCenter: parent.verticalCenter
+              text: modelData.icon
+              font.family: t.mono
+              font.pixelSize: 12
+              color: sg.current === index ? t.ink1 : t.ink3
+            }
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: modelData.label
+              font.pixelSize: 12
+              font.weight: sg.current === index ? Font.DemiBold : Font.Normal
+              color: sg.current === index ? t.ink1 : t.ink2
+            }
+            Text {
+              visible: modelData.count > 0
+              anchors.verticalCenter: parent.verticalCenter
+              text: modelData.count
+              font.pixelSize: 11
+              color: (modelData.alert && sg.current !== index) ? t.amber : t.ink3
+            }
+          }
+          MouseArea {
+            id: segMa
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: sg.selected(index)
+          }
+        }
+      }
+    }
+  }
+
+  // Small "i" affordance shared by both detail tabs; arms the shared tooltip.
+  component InfoDot: Item {
+    id: inf
+    property var details: null
+    implicitWidth: 20
+    implicitHeight: 20
+    Rectangle {
+      anchors.fill: parent
+      radius: 10
+      color: infoMouse.containsMouse ? "#45475a" : "transparent"
+      border.color: infoMouse.containsMouse ? "#89b4fa" : "#585b70"
+      border.width: 1
+      Text {
+        anchors.centerIn: parent
+        text: "i"
+        color: "#a6adc8"
+        font.pixelSize: 11
+        font.family: t.mono
+      }
+    }
+    MouseArea {
+      id: infoMouse
+      anchors.fill: parent
+      cursorShape: Qt.PointingHandCursor
+      hoverEnabled: true
+      onEntered: {
+        root.tipDetails = { label: "", rows: inf.details };
+        root.tipTarget = inf;
+        tipTimer.restart();
+      }
+      onExited: root.hideTip()
+      onClicked: root.showTip()
+    }
+  }
+
+  // One period row inside a detail-tab surface card.
+  component PeriodRow: Item {
+    id: prow
+    property string label: ""
+    property string tokens: ""
+    property var details: []
+    property bool first: false
+    width: parent ? parent.width : 0
+    height: innerCol.height
+    Column {
+      id: innerCol
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      Hairline {
+        width: parent.width - 24
+        anchors.horizontalCenter: parent.horizontalCenter
+        visible: !prow.first
+      }
+      RowLayout {
+        width: parent.width
+        height: 46
+        Text {
+          Layout.fillWidth: true
+          Layout.leftMargin: 12
+          text: prow.label
+          color: t.ink2
+          font.pixelSize: 13
+          font.family: t.mono
+          verticalAlignment: Text.AlignVCenter
+        }
+        InfoDot {
+          Layout.alignment: Qt.AlignVCenter
+          details: prow.details
+        }
+        Text {
+          Layout.rightMargin: 12
+          text: prow.tokens
+          color: t.ink1
+          font.pixelSize: 14
+          font.weight: Font.DemiBold
+          font.family: t.mono
+          horizontalAlignment: Text.AlignRight
+          verticalAlignment: Text.AlignVCenter
+        }
+      }
+    }
+  }
+
+  // ================= Card =================
+  Rectangle {
+    id: card
+    anchors.fill: parent
+    radius: 14
+    color: t.bg
+    border.color: "#26272F"
+    border.width: 1
+
+    ColumnLayout {
+      anchors.fill: parent
+      anchors.margins: 16
+      spacing: 0
+
+      // ---- Header: identity left, refresh right ----
+      RowLayout {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 40
+        spacing: 10
+
+        Text {
+          text: "󰚩"
+          font.family: t.mono
+          font.pixelSize: 19
+          color: root.hasError ? t.amber : t.teal
+        }
+
+        Column {
+          Layout.fillWidth: true
+          spacing: 1
+          Text {
+            text: "AI usage"
+            font.pixelSize: 14
+            font.weight: Font.DemiBold
+            color: t.ink1
+          }
+          Text {
+            width: parent.width
+            text: root.subtitleText
+            font.family: t.mono
+            font.pixelSize: 11
+            color: t.ink3
+            elide: Text.ElideRight
+          }
+        }
+
+        IconBtn {
+          glyph: "󰑓"
+          fs: 14
+          spinning: root.busy
+          onClicked: root.triggerRefreshAll()
+        }
+      }
+
+      Item { Layout.preferredHeight: 14; Layout.fillWidth: true }
+
+      Segments {
+        Layout.fillWidth: true
+        items: root.segItems
+        current: root.currentTab
+        onSelected: index => root.currentTab = index
+      }
+
+      Item { Layout.preferredHeight: 12; Layout.fillWidth: true }
+
+      StackLayout {
+        id: tabStack
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        currentIndex: root.currentTab
+
+        // ============ TAB 0: OVERVIEW ============
+        // Content-sized column; outer height hugs overviewCol.height.
+        Flickable {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          contentWidth: width
+          contentHeight: overviewCol.height
+          clip: true
+          interactive: contentHeight > height
+
+          Column {
+            id: overviewCol
+            width: parent.width
+            spacing: 10
+
+            Repeater {
+              model: root.overviewPeriods
+              Column {
+                required property var modelData
+                required property int index
+                width: overviewCol.width
+                spacing: 0
+
+                SectionHead {
+                  width: parent.width
+                  label: modelData.label
+                }
+
+                Item { width: 1; height: 6 }
+
+                Rectangle {
+                  width: parent.width
+                  height: periodInner.height + 8
+                  radius: 12
+                  color: t.surface
+
+                  Column {
+                    id: periodInner
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.topMargin: 4
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+
+                    RowLayout {
+                      width: parent.width
+                      height: 38
+                      Text {
+                        Layout.fillWidth: true
+                        text: "Σ  OpenCode"
+                        font.pixelSize: 12
+                        font.family: t.mono
+                        color: t.teal
+                      }
+                      ColumnLayout {
+                        spacing: 0
+                        Text {
+                          Layout.alignment: Qt.AlignRight
+                          text: modelData.oc
+                          font.pixelSize: 13
+                          font.weight: Font.Medium
+                          font.family: t.mono
+                          color: t.ink1
+                        }
+                        Text {
+                          Layout.alignment: Qt.AlignRight
+                          text: modelData.ocSub
+                          font.pixelSize: 10
+                          font.family: t.mono
+                          color: t.ink3
+                        }
+                      }
+                    }
+
+                    Hairline { width: parent.width; anchors.horizontalCenter: parent.horizontalCenter }
+
+                    RowLayout {
+                      width: parent.width
+                      height: 38
+                      Text {
+                        Layout.fillWidth: true
+                        text: "✦  Antigravity"
+                        font.pixelSize: 12
+                        font.family: t.mono
+                        color: t.violet
+                      }
+                      ColumnLayout {
+                        spacing: 0
+                        Text {
+                          Layout.alignment: Qt.AlignRight
+                          text: modelData.agy
+                          font.pixelSize: 13
+                          font.weight: Font.Medium
+                          font.family: t.mono
+                          color: t.ink1
+                        }
+                        Text {
+                          Layout.alignment: Qt.AlignRight
+                          text: modelData.agySub
+                          font.pixelSize: 10
+                          font.family: t.mono
+                          color: t.ink3
+                        }
+                      }
+                    }
+
+                    Hairline { width: parent.width; anchors.horizontalCenter: parent.horizontalCenter }
+
+                    RowLayout {
+                      width: parent.width
+                      height: 34
+                      Text {
+                        Layout.fillWidth: true
+                        text: "Combined"
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        color: t.ink2
+                      }
+                      Text {
+                        text: modelData.total
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                        font.family: t.mono
+                        color: t.ink1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            SectionHead {
+              width: overviewCol.width
+              visible: root.combinedModels.length > 0
+              label: "Top models · this month"
+            }
+
+            Rectangle {
+              visible: root.combinedModels.length > 0
+              width: overviewCol.width
+              height: modelsCol.height + 8
+              radius: 12
+              color: t.surface
+
+              Column {
+                id: modelsCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.topMargin: 4
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+
+                Repeater {
+                  model: root.combinedModels
+                  Column {
+                    required property var modelData
+                    required property int index
+                    width: modelsCol.width
+
+                    Hairline {
+                      visible: index > 0
+                      width: parent.width
+                      anchors.horizontalCenter: parent.horizontalCenter
+                    }
+
+                    RowLayout {
+                      width: parent.width
+                      height: 44
+                      spacing: 8
+                      Rectangle {
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredWidth: 8
+                        Layout.preferredHeight: 8
+                        radius: 4
+                        color: modelData.src === "oc" ? t.teal : t.violet
+                      }
+                      Text {
+                        Layout.fillWidth: true
+                        text: modelData.name
+                        font.pixelSize: 12
+                        font.family: t.mono
+                        color: t.ink2
+                        elide: Text.ElideMiddle
+                      }
+                      ColumnLayout {
+                        spacing: 0
+                        Text {
+                          Layout.alignment: Qt.AlignRight
+                          text: modelData.tokens
+                          font.pixelSize: 12
+                          font.family: t.mono
+                          color: t.ink1
+                        }
+                        Text {
+                          Layout.alignment: Qt.AlignRight
+                          text: modelData.sub
+                          font.pixelSize: 10
+                          font.family: t.mono
+                          color: t.ink3
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            Text {
+              width: overviewCol.width
+              text: "OpenCode updated " + root.ocUpdated + "  ·  Antigravity updated " + root.agyUpdated
+              font.pixelSize: 11
+              font.family: t.mono
+              color: t.ink3
+              wrapMode: Text.Wrap
+            }
+
+            Text {
+              width: overviewCol.width
+              visible: root.ocError !== ""
+              text: "OpenCode: " + root.ocError
+              font.pixelSize: 11
+              font.family: t.mono
+              color: t.red
+              wrapMode: Text.Wrap
+            }
+
+            Text {
+              width: overviewCol.width
+              visible: root.agyError !== ""
+              text: "Antigravity: " + root.agyError
+              font.pixelSize: 11
+              font.family: t.mono
+              color: t.red
+              wrapMode: Text.Wrap
+            }
+          }
+        }
+
+        // ============ TAB 1: OPENCODE ============
+        Item {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          opacity: root.currentTab === 1 ? 1 : 0
+          Behavior on opacity { NumberAnimation { duration: 110 } }
+
+          Flickable {
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: ocCol.height
+            clip: true
+
+            Column {
+              id: ocCol
+              width: parent.width
+              spacing: 12
+
+              SectionHead {
+                width: parent.width
+                label: "Usage"
+              }
+
+              Rectangle {
+                width: parent.width
+                height: ocPeriods.height
+                radius: 12
+                color: t.surface
+
+                Column {
+                  id: ocPeriods
+                  width: parent.width
+                  Repeater {
+                    model: root.ocRows
+                    PeriodRow {
+                      required property var modelData
+                      required property int index
+                      label: modelData.label
+                      tokens: modelData.tokens
+                      details: modelData.details
+                      first: index === 0
+                    }
+                  }
+                }
+              }
+
+              SectionHead {
+                width: parent.width
+                visible: root.ocModelRows.length > 0
+                label: "Models · this month"
+              }
+
+              Rectangle {
+                visible: root.ocModelRows.length > 0
+                width: parent.width
+                height: ocModelsCol.height + 8
+                radius: 12
+                color: t.surface
+
+                Column {
+                  id: ocModelsCol
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.topMargin: 4
+                  anchors.leftMargin: 12
+                  anchors.rightMargin: 12
+
+                  Repeater {
+                    model: root.ocModelRows
+                    Column {
+                      required property var modelData
+                      required property int index
+                      width: ocModelsCol.width
+
+                      Hairline {
+                        visible: index > 0
+                        width: parent.width
+                        anchors.horizontalCenter: parent.horizontalCenter
+                      }
+
+                      RowLayout {
+                        width: parent.width
+                        height: 46
+                        Text {
+                          Layout.fillWidth: true
+                          text: modelData.name
+                          font.pixelSize: 12
+                          font.family: t.mono
+                          color: t.ink2
+                          elide: Text.ElideMiddle
+                        }
+                        ColumnLayout {
+                          spacing: 2
+                          Text {
+                            Layout.alignment: Qt.AlignRight
+                            text: modelData.tokens
+                            font.pixelSize: 13
+                            font.family: t.mono
+                            color: t.ink1
+                          }
+                          Text {
+                            Layout.alignment: Qt.AlignRight
+                            text: modelData.sub
+                            font.pixelSize: 11
+                            font.family: t.mono
+                            color: t.ink3
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+
+              Text {
+                width: parent.width
+                text: "Updated " + root.ocUpdated
+                font.pixelSize: 11
+                font.family: t.mono
+                color: t.ink3
+              }
+
+              Text {
+                width: parent.width
+                visible: root.ocError !== ""
+                text: root.ocError
+                font.pixelSize: 11
+                font.family: t.mono
+                color: t.red
+                wrapMode: Text.Wrap
+              }
+            }
+          }
+        }
+
+        // ============ TAB 2: ANTIGRAVITY ============
+        Item {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          opacity: root.currentTab === 2 ? 1 : 0
+          Behavior on opacity { NumberAnimation { duration: 110 } }
+
+          Flickable {
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: agyCol.height
+            clip: true
+
+            Column {
+              id: agyCol
+              width: parent.width
+              spacing: 12
+
+              SectionHead {
+                width: parent.width
+                label: "Usage"
+              }
+
+              Rectangle {
+                width: parent.width
+                height: agyPeriods.height
+                radius: 12
+                color: t.surface
+
+                Column {
+                  id: agyPeriods
+                  width: parent.width
+                  Repeater {
+                    model: root.agyRows
+                    PeriodRow {
+                      required property var modelData
+                      required property int index
+                      label: modelData.label
+                      tokens: modelData.tokens
+                      details: modelData.details
+                      first: index === 0
+                    }
+                  }
+                }
+              }
+
+              SectionHead {
+                width: parent.width
+                visible: root.agySourceRows.length > 0
+                label: "Sources · this month"
+              }
+
+              Rectangle {
+                visible: root.agySourceRows.length > 0
+                width: parent.width
+                height: agySourcesCol.height + 8
+                radius: 12
+                color: t.surface
+
+                Column {
+                  id: agySourcesCol
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.topMargin: 4
+                  anchors.leftMargin: 12
+                  anchors.rightMargin: 12
+
+                  Repeater {
+                    model: root.agySourceRows
+                    Column {
+                      required property var modelData
+                      required property int index
+                      width: agySourcesCol.width
+
+                      Hairline {
+                        visible: index > 0
+                        width: parent.width
+                        anchors.horizontalCenter: parent.horizontalCenter
+                      }
+
+                      RowLayout {
+                        width: parent.width
+                        height: 46
+                        Text {
+                          Layout.fillWidth: true
+                          text: modelData.name
+                          font.pixelSize: 12
+                          font.family: t.mono
+                          color: t.ink2
+                          elide: Text.ElideMiddle
+                        }
+                        ColumnLayout {
+                          spacing: 2
+                          Text {
+                            Layout.alignment: Qt.AlignRight
+                            text: modelData.tokens
+                            font.pixelSize: 13
+                            font.family: t.mono
+                            color: t.ink1
+                          }
+                          Text {
+                            Layout.alignment: Qt.AlignRight
+                            text: modelData.sub
+                            font.pixelSize: 11
+                            font.family: t.mono
+                            color: t.ink3
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+
+              SectionHead {
+                width: parent.width
+                visible: root.agyModelRows.length > 0
+                label: "Models · this month"
+              }
+
+              Rectangle {
+                visible: root.agyModelRows.length > 0
+                width: parent.width
+                height: agyModelsCol.height + 8
+                radius: 12
+                color: t.surface
+
+                Column {
+                  id: agyModelsCol
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.topMargin: 4
+                  anchors.leftMargin: 12
+                  anchors.rightMargin: 12
+
+                  Repeater {
+                    model: root.agyModelRows
+                    Column {
+                      required property var modelData
+                      required property int index
+                      width: agyModelsCol.width
+
+                      Hairline {
+                        visible: index > 0
+                        width: parent.width
+                        anchors.horizontalCenter: parent.horizontalCenter
+                      }
+
+                      RowLayout {
+                        width: parent.width
+                        height: 46
+                        Text {
+                          Layout.fillWidth: true
+                          text: modelData.name
+                          font.pixelSize: 12
+                          font.family: t.mono
+                          color: t.ink2
+                          elide: Text.ElideMiddle
+                        }
+                        ColumnLayout {
+                          spacing: 2
+                          Text {
+                            Layout.alignment: Qt.AlignRight
+                            text: modelData.tokens
+                            font.pixelSize: 13
+                            font.family: t.mono
+                            color: t.ink1
+                          }
+                          Text {
+                            Layout.alignment: Qt.AlignRight
+                            text: modelData.sub
+                            font.pixelSize: 11
+                            font.family: t.mono
+                            color: t.ink3
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+
+              Text {
+                width: parent.width
+                text: "Updated " + root.agyUpdated
+                font.pixelSize: 11
+                font.family: t.mono
+                color: t.ink3
+              }
+
+              Text {
+                width: parent.width
+                visible: root.agyError !== ""
+                text: root.agyError
+                font.pixelSize: 11
+                font.family: t.mono
+                color: t.red
+                wrapMode: Text.Wrap
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // ---- Shared hover tooltip (same pattern as the old separate cards) ----
+    PopupWindow {
+      id: tip
+      anchor.window: root.barWindow
+      anchor.rect.x: root.barWindow ? Math.max(8, Math.min(root.tipX - tipBox.width / 2, root.barWindow.width - tipBox.width - 12)) : 0
+      anchor.rect.y: root.tipY
+      visible: false
+      implicitWidth: tipBox.width
+      implicitHeight: tipBox.height
+      color: "transparent"
+
+      Rectangle {
+        id: tipBox
+        implicitWidth: Math.max(50, tipCol.implicitWidth + 16)
+        implicitHeight: tipCol.implicitHeight + 10
+        radius: 6
+        color: "#181825"
+        border.color: "#45475a"
+        border.width: 1
+
+        Column {
+          id: tipCol
+          anchors.centerIn: parent
+          spacing: 3
+
+          Repeater {
+            model: root.tipDetails ? root.tipDetails.rows : []
+
+            delegate: Row {
+              id: tipDelegate
+              required property var modelData
+              required property int index
+              spacing: 12
+
+              Text {
+                width: 78
+                text: tipDelegate.modelData.k
+                color: "#6F6F84"
+                font.pixelSize: 11
+                font.family: t.mono
+              }
+
+              Text {
+                text: tipDelegate.modelData.v
+                color: "#C9C9D6"
+                font.pixelSize: 11
+                font.family: t.mono
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
