@@ -23,6 +23,23 @@ Item {
 
   property int currentTab: 0 // 0: Overview, 1: OpenCode, 2: Antigravity
 
+  // Last-N filter: number of most-recent messages to aggregate. Synced to
+  // both monitors (each clamps to [1,500] and refreshes on change).
+  property int lastN: 20
+  readonly property var lastNOptions: [10, 20, 50, 100]
+
+  function syncLastN(): void {
+    if (root.ocMonitor && root.ocMonitor.lastN !== undefined && root.ocMonitor.lastN !== root.lastN)
+      root.ocMonitor.setLastN(root.lastN);
+    if (root.agyMonitor && root.agyMonitor.lastN !== undefined && root.agyMonitor.lastN !== root.lastN)
+      root.agyMonitor.setLastN(root.lastN);
+  }
+
+  onLastNChanged: root.syncLastN()
+  onOcMonitorChanged: root.syncLastN()
+  onAgyMonitorChanged: root.syncLastN()
+  Component.onCompleted: root.syncLastN()
+
   implicitWidth: 440
   // Chrome: card margins 32 + header 40 + gap 14 + segments 34 + gap 12 = 132.
   implicitHeight: root.currentTab === 0 ? Math.min(620, Math.max(380, 132 + overviewCol.height)) : 620
@@ -165,6 +182,22 @@ Item {
       total: root.periodTotal(root.ocMonitor.monthTokens, root.agyMonitor.monthTokens)
     }
   ]
+
+  // Last-N card: most-recent message rows, not a calendar window. OpenCode
+  // counts user+assistant rows (valid JSON); Antigravity counts deduped
+  // assistant turns ordered by file mtime then idx (approximate across
+  // sessions). Actual rows can be < N when history is short.
+  readonly property var lastNCard: (root.ocMonitor === null || root.agyMonitor === null) ? null : ({
+    oc: root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.compact(root.ocMonitor.lastNTokens) : "--",
+    ocSub: (root.ocMonitor.lastNCost !== undefined ? root.money(root.ocMonitor.lastNCost) : "--") + " · " + (root.ocMonitor.lastNMessages !== undefined ? root.ocMonitor.compact(root.ocMonitor.lastNMessages) : "?") + " msgs",
+    ocDetails: root.ocMonitor.lastNSplit !== undefined ? root.ocSplitDetails(root.ocMonitor.lastNSplit, root.ocMonitor.lastNCost, root.ocMonitor.lastNMessages) : [],
+    agy: root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.compact(root.agyMonitor.lastNTokens) : "--",
+    agySub: (root.agyMonitor.lastNMessages !== undefined ? root.agyMonitor.compact(root.agyMonitor.lastNMessages) : "?") + " msgs",
+    agyDetails: root.agyMonitor.lastNSplit !== undefined ? root.agySplitDetails(root.agyMonitor.lastNSplit, root.agyMonitor.lastNMessages) : [],
+    total: root.periodTotal(
+      root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.lastNTokens : 0,
+      root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.lastNTokens : 0)
+  })
 
   // ---- Models, tagged by source and merged for the Overview tab ----
   readonly property var ocModelRows: root.ocMonitor === null ? [] : root.ocMonitor.monthModels.map(function (m) {
@@ -567,6 +600,144 @@ Item {
             id: overviewCol
             width: parent.width
             spacing: 10
+
+            SectionHead {
+              width: parent.width
+              label: "Last " + root.lastN + " messages"
+            }
+
+            Row {
+              width: parent.width
+              spacing: 6
+              Repeater {
+                model: root.lastNOptions
+                TextBtn {
+                  required property var modelData
+                  required property int index
+                  text: modelData
+                  fg: modelData === root.lastN ? t.ink1 : t.ink3
+                  fs: 11
+                  bold: modelData === root.lastN
+                  onClicked: root.lastN = modelData
+                }
+              }
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.busy ? "updating…" : ""
+                font.pixelSize: 11
+                font.family: t.mono
+                color: t.ink3
+              }
+            }
+
+            Rectangle {
+              visible: root.lastNCard !== null
+              width: parent.width
+              height: lastNInner.height + 8
+              radius: 12
+              color: t.surface
+
+              Column {
+                id: lastNInner
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.topMargin: 4
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+
+                RowLayout {
+                  width: parent.width
+                  height: 38
+                  Text {
+                    Layout.fillWidth: true
+                    text: "Σ  OpenCode"
+                    font.pixelSize: 12
+                    font.family: t.mono
+                    color: t.teal
+                  }
+                  InfoDot {
+                    Layout.alignment: Qt.AlignVCenter
+                    details: root.lastNCard ? root.lastNCard.ocDetails : []
+                  }
+                  ColumnLayout {
+                    spacing: 0
+                    Text {
+                      Layout.alignment: Qt.AlignRight
+                      text: root.lastNCard ? root.lastNCard.oc : "--"
+                      font.pixelSize: 13
+                      font.weight: Font.Medium
+                      font.family: t.mono
+                      color: t.ink1
+                    }
+                    Text {
+                      Layout.alignment: Qt.AlignRight
+                      text: root.lastNCard ? root.lastNCard.ocSub : ""
+                      font.pixelSize: 10
+                      font.family: t.mono
+                      color: t.ink3
+                    }
+                  }
+                }
+
+                Hairline { width: parent.width; anchors.horizontalCenter: parent.horizontalCenter }
+
+                RowLayout {
+                  width: parent.width
+                  height: 38
+                  Text {
+                    Layout.fillWidth: true
+                    text: "✦  Antigravity"
+                    font.pixelSize: 12
+                    font.family: t.mono
+                    color: t.violet
+                  }
+                  InfoDot {
+                    Layout.alignment: Qt.AlignVCenter
+                    details: root.lastNCard ? root.lastNCard.agyDetails : []
+                  }
+                  ColumnLayout {
+                    spacing: 0
+                    Text {
+                      Layout.alignment: Qt.AlignRight
+                      text: root.lastNCard ? root.lastNCard.agy : "--"
+                      font.pixelSize: 13
+                      font.weight: Font.Medium
+                      font.family: t.mono
+                      color: t.ink1
+                    }
+                    Text {
+                      Layout.alignment: Qt.AlignRight
+                      text: root.lastNCard ? root.lastNCard.agySub : ""
+                      font.pixelSize: 10
+                      font.family: t.mono
+                      color: t.ink3
+                    }
+                  }
+                }
+
+                Hairline { width: parent.width; anchors.horizontalCenter: parent.horizontalCenter }
+
+                RowLayout {
+                  width: parent.width
+                  height: 34
+                  Text {
+                    Layout.fillWidth: true
+                    text: "Combined"
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    color: t.ink2
+                  }
+                  Text {
+                    text: root.lastNCard ? root.lastNCard.total : "--"
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                    font.family: t.mono
+                    color: t.ink1
+                  }
+                }
+              }
+            }
 
             Repeater {
               model: root.overviewPeriods

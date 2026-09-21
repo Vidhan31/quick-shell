@@ -35,11 +35,18 @@ QJsonObject modelToJson(const QVariantMap &model) {
 
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
-    Q_UNUSED(argc);
-    Q_UNUSED(argv);
+
+    int lastN = 20;
+    if (argc > 1) {
+        bool ok = false;
+        const int parsed = QString::fromLocal8Bit(argv[1]).toInt(&ok);
+        if (ok) {
+            lastN = parsed;
+        }
+    }
 
     const qs::plugins::TokenWindowBounds bounds = qs::plugins::computeWindowBounds();
-    const qs::plugins::TokenRefreshResult result = qs::plugins::collectTokenUsage(bounds);
+    const qs::plugins::TokenRefreshResult result = qs::plugins::collectTokenUsage(bounds, lastN);
 
     QJsonArray models;
     for (const QVariant &value : result.monthModels) {
@@ -53,6 +60,8 @@ int main(int argc, char *argv[]) {
     root[QStringLiteral("today")] = windowToJson(result.today);
     root[QStringLiteral("week")] = windowToJson(result.week);
     root[QStringLiteral("month")] = windowToJson(result.month);
+    root[QStringLiteral("lastN")] = windowToJson(result.lastN);
+    root[QStringLiteral("lastNRequested")] = result.lastNRequested;
     root[QStringLiteral("monthModels")] = models;
     root[QStringLiteral("refreshedAt")] = result.refreshedAt;
 

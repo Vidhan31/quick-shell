@@ -32,6 +32,8 @@ struct AgRefreshResult {
     AgTokenWindow today;
     AgTokenWindow week;
     AgTokenWindow month;
+    AgTokenWindow lastN;
+    int lastNRequested = 20;
     QString refreshedAt;
     QVariantList monthModels;
     QVariantList monthSources;
@@ -49,7 +51,10 @@ AgWindowBounds computeAgWindowBounds();
 QStringList discoverAgRoots();
 
 // Synchronous collection used by both the worker thread and the probe tool.
-AgRefreshResult collectAgUsage(const AgWindowBounds &bounds);
+// lastN aggregates the most-recent deduped turns (file mtime, then idx) into
+// result.lastN. Ordering across files is approximate: all turns in one file
+// share the file mtime, so idx only orders within a file.
+AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastN = 20);
 
 class AgUsageWorker : public QObject {
     Q_OBJECT
@@ -58,7 +63,7 @@ public:
     explicit AgUsageWorker(QObject *parent = nullptr);
 
 public slots:
-    void refresh(const AgWindowBounds &bounds);
+    void refresh(const AgWindowBounds &bounds, int lastN);
 
 signals:
     void refreshed(const AgRefreshResult &result);
@@ -79,6 +84,10 @@ class AntigravityUsage : public QObject {
     Q_PROPERTY(QVariantMap todaySplit READ todaySplit NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap weekSplit READ weekSplit NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap monthSplit READ monthSplit NOTIFY dataChanged)
+    Q_PROPERTY(int lastN READ lastN WRITE setLastN NOTIFY lastNChanged)
+    Q_PROPERTY(qlonglong lastNTokens READ lastNTokens NOTIFY dataChanged)
+    Q_PROPERTY(qlonglong lastNMessages READ lastNMessages NOTIFY dataChanged)
+    Q_PROPERTY(QVariantMap lastNSplit READ lastNSplit NOTIFY dataChanged)
     Q_PROPERTY(QString lastRefresh READ lastRefresh NOTIFY dataChanged)
     Q_PROPERTY(QString error READ error NOTIFY dataChanged)
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
@@ -99,18 +108,24 @@ public:
     [[nodiscard]] QVariantMap todaySplit() const { return m_todaySplit; }
     [[nodiscard]] QVariantMap weekSplit() const { return m_weekSplit; }
     [[nodiscard]] QVariantMap monthSplit() const { return m_monthSplit; }
+    [[nodiscard]] int lastN() const { return m_lastN; }
+    [[nodiscard]] qlonglong lastNTokens() const { return m_lastNWindow.total(); }
+    [[nodiscard]] qlonglong lastNMessages() const { return m_lastNWindow.messages; }
+    [[nodiscard]] QVariantMap lastNSplit() const { return m_lastNSplit; }
     [[nodiscard]] QString lastRefresh() const { return m_lastRefresh; }
     [[nodiscard]] QString error() const { return m_error; }
     [[nodiscard]] bool isBusy() const { return m_busy; }
     [[nodiscard]] bool isConfigured() const { return m_configured; }
 
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void setLastN(int n);
     Q_INVOKABLE QString compact(qlonglong value) const;
 
 signals:
     void dataChanged();
     void busyChanged();
-    void requestRefresh(const AgWindowBounds &bounds);
+    void lastNChanged();
+    void requestRefresh(const AgWindowBounds &bounds, int lastN);
 
 private slots:
     void onRefreshed(const AgRefreshResult &result);
@@ -125,11 +140,14 @@ private:
     AgTokenWindow m_today;
     AgTokenWindow m_week;
     AgTokenWindow m_month;
+    AgTokenWindow m_lastNWindow;
+    int m_lastN{20};
     QVariantList m_monthModels;
     QVariantList m_monthSources;
     QVariantMap m_todaySplit;
     QVariantMap m_weekSplit;
     QVariantMap m_monthSplit;
+    QVariantMap m_lastNSplit;
     QString m_lastRefresh;
     QString m_error;
     bool m_busy{false};

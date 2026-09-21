@@ -31,6 +31,8 @@ struct TokenRefreshResult {
     TokenWindow today;
     TokenWindow week;
     TokenWindow month;
+    TokenWindow lastN;
+    int lastNRequested = 20;
     QString refreshedAt;
     QVariantList monthModels;
 };
@@ -47,7 +49,10 @@ TokenWindowBounds computeWindowBounds();
 QStringList discoverOpenCodeDbPaths();
 
 // Synchronous collection used by both the worker thread and the probe tool.
-TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds);
+// lastN is the number of most-recent message rows (user+assistant, valid
+// JSON) to aggregate into result.lastN, across all DB files. Clamped to
+// [1,500]; 20 when out of range.
+TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastN = 20);
 
 class TokenUsageWorker : public QObject {
     Q_OBJECT
@@ -56,7 +61,7 @@ public:
     explicit TokenUsageWorker(QObject *parent = nullptr);
 
 public slots:
-    void refresh(const TokenWindowBounds &bounds);
+    void refresh(const TokenWindowBounds &bounds, int lastN);
 
 signals:
     void refreshed(const TokenRefreshResult &result);
@@ -79,6 +84,11 @@ class TokenUsage : public QObject {
     Q_PROPERTY(QVariantMap todaySplit READ todaySplit NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap weekSplit READ weekSplit NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap monthSplit READ monthSplit NOTIFY dataChanged)
+    Q_PROPERTY(int lastN READ lastN WRITE setLastN NOTIFY lastNChanged)
+    Q_PROPERTY(qlonglong lastNTokens READ lastNTokens NOTIFY dataChanged)
+    Q_PROPERTY(qlonglong lastNMessages READ lastNMessages NOTIFY dataChanged)
+    Q_PROPERTY(double lastNCost READ lastNCost NOTIFY dataChanged)
+    Q_PROPERTY(QVariantMap lastNSplit READ lastNSplit NOTIFY dataChanged)
     Q_PROPERTY(QString lastRefresh READ lastRefresh NOTIFY dataChanged)
     Q_PROPERTY(QString error READ error NOTIFY dataChanged)
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
@@ -101,18 +111,25 @@ public:
     [[nodiscard]] QVariantMap todaySplit() const { return m_todaySplit; }
     [[nodiscard]] QVariantMap weekSplit() const { return m_weekSplit; }
     [[nodiscard]] QVariantMap monthSplit() const { return m_monthSplit; }
+    [[nodiscard]] int lastN() const { return m_lastN; }
+    [[nodiscard]] qlonglong lastNTokens() const { return m_lastNWindow.total(); }
+    [[nodiscard]] qlonglong lastNMessages() const { return m_lastNWindow.messages; }
+    [[nodiscard]] double lastNCost() const { return m_lastNWindow.cost; }
+    [[nodiscard]] QVariantMap lastNSplit() const { return m_lastNSplit; }
     [[nodiscard]] QString lastRefresh() const { return m_lastRefresh; }
     [[nodiscard]] QString error() const { return m_error; }
     [[nodiscard]] bool isBusy() const { return m_busy; }
     [[nodiscard]] bool isConfigured() const { return m_configured; }
 
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void setLastN(int n);
     Q_INVOKABLE QString compact(qlonglong value) const;
 
 signals:
     void dataChanged();
     void busyChanged();
-    void requestRefresh(const TokenWindowBounds &bounds);
+    void lastNChanged();
+    void requestRefresh(const TokenWindowBounds &bounds, int lastN);
 
 private slots:
     void onRefreshed(const TokenRefreshResult &result);
@@ -127,10 +144,13 @@ private:
     TokenWindow m_today;
     TokenWindow m_week;
     TokenWindow m_month;
+    TokenWindow m_lastNWindow;
+    int m_lastN{20};
     QVariantList m_monthModels;
     QVariantMap m_todaySplit;
     QVariantMap m_weekSplit;
     QVariantMap m_monthSplit;
+    QVariantMap m_lastNSplit;
     QString m_lastRefresh;
     QString m_error;
     bool m_busy{false};

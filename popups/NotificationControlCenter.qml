@@ -58,7 +58,14 @@ Item {
   }
 
   implicitWidth: 440
-  implicitHeight: root.totalCount > 0 ? Math.min(620, Math.max(180, mainCol.implicitHeight + 32)) : 172
+  // Hug the content (chrome 32 + body), capped so overflow scrolls inside
+  // the card instead of growing off-screen. bodyCol.height is driven only
+  // by its children (width comes from the viewport), so no binding loop.
+  // Previously this used ColumnLayout + Layout.fillHeight with a
+  // Layout.preferredHeight bound to content height — clearing the list
+  // collapsed the content while the layout still tried to fill, leaving
+  // the popover stuck at the wrong height.
+  implicitHeight: Math.min(620, 32 + bodyCol.height)
   width: implicitWidth
   height: implicitHeight
 
@@ -239,16 +246,22 @@ Item {
     border.color: "#26272F"
     border.width: 1
 
-    ColumnLayout {
-      id: mainCol
+    Flickable {
       anchors.fill: parent
       anchors.margins: 16
-      spacing: 0
+      contentWidth: width
+      contentHeight: bodyCol.height
+      clip: true
+
+      Column {
+        id: bodyCol
+        width: parent.width
+        spacing: 0
 
       // ---- Header: identity left, clear + mute switch right ----
       RowLayout {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 40
+        width: parent.width
+        height: 40
         spacing: 10
 
         Text {
@@ -293,13 +306,13 @@ Item {
         }
       }
 
-      Item { Layout.preferredHeight: 14; Layout.fillWidth: true }
+      Item { width: 1; height: 14 }
 
       // ---- Empty state: nothing to box, like "Nothing shared yet" ----
       Item {
         visible: root.totalCount === 0
-        Layout.fillWidth: true
-        Layout.preferredHeight: 64
+        width: parent.width
+        height: visible ? 64 : 0
         Column {
           anchors.centerIn: parent
           spacing: 3
@@ -318,66 +331,57 @@ Item {
         }
       }
 
-      // ---- Grouped app sections ----
-      Flickable {
-        id: flickView
+      // ---- Grouped app sections (scrolls in the outer Flickable) ----
+      Column {
+        id: contentCol
         visible: root.totalCount > 0
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        Layout.preferredHeight: Math.min(500, contentCol.height)
-        contentWidth: width
-        contentHeight: contentCol.height
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
+        width: parent.width
+        height: visible ? implicitHeight : 0
+        spacing: 12
 
-        Column {
-          id: contentCol
-          width: flickView.width
-          spacing: 12
+        Repeater {
+          model: root.groupedList
 
-          Repeater {
-            model: root.groupedList
+          delegate: Column {
+            id: groupDelegate
+            required property var modelData
+            required property int index
 
-            delegate: Column {
-              id: groupDelegate
-              required property var modelData
-              required property int index
+            readonly property var group: groupDelegate.modelData
+            readonly property string appName: group ? (group.appName || "Application") : "Application"
+            readonly property string appIcon: group ? (group.appIcon || "") : ""
+            readonly property var notifsList: group ? (group.notifications || []) : []
+            readonly property int totalGroupCount: group ? (group.totalCount || 0) : 0
+            readonly property bool isExpanded: group ? (group.expanded === true) : false
 
-              readonly property var group: groupDelegate.modelData
-              readonly property string appName: group ? (group.appName || "Application") : "Application"
-              readonly property string appIcon: group ? (group.appIcon || "") : ""
-              readonly property var notifsList: group ? (group.notifications || []) : []
-              readonly property int totalGroupCount: group ? (group.totalCount || 0) : 0
-              readonly property bool isExpanded: group ? (group.expanded === true) : false
+            // Slice to 2 items if not expanded
+            readonly property var visibleItems: isExpanded ? notifsList : notifsList.slice(0, 2)
 
-              // Slice to 2 items if not expanded
-              readonly property var visibleItems: isExpanded ? notifsList : notifsList.slice(0, 2)
+            // Resolve icon source via IconResolver
+            readonly property string resolvedIcon: root.resolveNotifIcon(appIcon, appName, "")
 
-              // Resolve icon source via IconResolver
-              readonly property string resolvedIcon: root.resolveNotifIcon(appIcon, appName, "")
+            width: contentCol.width
+            spacing: 10
 
-              width: contentCol.width
-              spacing: 10
-
-              SectionHead {
-                width: parent.width
-                label: groupDelegate.appName + (groupDelegate.totalGroupCount > 1 ? ` · ${groupDelegate.totalGroupCount}` : "")
-                actionText: "Clear"
-                actionColor: t.red
-                onActionClicked: {
-                  if (root.service) root.service.clearApp(groupDelegate.appName);
-                }
+            SectionHead {
+              width: parent.width
+              label: groupDelegate.appName + (groupDelegate.totalGroupCount > 1 ? ` · ${groupDelegate.totalGroupCount}` : "")
+              actionText: "Clear"
+              actionColor: t.red
+              onActionClicked: {
+                if (root.service) root.service.clearApp(groupDelegate.appName);
               }
+            }
 
-              Rectangle {
+            Rectangle {
+              width: parent.width
+              height: groupCol.height
+              radius: 12
+              color: t.surface
+
+              Column {
+                id: groupCol
                 width: parent.width
-                height: groupCol.height
-                radius: 12
-                color: t.surface
-
-                Column {
-                  id: groupCol
-                  width: parent.width
 
                   // App identity row; tap to expand when collapsed.
                   RowBase {
