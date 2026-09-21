@@ -1,5 +1,10 @@
-// Calendar.qml — Clean Catppuccin Mocha calendar matching QuickShell theme.
-// Docs (from every_quickshell_docs_131_url.csv):
+// Calendar.qml — Quiet calendar matching TailscaleControlCenter.
+// Quickshell constraints respected:
+// - Root exposes only implicitWidth/implicitHeight; PopupWindow drives size
+//   (anchors.fill: parent inside, no width/height bindings -> no resize loops).
+// - border.width stays constant (1) so hover never changes layout.
+// - Hover uses borderless washes, same as Tailscale RowBase/IconBtn/TextBtn.
+// Docs:
 // - https://quickshell.org/docs/v0.3.1/types/Quickshell/PopupWindow/ (hosted in shell.qml)
 // - https://quickshell.org/docs/v0.3.1/types/Quickshell.Io/FileView/ (path, text(), loaded)
 import QtQuick
@@ -20,7 +25,27 @@ Item {
   property var eventsMap: ({})
   property var selectedEvents: []
 
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
+  // ---- Design tokens (mirrors TailscaleControlCenter) ----
+  QtObject {
+    id: t
+    readonly property color bg: "#17171E"
+    readonly property color surface: "#1F202B"
+    readonly property color inset: "#121217"
+    readonly property color line: "#2B2C3A"
+    readonly property color cardBorder: "#26272F"
+    readonly property color ink1: "#F1F1F6"
+    readonly property color ink2: "#A6A6B8"
+    readonly property color ink3: "#6F6F84"
+    readonly property color accent: "#5E9DFF"
+    readonly property color amber: "#E2A63B"
+    readonly property color red: "#DF6363"
+    readonly property color darkInk: "#101018"
+    readonly property color selected: "#2E2F42"
+    readonly property color hoverFill: "#22232F"
+    readonly property string mono: "JetBrainsMono Nerd Font Mono"
+  }
+
+  readonly property string monoFont: t.mono
 
   readonly property var monthNames: [
     "January", "February", "March", "April", "May", "June",
@@ -29,9 +54,9 @@ Item {
   readonly property var weekDays: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
   implicitWidth: 328
-  implicitHeight: root.selectedEvents.length > 0 ? 366 : 336
+  implicitHeight: root.selectedEvents.length > 0 ? 388 : 336
 
-  Behavior on implicitHeight { NumberAnimation { duration: 140 } }
+  Behavior on implicitHeight { NumberAnimation { duration: 110 } }
 
   FileView {
     id: icsFile
@@ -224,9 +249,9 @@ Item {
   Rectangle {
     id: card
     anchors.fill: parent
-    radius: 16
-    color: "#1e1e2e"
-    border.color: "#313244"
+    radius: 14
+    color: t.bg
+    border.color: t.cardBorder
     border.width: 1
 
     WheelHandler {
@@ -241,43 +266,43 @@ Item {
 
     ColumnLayout {
       anchors.fill: parent
-      anchors.margins: 17
+      anchors.margins: 16
       spacing: 0
 
-      // Header: Month Year + Today button + Chevrons
+      // Header: identity left (Tailscale header pattern), quiet actions right.
+      // Borderless washes only — no bordered pills, so hover never shifts layout.
       RowLayout {
         Layout.fillWidth: true
-        Layout.preferredHeight: 30
+        Layout.preferredHeight: 40
+        spacing: 4
 
-        Text {
-          text: root.shownMonth >= 0 ? (root.monthNames[root.shownMonth] + " " + root.shownYear) : ""
-          color: "#cdd6f4"
-          font.pixelSize: 14
-          font.bold: true
-          font.family: root.monoFont
+        Column {
+          Layout.fillWidth: true
           Layout.alignment: Qt.AlignVCenter
+          spacing: 1
+          Text {
+            text: root.shownMonth >= 0 ? root.monthNames[root.shownMonth] : ""
+            color: t.ink1
+            font.pixelSize: 14
+            font.weight: Font.DemiBold
+          }
+          Text {
+            text: root.shownYear >= 0 ? root.shownYear : ""
+            color: t.ink3
+            font.pixelSize: 11
+          }
         }
 
-        Item { Layout.fillWidth: true }
-
-        // Today button (matching QuickShell button styling: #313244 -> #45475a, radius: 6)
-        Item {
+        // Today: borderless text button (Tailscale TextBtn pattern)
+        Rectangle {
           readonly property bool isTodayView: root.shownMonth === root.today.getMonth() && root.shownYear === root.today.getFullYear()
           visible: !isTodayView
-          implicitWidth: todayLabel.width + 16
-          implicitHeight: 26
+          implicitWidth: todayLabel.implicitWidth + 18
+          implicitHeight: 30
           Layout.alignment: Qt.AlignVCenter
-
-          Rectangle {
-            anchors.fill: parent
-            radius: 6
-            color: todayMouse.containsMouse ? "#45475a" : "#313244"
-            border.color: todayMouse.containsMouse ? "#585b70" : "transparent"
-            border.width: 1
-
-            Behavior on color { ColorAnimation { duration: 120 } }
-            Behavior on border.color { ColorAnimation { duration: 120 } }
-          }
+          radius: 7
+          color: todayMouse.pressed ? "#1CFFFFFF" : todayMouse.containsMouse ? "#0FFFFFFF" : "transparent"
+          Behavior on color { ColorAnimation { duration: 90 } }
 
           Text {
             id: todayLabel
@@ -285,8 +310,8 @@ Item {
             text: "Today"
             font.pixelSize: 11
             font.bold: true
-            font.family: root.monoFont
-            color: "#89b4fa"
+            color: todayMouse.containsMouse || todayMouse.pressed ? t.ink1 : t.accent
+            Behavior on color { ColorAnimation { duration: 90 } }
           }
 
           MouseArea {
@@ -298,21 +323,14 @@ Item {
           }
         }
 
-        // Chevron prev
-        Item {
-          width: 26
-          height: 26
+        // Chevron prev: borderless square icon button (Tailscale IconBtn pattern)
+        Rectangle {
+          Layout.preferredWidth: 30
+          Layout.preferredHeight: 30
           Layout.alignment: Qt.AlignVCenter
-
-          Rectangle {
-            anchors.fill: parent
-            radius: 6
-            color: prevMouse.containsMouse ? "#45475a" : "#313244"
-            border.color: prevMouse.containsMouse ? "#585b70" : "transparent"
-            border.width: 1
-
-            Behavior on color { ColorAnimation { duration: 120 } }
-          }
+          radius: 8
+          color: prevMouse.pressed ? "#1CFFFFFF" : prevMouse.containsMouse ? "#0FFFFFFF" : "transparent"
+          Behavior on color { ColorAnimation { duration: 90 } }
 
           Text {
             anchors.centerIn: parent
@@ -320,7 +338,8 @@ Item {
             text: "‹"
             font.pixelSize: 17
             font.bold: true
-            color: prevMouse.containsMouse ? "#ffffff" : "#cdd6f4"
+            color: prevMouse.containsMouse || prevMouse.pressed ? t.ink1 : t.ink2
+            Behavior on color { ColorAnimation { duration: 90 } }
           }
 
           MouseArea {
@@ -333,20 +352,13 @@ Item {
         }
 
         // Chevron next
-        Item {
-          width: 26
-          height: 26
+        Rectangle {
+          Layout.preferredWidth: 30
+          Layout.preferredHeight: 30
           Layout.alignment: Qt.AlignVCenter
-
-          Rectangle {
-            anchors.fill: parent
-            radius: 6
-            color: nextMouse.containsMouse ? "#45475a" : "#313244"
-            border.color: nextMouse.containsMouse ? "#585b70" : "transparent"
-            border.width: 1
-
-            Behavior on color { ColorAnimation { duration: 120 } }
-          }
+          radius: 8
+          color: nextMouse.pressed ? "#1CFFFFFF" : nextMouse.containsMouse ? "#0FFFFFFF" : "transparent"
+          Behavior on color { ColorAnimation { duration: 90 } }
 
           Text {
             anchors.centerIn: parent
@@ -354,7 +366,8 @@ Item {
             text: "›"
             font.pixelSize: 17
             font.bold: true
-            color: nextMouse.containsMouse ? "#ffffff" : "#cdd6f4"
+            color: nextMouse.containsMouse || nextMouse.pressed ? t.ink1 : t.ink2
+            Behavior on color { ColorAnimation { duration: 90 } }
           }
 
           MouseArea {
@@ -367,9 +380,9 @@ Item {
         }
       }
 
-      Item { Layout.preferredHeight: 14 }
+      Item { Layout.preferredHeight: 12; Layout.fillWidth: true }
 
-      // Weekday initials: Mo Tu We Th Fr Sa Su
+      // Weekday initials: small-caps section label pattern (Tailscale SectionHead)
       Row {
         Layout.fillWidth: true
         Layout.preferredHeight: 20
@@ -385,10 +398,11 @@ Item {
             Text {
               anchors.centerIn: parent
               text: parent.modelData
-              color: index >= 5 ? "#f38ba8" : "#6c7086"
+              color: t.ink3
               font.pixelSize: 11
               font.bold: true
-              font.family: root.monoFont
+              font.capitalization: Font.AllUppercase
+              font.letterSpacing: 0.8
             }
           }
         }
@@ -413,7 +427,9 @@ Item {
             readonly property bool isToday: root.sameDay(modelData.date, root.today)
             readonly property bool isSelected: root.sameDay(modelData.date, root.selectedDate)
 
-            // Day bubble: radius 8 squircle with comfortable breathing space
+            // Day bubble: quiet wash pattern (Tailscale RowBase/Segments).
+            // border.width stays 1 with transparent fallback so hover
+            // never triggers a layout pass inside the Grid.
             Rectangle {
               anchors.centerIn: parent
               width: 34
@@ -421,36 +437,33 @@ Item {
               radius: 8
 
               color: {
-                if (isToday) return "#89b4fa";
-                if (isSelected) return "#313244";
-                if (cellHover.containsMouse && modelData.inMonth) return "#313244";
+                if (isToday) return t.accent;
+                if (isSelected) return t.selected;
+                if (cellHover.pressed && modelData.inMonth) return "#1AFFFFFF";
+                if (cellHover.containsMouse && modelData.inMonth) return t.hoverFill;
                 return "transparent";
               }
 
-              border.color: {
-                if (!isToday && isSelected) return "#89b4fa";
-                if (cellHover.containsMouse && modelData.inMonth) return "#45475a";
-                return "transparent";
-              }
+              border.color: "transparent"
               border.width: 1
 
-              Behavior on color { ColorAnimation { duration: 100 } }
-              Behavior on border.color { ColorAnimation { duration: 100 } }
+              Behavior on color { ColorAnimation { duration: 90 } }
 
               Text {
                 anchors.centerIn: parent
                 anchors.verticalCenterOffset: modelData.hasEvent ? -2 : 0
                 text: modelData.day
                 font.pixelSize: 13
-                font.bold: isToday || isSelected
+                font.weight: (isToday || isSelected) ? Font.DemiBold : Font.Normal
                 font.family: root.monoFont
                 color: {
-                  if (isToday) return "#11111b";
-                  if (isSelected) return "#ffffff";
-                  if (!modelData.inMonth) return "#585b70";
-                  if (modelData.isWeekend) return "#f38ba8";
-                  return "#cdd6f4";
+                  if (isToday) return t.darkInk;
+                  if (isSelected) return t.ink1;
+                  if (!modelData.inMonth) return t.ink3;
+                  if (modelData.isWeekend) return t.red;
+                  return t.ink1;
                 }
+                Behavior on color { ColorAnimation { duration: 90 } }
               }
 
               // Event dot
@@ -462,7 +475,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 3
-                color: isToday ? "#11111b" : "#fab387"
+                color: isToday ? t.darkInk : t.amber
               }
             }
 
@@ -484,41 +497,47 @@ Item {
         }
       }
 
-      // Hairline divider (only shown when an event is selected)
+      // Hairline divider (Tailscale Hairline: inset via layout margins,
+      // fixed height + constant visibility binding so the grid never shifts)
       Rectangle {
         Layout.fillWidth: true
+        Layout.leftMargin: 12
+        Layout.rightMargin: 12
         Layout.topMargin: 10
         Layout.bottomMargin: 10
-        height: 1
-        color: "#313244"
+        Layout.preferredHeight: 1
+        color: t.line
         visible: root.selectedEvents.length > 0
       }
 
-      // Selected event line (only event name, no date text)
-      Item {
+      // Selected event: grouped surface row (Tailscale grouped-row pattern)
+      Rectangle {
         Layout.fillWidth: true
-        Layout.preferredHeight: 20
+        Layout.preferredHeight: 38
         visible: root.selectedEvents.length > 0
+        radius: 10
+        color: t.surface
 
         RowLayout {
           anchors.fill: parent
+          anchors.leftMargin: 12
+          anchors.rightMargin: 12
           spacing: 8
 
           Rectangle {
-            width: 5
-            height: 5
+            Layout.preferredWidth: 5
+            Layout.preferredHeight: 5
             radius: 2.5
-            color: "#fab387"
+            color: t.amber
             Layout.alignment: Qt.AlignVCenter
           }
 
           Text {
             Layout.fillWidth: true
             text: root.selectedEvents.join(", ")
-            color: "#fab387"
+            color: t.ink1
             font.pixelSize: 12
-            font.bold: true
-            font.family: root.monoFont
+            font.weight: Font.Medium
             elide: Text.ElideRight
             Layout.alignment: Qt.AlignVCenter
           }
