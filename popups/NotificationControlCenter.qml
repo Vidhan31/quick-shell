@@ -35,16 +35,11 @@ Item {
     return iconResolver.resolveStockIcon("preferences-desktop-notification") || iconResolver.resolveStockIcon("dialog-information") || iconResolver.fallbackIcon();
   }
 
-  // Grouped notification list from service
-  readonly property var groupedList: {
-    if (service) {
-      const _tick = service.timeTick;
-      const _notifs = service.notifications;
-      const _exp = service.expandedGroups;
-      return service.getGroupedNotifications();
-    }
-    return [];
-  }
+  // Grouped notification list from service. The service assigns new array
+  // identities on every rebuild (including the 10s timeAgo tick), so a
+  // direct bind is sufficient — no manual dep tickling (that caused a
+  // binding loop against the QML-owned cache).
+  readonly property var groupedList: service ? service.groupedList : []
 
   readonly property int totalCount: service ? ((service.notifications && service.notifications.length) || 0) : 0
   readonly property int unreadCount: service ? (service.unreadCount || 0) : 0
@@ -302,6 +297,37 @@ Item {
           onColor: t.amber
           onToggled: {
             if (root.service) root.service.toggleDnd();
+          }
+        }
+      }
+
+      // Quickshell 0.3.1 takeover switch (testing): when on, the
+      // NotificationServer owns org.freedesktop.Notifications; when off,
+      // the legacy passive monitor feeds the same UI.
+      RowLayout {
+        visible: root.service != null
+        width: parent.width
+        height: 28
+        spacing: 8
+
+        Text {
+          text: "Quickshell takeover"
+          font.pixelSize: 11
+          color: (root.service && root.service.takeoverEnabled === true) ? t.accent : t.ink3
+        }
+        Item {
+          Layout.fillWidth: true
+          Layout.preferredHeight: 1
+        }
+        Text {
+          text: (root.service && root.service.takeoverEnabled === true) ? "On" : "Off"
+          font.pixelSize: 11
+          color: t.ink2
+        }
+        TSwitch {
+          on: root.service && root.service.takeoverEnabled === true
+          onToggled: {
+            if (root.service) root.service.takeoverEnabled = !root.service.takeoverEnabled;
           }
         }
       }

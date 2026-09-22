@@ -1,98 +1,486 @@
 pragma ComponentBehavior: Bound
 // NotificationService.qml — Central manager for desktop notifications.
-// Backed by native C++ Qt6 plugin (Quickshell.Plugins.Notifications).
+//
+// Backend: Quickshell 0.3.1 NotificationServer
+// (Quickshell.Services.Notifications), sole owner of
+// org.freedesktop.Notifications. QML-only: history, toasts, grouping,
+// unread, DND (local-only) and relative times are all JS state fed by the
+// server's `notification` signal / `closed` signal.
+// `takeoverEnabled` (persisted) creates/destroys the server for on-demand
+// testing — when off, Plasma reclaims the bus name.
 import QtQuick
 import Quickshell
-import Quickshell.Plugins.Notifications
+import Quickshell.Services.Notifications
 
 Item {
   id: root
 
-  NotificationManager {
-    id: manager
+  // True = own org.freedesktop.Notifications. Flip off to hand it back.
+  property bool takeoverEnabled: true
+
+  // Local-only Do-Not-Disturb (no Plasma Inhibit sync).
+  property bool dnd: false
+  property var expandedGroups: ({})
+  property int maxNotifications: 100
+
+  // Stores. History entry: { notif, id, receivedAt: Date, read: bool,
+  //   expiresAt: ms|Infinity, timeoutMs, _manual?: bool }
+  property var _history: []
+  property var _toasts: []
+  property int _qsUnread: 0
+  property int _timeTickLocal: 0
+
+  // Legacy-shaped maps for widgets/popups (maps, not live objects).
+  property var _historyMaps: []
+  property var _toastMaps: []
+  property var _groupedCache: []
+
+  // Public read API (stable for widgets/popups)
+  readonly property var notifications: root._historyMaps
+  readonly property var activeToasts: root._toastMaps
+  readonly property var groupedList: root._groupedCache
+  readonly property int unreadCount: root._qsUnread
+  readonly property int totalCount: root._history.length
+  readonly property int timeTick: root._timeTickLocal
+
+  // Takeover server: created/destroyed via Loader (0.3.1 has no active flag).
+  Loader {
+    id: qsLoader
+    active: root.takeoverEnabled
+    sourceComponent: qsServerComponent
   }
 
-  // Native C++ QAbstractListModels
-  readonly property alias model: manager.model
-  readonly property alias toastModel: manager.toastModel
+  Component {
+    id: qsServerComponent
+    NotificationServer {
+      actionsSupported: true
+      bodySupported: true
+      bodyMarkupSupported: true
+      bodyHyperlinksSupported: true
+      bodyImagesSupported: true
+      imageSupported: true
+      persistenceSupported: true
+      keepOnReload: true
+      onNotification: n => root._onQsNotification(n)
+    }
+  }
 
-  // Compatibility properties for QML bindings
-  readonly property alias notifications: manager.notifications
-  readonly property alias activeToasts: manager.activeToasts
-  readonly property alias groupedList: manager.groupedList
-  readonly property alias unreadCount: manager.unreadCount
-  readonly property alias totalCount: manager.totalCount
-  property alias dnd: manager.dnd
-  property alias expandedGroups: manager.expandedGroups
-  readonly property alias timeTick: manager.timeTick
-  property alias maxNotifications: manager.maxNotifications
-
-  // Persistent properties for DND across hot-reloads
+  // Persistent flags across hot-reloads
   PersistentProperties {
     id: persist
     property bool dnd: false
+    property bool takeoverEnabled: true
     reloadableId: "notifications-state"
   }
 
   Component.onCompleted: {
-    if (persist.dnd) {
-      manager.dnd = true;
+    root.takeoverEnabled = persist.takeoverEnabled;
+    root.dnd = persist.dnd;
+  }
+
+  onTakeoverEnabledChanged: {
+    persist.takeoverEnabled = root.takeoverEnabled;
+    if (!root.takeoverEnabled)
+      root._clearQsState();
+    else
+      root._rebuildQsMaps();
+  }
+
+  onDndChanged: {
+    persist.dnd = root.dnd;
+    if (root.dnd) {
+      // DND on: drop non-critical toasts (critical still shows)
+      root._toasts = root._toasts.filter(w => root._urgencyNum(w.notif) === 2);
+      root._rebuildQsMaps();
     }
   }
 
-  Connections {
-    target: manager
-    function onDndChanged() {
-      persist.dnd = manager.dnd;
+  onExpandedGroupsChanged: root._rebuildQsMaps()
+  onMaxNotificationsChanged: root._evictQsOverflow()
+
+  // Local 10s ticker for timeAgo refresh
+  Timer {
+    interval: 10000
+    running: true
+    repeat: true
+    triggeredOnStart: false
+    onTriggered: {
+      root._timeTickLocal++;
+      root._rebuildQsMaps();
     }
   }
 
-  // Delegated methods
+  // 1s sweeper: expire toasts whose expiresAt passed
+  Timer {
+    interval: 1000
+    running: root.takeoverEnabled && root._toasts.length > 0
+    repeat: true
+    onTriggered: {
+      const now = Date.now();
+      let changed = false;
+      const keep = [];
+      for (let i = 0; i < root._toasts.length; i++) {
+        const w = root._toasts[i];
+        if (w.expiresAt !== Infinity && now >= w.expiresAt) {
+          try { w.notif.expire(); } catch (e) {}
+          if (w._manual)
+            root._history = root._history.filter(x => x.id !== w.id);
+          changed = true;
+        } else {
+          keep.push(w);
+        }
+      }
+      // notif.expire() triggers closed(Expired) which also removes; drop
+      // optimistically so UI hides even if close is delayed.
+      if (changed) {
+        root._toasts = keep;
+        root._recountUnread();
+        root._rebuildQsMaps();
+      }
+    }
+  }
+
+  // ================= Server internals =================
+
+  function _urgencyNum(n) {
+    try {
+      const v = Number(n.urgency);
+      if (v === 0 || v === 1 || v === 2)
+        return v;
+    } catch (e) {}
+    return 1;
+  }
+
+  function _defaultTimeoutMs(urgencyNum) {
+    return urgencyNum === 2 ? 10000 : (urgencyNum === 0 ? 3500 : 5000);
+  }
+
+  function _onQsNotification(n) {
+    // Carried over from pre-reload generation: keep in history, no toast/unread.
+    const carried = n.lastGeneration === true;
+    n.tracked = true;
+    const u = root._urgencyNum(n);
+    // Hook close BEFORE any dismiss can happen.
+    try {
+      n.closed.connect(reason => root._onQsClosed(n.id, reason));
+    } catch (e) {}
+
+    const receivedAt = new Date();
+    let timeoutMs = root._defaultTimeoutMs(u);
+    try {
+      if (n.expireTimeout !== undefined && n.expireTimeout !== null) {
+        const s = Number(n.expireTimeout);
+        if (s === 0)
+          timeoutMs = Infinity; // persist
+        else if (s > 0)
+          timeoutMs = Math.round(s * 1000);
+        else if (s < 0)
+          timeoutMs = root._defaultTimeoutMs(u); // server default
+      }
+    } catch (e) {}
+
+    const w = {
+      notif: n,
+      id: n.id,
+      receivedAt: receivedAt,
+      read: carried ? true : false,
+      expiresAt: timeoutMs === Infinity ? Infinity : (receivedAt.getTime() + timeoutMs),
+      timeoutMs: timeoutMs
+    };
+
+    if (n.transient === true) {
+      // Transient: toast-only, skip history persistence (0.3.1 doc).
+      if (!root.dnd || u === 2)
+        root._toasts = root._toasts.concat([w]).slice(-10);
+      root._rebuildQsMaps();
+      return;
+    }
+
+    root._history = root._history.concat([w]);
+    root._evictQsOverflow();
+    if (!carried) {
+      if (!root.dnd || u === 2)
+        root._toasts = root._toasts.concat([w]).slice(-10);
+      root._qsUnread++;
+    }
+    root._rebuildQsMaps();
+  }
+
+  function _onQsClosed(notifId, reason) {
+    root._history = root._history.filter(w => w.id !== notifId);
+    root._toasts = root._toasts.filter(w => w.id !== notifId);
+    root._recountUnread();
+    root._rebuildQsMaps();
+  }
+
+  function _recountUnread() {
+    let u = 0;
+    for (let i = 0; i < root._history.length; i++)
+      if (!root._history[i].read)
+        u++;
+    root._qsUnread = u;
+  }
+
+  function _evictQsOverflow() {
+    let evicted = false;
+    while (root._history.length > root.maxNotifications && root._history.length > 0) {
+      const oldest = root._history[0];
+      root._history = root._history.slice(1);
+      root._toasts = root._toasts.filter(w => w.id !== oldest.id);
+      try { oldest.notif.dismiss(); } catch (e) {}
+      evicted = true;
+    }
+    if (evicted) {
+      root._recountUnread();
+      root._rebuildQsMaps();
+    }
+  }
+
+  function _clearQsState() {
+    // Dismiss live notifications so server + clients stay consistent.
+    for (let i = 0; i < root._history.length; i++) {
+      try { root._history[i].notif.dismiss(); } catch (e) {}
+    }
+    root._history = [];
+    root._toasts = [];
+    root._qsUnread = 0;
+    root._rebuildQsMaps();
+  }
+
+  function _wrapMap(w) {
+    const n = w.notif;
+    const u = root._urgencyNum(n);
+    const acts = [];
+    try {
+      if (n.actions) {
+        for (let i = 0; i < n.actions.length; i++) {
+          const a = n.actions[i];
+          acts.push({ identifier: a.identifier, text: a.text || a.identifier });
+        }
+      }
+    } catch (e) {}
+    return {
+      id: w.id,
+      notifId: String(w.id),
+      appName: n.appName || "Application",
+      appIcon: n.appIcon || "",
+      summary: n.summary || "Notification",
+      body: n.body || "",
+      image: n.image || "",
+      desktopEntry: n.desktopEntry || "",
+      urgency: u,
+      timeout: w.timeoutMs === Infinity ? 0 : w.timeoutMs,
+      timestamp: w.receivedAt,
+      timeAgo: root.timeAgo(w.receivedAt),
+      read: w.read,
+      actions: acts,
+      isBridge: false
+    };
+  }
+
+  function _findQs(id) {
+    for (let i = 0; i < root._history.length; i++)
+      if (root._history[i].id === id)
+        return root._history[i];
+    for (let i = 0; i < root._toasts.length; i++)
+      if (root._toasts[i].id === id)
+        return root._toasts[i];
+    return null;
+  }
+
+  function _rebuildQsMaps() {
+    root._historyMaps = root._history.map(w => root._wrapMap(w));
+    root._toastMaps = root._toasts.map(w => root._wrapMap(w));
+    root._groupedCache = root._buildGrouped(root._historyMaps);
+  }
+
+  function _buildGrouped(maps) {
+    const order = [];
+    const groups = {};
+    for (let i = 0; i < maps.length; i++) {
+      const m = maps[i];
+      const key = (m.appName || "Application").trim() || "Application";
+      if (!groups[key]) {
+        groups[key] = { appName: key, appIcon: m.appIcon, notifications: [], totalCount: 0, expanded: root.isGroupExpanded(key) };
+        order.push(key);
+      }
+      if (!groups[key].appIcon && m.appIcon)
+        groups[key].appIcon = m.appIcon;
+      groups[key].notifications.push(m);
+      groups[key].totalCount++;
+    }
+    return order.map(k => groups[k]);
+  }
+
+  // ================= Public API =================
+
   function dismissToast(id) {
-    manager.dismissToast(id);
+    const w = root._findQs(Number(id));
+    if (w && w.notif && w.notif.transient === true) {
+      try { w.notif.expire(); } catch (e) {}
+    }
+    root._toasts = root._toasts.filter(x => x.id !== Number(id));
+    root._rebuildQsMaps();
   }
 
   function dismissNotification(id) {
-    manager.dismissNotification(id);
+    const w = root._findQs(Number(id));
+    if (w) {
+      try { w.notif.dismiss(); } catch (e) {}
+    }
+    root._history = root._history.filter(x => x.id !== Number(id));
+    root._toasts = root._toasts.filter(x => x.id !== Number(id));
+    root._recountUnread();
+    root._rebuildQsMaps();
   }
 
   function clearApp(appName) {
-    manager.clearApp(appName);
+    for (let i = 0; i < root._history.length; i++) {
+      if ((root._history[i].notif.appName || "Application") === appName) {
+        try { root._history[i].notif.dismiss(); } catch (e) {}
+      }
+    }
+    root._history = root._history.filter(w => (w.notif.appName || "Application") !== appName);
+    root._toasts = root._toasts.filter(w => (w.notif.appName || "Application") !== appName);
+    root._recountUnread();
+    root._rebuildQsMaps();
   }
 
   function clearAll() {
-    manager.clearAll();
+    for (let i = 0; i < root._history.length; i++) {
+      try { root._history[i].notif.dismiss(); } catch (e) {}
+    }
+    root._history = [];
+    root._toasts = [];
+    root._qsUnread = 0;
+    root._rebuildQsMaps();
   }
 
   function markAllRead() {
-    manager.markAllRead();
+    for (let i = 0; i < root._history.length; i++)
+      root._history[i].read = true;
+    root._qsUnread = 0;
+    root._rebuildQsMaps();
   }
 
   function toggleDnd() {
-    manager.toggleDnd();
+    root.dnd = !root.dnd;
   }
 
   function toggleGroupExpanded(appName) {
-    manager.toggleGroupExpanded(appName);
+    const g = Object.assign({}, root.expandedGroups);
+    g[appName] = !g[appName];
+    root.expandedGroups = g;
   }
 
   function isGroupExpanded(appName) {
-    return manager.isGroupExpanded(appName);
+    return root.expandedGroups[appName] === true;
   }
 
   function invokeAction(itemOrId, identifier) {
-    manager.invokeAction(itemOrId, identifier);
+    let id = 0;
+    if (typeof itemOrId === "number")
+      id = itemOrId;
+    else if (itemOrId && itemOrId.id !== undefined)
+      id = Number(itemOrId.id);
+    const w = root._findQs(id);
+    if (!w)
+      return;
+    try {
+      let done = false;
+      if (w.notif.actions) {
+        for (let i = 0; i < w.notif.actions.length; i++) {
+          if (w.notif.actions[i].identifier === identifier) {
+            w.notif.actions[i].invoke();
+            done = true;
+            break;
+          }
+        }
+      }
+      if (!done)
+        w.notif.dismiss();
+    } catch (e) {
+      try { w.notif.dismiss(); } catch (e2) {}
+    }
+    // invoke() auto-dismisses unless resident; ensure local state follows
+    let resident = false;
+    try { resident = w.notif.resident === true; } catch (e) {}
+    if (!resident) {
+      root._history = root._history.filter(x => x.id !== id);
+      root._toasts = root._toasts.filter(x => x.id !== id);
+      root._recountUnread();
+      root._rebuildQsMaps();
+    }
   }
 
   function timeAgo(date) {
-    return manager.timeAgo(date);
+    try {
+      let ms = 0;
+      if (date instanceof Date) {
+        ms = Math.max(0, Date.now() - date.getTime());
+      } else if (typeof date === "number") {
+        ms = Math.max(0, Date.now() - date);
+      } else {
+        return "Just now";
+      }
+      const secs = Math.floor(ms / 1000);
+      const mins = Math.floor(secs / 60);
+      const hrs = Math.floor(mins / 60);
+      const days = Math.floor(hrs / 24);
+      if (secs < 45)
+        return "Just now";
+      if (mins < 60)
+        return mins + (mins === 1 ? " min ago" : " mins ago");
+      if (hrs < 24)
+        return hrs + (hrs === 1 ? " hr ago" : " hrs ago");
+      if (days < 7)
+        return days + (days === 1 ? " day ago" : " days ago");
+      return Qt.formatDate(new Date(Date.now() - ms), "MMM d");
+    } catch (e) {
+      return "Just now";
+    }
   }
 
   function getGroupedNotifications() {
-    return manager.getGroupedNotifications();
+    return root._groupedCache;
   }
 
+  // Local test hook (no D-Bus involved). Plain-object stand-in with the
+  // fields _wrapMap reads, so it flows through the same map path.
   function addManualNotification(summary, body, appName, appIcon, image, urgency, actions) {
-    manager.addManualNotification(summary, body, appName, appIcon, image, urgency, actions);
+    const now = new Date();
+    const u = Math.max(0, Math.min(2, Number(urgency) || 1));
+    const timeoutMs = root._defaultTimeoutMs(u);
+    const id = 9000 + Math.floor(Math.random() * 8999);
+    const w = {
+      notif: {
+        id: id,
+        appName: appName || "Application",
+        appIcon: appIcon || "",
+        summary: summary || "Notification",
+        body: body || "",
+        image: image || "",
+        desktopEntry: "",
+        urgency: u,
+        actions: (actions || []).map(a => ({ identifier: a.identifier, text: a.text, invoke: function () {} })),
+        resident: false,
+        transient: false,
+        tracked: true,
+        dismiss: function () {},
+        expire: function () {}
+      },
+      id: id,
+      receivedAt: now,
+      read: false,
+      expiresAt: now.getTime() + timeoutMs,
+      timeoutMs: timeoutMs,
+      _manual: true
+    };
+    root._history = root._history.concat([w]);
+    root._evictQsOverflow();
+    if (!root.dnd || u === 2)
+      root._toasts = root._toasts.concat([w]).slice(-10);
+    root._qsUnread++;
+    root._rebuildQsMaps();
   }
 }
