@@ -58,12 +58,21 @@ void PrivacyWorker::setInterval(int intervalMs) {
 }
 
 void PrivacyWorker::sample() {
-    const auto state = PrivacyProbe::probe(true);
-    if (!m_initialized || state != m_lastState) {
-        m_initialized = true;
-        m_lastState = state;
-        emit stateChanged(state);
+    // Serve from the cached monitor graph: it holds the same data a one-shot
+    // pw-dump would return, without fork + full-parse (~330 KB). Only fall
+    // back to a synchronous probe when the monitor has no graph yet
+    // (startup / daemon restart). evaluatePrivacyState() still runs the fast
+    // /proc fallbacks itself when the graph shows nothing active.
+    if (m_nodes.isEmpty() && m_links.isEmpty()) {
+        const auto state = PrivacyProbe::probe(true);
+        if (!m_initialized || state != m_lastState) {
+            m_initialized = true;
+            m_lastState = state;
+            emit stateChanged(state);
+        }
+        return;
     }
+    evaluatePrivacyState();
 }
 
 void PrivacyWorker::setupPwProcess() {
@@ -207,7 +216,16 @@ void PrivacyWorker::processPwBuffer() {
 
         if (matchEnd >= 0) {
             const QByteArray chunk = m_pwBuffer.left(matchEnd + 1);
-            if (handleJsonArray(chunk)) {
+            // Fast pre-filter: only Node/Link add/updates and removals can
+            // affect privacy state. Removals arrive as {"id": N, "info": null}
+            // with no "type" field, so "null" must also pass through (as must
+            // tiny chunks, defensively). Port/Client/Device/Module/Factory/
+            // Metadata traffic skips the JSON parse entirely.
+            const bool relevant = chunk.size() < 64
+                                  || chunk.contains("PipeWire:Interface:Node")
+                                  || chunk.contains("PipeWire:Interface:Link")
+                                  || chunk.contains("null");
+            if (relevant && handleJsonArray(chunk)) {
                 graphChanged = true;
             }
             m_pwBuffer.remove(0, matchEnd + 1);
@@ -279,7 +297,16 @@ bool PrivacyWorker::handleJsonArray(const QByteArray &chunk) {
 
         const QString type = obj.value(QStringLiteral("type")).toString();
         if (type == QLatin1String("PipeWire:Interface:Node")) {
-            m_nodes.insert(id, obj);
+            // Drop the "params" blob (v4l2 controls, format lists, …): it is
+            // ~80% of a Node's bytes and never read by evaluatePrivacyState.
+            // Keeps the resident graph small and re-emits cheap.
+            QJsonObject node = obj;
+            QJsonObject info = node.value(QStringLiteral("info")).toObject();
+            if (info.contains(QStringLiteral("params"))) {
+                info.remove(QStringLiteral("params"));
+                node[QStringLiteral("info")] = info;
+            }
+            m_nodes.insert(id, node);
             changed = true;
         } else if (type == QLatin1String("PipeWire:Interface:Link")) {
             m_links.insert(id, obj);

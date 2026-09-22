@@ -321,10 +321,16 @@ void PrivacyProbe::resolvePipeWireMetadata(PrivacyState &state) {
 
     for (const QJsonValue &val : arr) {
         if (!val.isObject()) continue;
-        const QJsonObject item = val.toObject();
+        QJsonObject item = val.toObject();
         const QString type = item.value(QStringLiteral("type")).toString();
         if (type == QLatin1String("PipeWire:Interface:Node")) {
             const int id = item.value(QStringLiteral("id")).toInt();
+            // Drop "params" (v4l2 controls, …): never read below, ~80% of bytes.
+            QJsonObject info = item.value(QStringLiteral("info")).toObject();
+            if (info.contains(QStringLiteral("params"))) {
+                info.remove(QStringLiteral("params"));
+                item[QStringLiteral("info")] = info;
+            }
             nodes.insert(id, item);
         } else if (type == QLatin1String("PipeWire:Interface:Link")) {
             links.push_back(item);
