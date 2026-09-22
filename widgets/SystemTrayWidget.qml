@@ -330,9 +330,9 @@ Item {
       id: tooltipBox
       implicitWidth: Math.max(50, tooltipCol.implicitWidth + 16)
       implicitHeight: tooltipCol.implicitHeight + 10
-      radius: 6
-      color: "#181825"
-      border.color: "#45475a"
+      radius: 10
+      color: "#1F202B"
+      border.color: "#2B2C3A"
       border.width: 1
 
       Column {
@@ -345,7 +345,7 @@ Item {
             if (!root.hoveredItem) return "";
             return root.hoveredItem.tooltipTitle || root.hoveredItem.title || root.hoveredItem.id || "";
           }
-          color: "#cdd6f4"
+          color: "#F1F1F6"
           font.pixelSize: 11
           font.bold: true
           font.family: "JetBrainsMono Nerd Font Mono"
@@ -354,7 +354,7 @@ Item {
         Text {
           text: (root.hoveredItem && root.hoveredItem.tooltipDescription) ? root.hoveredItem.tooltipDescription : ""
           visible: text !== ""
-          color: "#a6adc8"
+          color: "#A6A6B8"
           font.pixelSize: 10
           font.family: "JetBrainsMono Nerd Font Mono"
         }
@@ -388,9 +388,9 @@ Item {
       implicitHeight: menuCol.implicitHeight + 16
       width: implicitWidth
       height: implicitHeight
-      radius: 8
-      color: "#1e1e2e"
-      border.color: "#45475a"
+      radius: 14
+      color: "#17171E"
+      border.color: "#26272F"
       border.width: 1
 
       Column {
@@ -429,16 +429,16 @@ Item {
                 anchors.centerIn: parent
                 width: parent.width - 8
                 height: 1
-                color: "#313244"
+                color: "#2B2C3A"
               }
             }
 
             // Clickable Menu Item
             Rectangle {
               anchors.fill: parent
-              radius: 4
+              radius: 7
               visible: !menuItem.isSep
-              color: menuMouse.containsMouse && menuItem.entry && menuItem.entry.enabled ? "#313244" : "transparent"
+              color: menuMouse.containsMouse && menuItem.entry && menuItem.entry.enabled ? "#0FFFFFFF" : "transparent"
 
               Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -456,7 +456,7 @@ Item {
                   text: menuItem.entry && menuItem.entry.checkState === Qt.Checked ? "✓" : " "
                   font.pixelSize: 11
                   font.bold: true
-                  color: "#89b4fa"
+                  color: "#5E9DFF"
                 }
 
                 // Entry Icon
@@ -473,7 +473,7 @@ Item {
                   id: itemLabel
                   anchors.verticalCenter: parent.verticalCenter
                   text: menuItem.entry ? menuItem.entry.text.replace(/&/g, "") : ""
-                  color: menuItem.entry && menuItem.entry.enabled ? (menuMouse.containsMouse ? "#ffffff" : "#cdd6f4") : "#6c7086"
+                  color: menuItem.entry && menuItem.entry.enabled ? (menuMouse.containsMouse ? "#F1F1F6" : "#A6A6B8") : "#6F6F84"
                   font.pixelSize: 11
                   font.family: "JetBrainsMono Nerd Font Mono"
                 }
@@ -485,7 +485,7 @@ Item {
                 anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
                 text: "›"
-                color: menuMouse.containsMouse ? "#cdd6f4" : "#6c7086"
+                color: menuMouse.containsMouse ? "#F1F1F6" : "#6F6F84"
                 font.pixelSize: 13
                 font.bold: true
                 visible: menuItem.entry ? menuItem.entry.hasChildren : false
@@ -531,9 +531,9 @@ Item {
       id: passiveCard
       implicitWidth: Math.max(140, passiveCol.implicitWidth + 24)
       implicitHeight: passiveCol.implicitHeight + 20
-      radius: 8
-      color: "#1e1e2e"
-      border.color: "#45475a"
+      radius: 14
+      color: "#17171E"
+      border.color: "#26272F"
       border.width: 1
 
       Column {
@@ -543,9 +543,11 @@ Item {
 
         Text {
           text: "Hidden Tray Icons"
-          color: "#a6adc8"
+          color: "#6F6F84"
           font.pixelSize: 11
           font.bold: true
+          font.capitalization: Font.AllUppercase
+          font.letterSpacing: 0.8
           font.family: "JetBrainsMono Nerd Font Mono"
         }
 
@@ -569,9 +571,9 @@ Item {
 
               Rectangle {
                 anchors.fill: parent
-                radius: 6
-                color: (root.activeMenuTarget === passiveDelegate && contextMenuPopup.visible) ? "#45475a" : (passiveMouse.containsMouse ? "#3b3e52" : "#313244")
-                border.color: (root.activeMenuTarget === passiveDelegate && contextMenuPopup.visible) ? "#89b4fa" : (passiveMouse.containsMouse ? "#585b70" : "transparent")
+                radius: 8
+                color: (root.activeMenuTarget === passiveDelegate && contextMenuPopup.visible) ? "#1AFFFFFF" : (passiveMouse.containsMouse ? "#0FFFFFFF" : "#1F202B")
+                border.color: "#2B2C3A"
                 border.width: 1
 
                 Behavior on color { ColorAnimation { duration: 120 } }

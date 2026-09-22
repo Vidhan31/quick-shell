@@ -109,12 +109,12 @@ Item {
       width: 28
       height: 26
 
-      // Transparent background, no border
+      // Quiet hover wash (mirrors Tailscale RowBase), no border.
       Rectangle {
         id: bg
         anchors.fill: parent
-        radius: 4
-        color: mouseArea.containsMouse ? "#1affffff" : "transparent"
+        radius: 8
+        color: mouseArea.pressed ? "#1AFFFFFF" : (mouseArea.containsMouse ? "#0FFFFFFF" : "transparent")
 
         Behavior on color { ColorAnimation { duration: 120 } }
       }
@@ -123,7 +123,7 @@ Item {
       Text {
         anchors.centerIn: parent
         text: (windowDelegate.winAppId ? windowDelegate.winAppId.charAt(0).toUpperCase() : "?")
-        color: "#cdd6f4"
+        color: "#F1F1F6"
         font.pixelSize: 12
         font.bold: true
         opacity: appIcon.opacity
@@ -153,8 +153,8 @@ Item {
         height: 2
         radius: 1
         color: {
-          if (windowDelegate.isActivated) return "#89b4fa"; // Catppuccin Blue
-          if (mouseArea.containsMouse) return "#cdd6f4";
+          if (windowDelegate.isActivated) return "#5E9DFF";
+          if (mouseArea.containsMouse) return "#A6A6B8";
           return "transparent";
         }
 
@@ -171,7 +171,7 @@ Item {
         width: 4
         height: 4
         radius: 2
-        color: windowDelegate.isFullscreen ? "#f38ba8" : (windowDelegate.isMaximized ? "#a6e3a1" : "transparent")
+        color: windowDelegate.isFullscreen ? "#DF6363" : (windowDelegate.isMaximized ? "#46C786" : "transparent")
         visible: windowDelegate.isFullscreen || windowDelegate.isMaximized
       }
 
