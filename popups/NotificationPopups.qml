@@ -53,8 +53,13 @@ PanelWindow {
 
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.exclusiveZone: 0
-  // OnDemand: toasts don't steal focus, but inline-reply fields work on click.
-  WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+  // None by default: toasts never steal keyboard focus from the active app.
+  // Docs warn OnDemand "may cause the shell window to retain focus over
+  // another window unexpectedly". We only escalate to OnDemand while the
+  // user is actively interacting with an inline-reply field (hover + reply
+  // active), then drop back to None. Mouse clicks/dismiss never need focus.
+  property int _kbHolders: 0
+  WlrLayershell.keyboardFocus: _kbHolders > 0 ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
   color: "transparent"
   implicitWidth: 340
@@ -185,6 +190,31 @@ PanelWindow {
         property bool isDragging: false
         property bool isHovered: false
         property bool replyActive: false
+        property bool _kbHeld: false
+
+        // Only hold keyboard focus while the user is engaging the
+        // inline-reply field. Acquire on hover so the click can land focus,
+        // release when hover leaves and no reply is active. Hover alone
+        // never moves focus — KWin only focuses OnDemand surfaces on click.
+        function _syncKbHold() {
+          const need = toastItem.hasInlineReply && (toastItem.isHovered || toastItem.replyActive);
+          if (need && !toastItem._kbHeld) {
+            toastItem._kbHeld = true;
+            root._kbHolders++;
+          } else if (!need && toastItem._kbHeld) {
+            toastItem._kbHeld = false;
+            root._kbHolders = Math.max(0, root._kbHolders - 1);
+          }
+        }
+        onIsHoveredChanged: _syncKbHold()
+        onReplyActiveChanged: _syncKbHold()
+        onHasInlineReplyChanged: _syncKbHold()
+        Component.onDestruction: {
+          if (toastItem._kbHeld) {
+            toastItem._kbHeld = false;
+            root._kbHolders = Math.max(0, root._kbHolders - 1);
+          }
+        }
 
         width: toastCol.width
         implicitHeight: toastCard.implicitHeight
