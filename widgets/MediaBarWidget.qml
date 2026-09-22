@@ -1,14 +1,15 @@
 // MediaBarWidget.qml — Compact top bar widget for current media status.
+// State comes from qs.services.MediaService (official Quickshell.Services.Mpris).
 import QtQuick
 import Quickshell
-import Quickshell.Plugins.Media
+import qs.services
 
 Item {
   id: root
 
   readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
 
-  MediaManager {
+  MediaService {
     id: media
     positionTracking: false
   }

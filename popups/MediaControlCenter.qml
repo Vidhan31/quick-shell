@@ -4,28 +4,28 @@ pragma ComponentBehavior: Bound
 // SectionHead, RowBase, TextBtn, IconBtn, TSwitch, Segments. Words + tint carry
 // state, no badge pills or boxed banners. Content hugs bodyCol.height (capped) so
 // the popover never clips or leaves empty space; overflow scrolls inside the card.
-// Native C++ Qt6 QML module (Quickshell.Plugins.Media).
+// Official Quickshell.Services.Mpris backend via qs.services.MediaService.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Plugins.Media
+import Quickshell.Services.Mpris
+import qs.services
 
 Item {
   id: root
 
-  property MediaManager media: null
+  property var media: null
 
   Loader {
     id: fallbackMediaLoader
     active: root.media === null
-    sourceComponent: MediaManager {
-      running: root.media === null
-    }
+    sourceComponent: MediaService {}
   }
 
-  readonly property MediaManager activeMedia: root.media ? root.media : fallbackMediaLoader.item
+  readonly property var activeMedia: root.media ? root.media : fallbackMediaLoader.item
 
-  // Position tracking: enable 100ms clock interpolation only when popup is visible
+  // Position tracking: re-emits the official positionChanged signal every frame
+  // (FrameAnimation in MediaService) only when the popup is visible.
   Binding {
     target: root.activeMedia
     property: "positionTracking"
@@ -50,7 +50,7 @@ Item {
     }
   }
 
-  // All available players from native MPRIS manager
+  // All available players from the official MPRIS service
   readonly property var playerList: activeMedia ? activeMedia.playerList : []
   readonly property int playerCount: activeMedia ? activeMedia.playerCount : 0
 
@@ -96,7 +96,13 @@ Item {
   }
 
   function formatArtUrl(url: string): string {
-    return url || "";
+    if (!url) {
+      return "";
+    }
+    if (url.startsWith("/") && !url.startsWith("//")) {
+      return "file://" + url;
+    }
+    return url;
   }
 
   function playerLabel(p: var): string {
@@ -106,19 +112,19 @@ Item {
 
   function cycleLoop(): void {
     if (!root.player || !root.player.loopSupported || !root.player.canControl) return;
-    if (root.player.loopState === 0) {
-      root.player.loopState = 2; // Playlist
-    } else if (root.player.loopState === 2) {
-      root.player.loopState = 1; // Track
+    if (root.player.loopState === MprisLoopState.None) {
+      root.player.loopState = MprisLoopState.Playlist;
+    } else if (root.player.loopState === MprisLoopState.Playlist) {
+      root.player.loopState = MprisLoopState.Track;
     } else {
-      root.player.loopState = 0; // None
+      root.player.loopState = MprisLoopState.None;
     }
   }
 
   function loopWord(): string {
     if (!root.player) return "Off";
-    if (root.player.loopState === 1) return "Track";
-    if (root.player.loopState === 2) return "Playlist";
+    if (root.player.loopState === MprisLoopState.Track) return "Track";
+    if (root.player.loopState === MprisLoopState.Playlist) return "Playlist";
     return "Off";
   }
 
@@ -585,7 +591,7 @@ Item {
                     text: {
                       if (!root.player) return "Unknown Artist";
                       if (root.player.trackArtist) return root.player.trackArtist;
-                      if (root.player.trackArtists && root.player.trackArtists.length > 0) return root.player.trackArtists.join(", ");
+                      if (root.player.trackAlbumArtist) return root.player.trackAlbumArtist;
                       return "Unknown Artist";
                     }
                     font.pixelSize: 12
@@ -883,10 +889,10 @@ Item {
                 anchors.rightMargin: 12
                 spacing: 10
                 Text {
-                  text: (root.player && root.player.loopState === 1) ? "󰑘" : "󰑖"
+                  text: (root.player && root.player.loopState === MprisLoopState.Track) ? "󰑘" : "󰑖"
                   font.family: t.mono
                   font.pixelSize: 15
-                  color: (root.player && root.player.loopState !== 0) ? t.accent : t.ink3
+                  color: (root.player && root.player.loopState !== MprisLoopState.None) ? t.accent : t.ink3
                 }
                 Column {
                   Layout.fillWidth: true
@@ -913,7 +919,7 @@ Item {
                   text: root.loopWord()
                   font.pixelSize: 12
                   font.weight: Font.Medium
-                  color: (root.player && root.player.loopState !== 0) ? t.accent : t.ink2
+                  color: (root.player && root.player.loopState !== MprisLoopState.None) ? t.accent : t.ink2
                 }
               }
             }
