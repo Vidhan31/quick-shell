@@ -18,6 +18,11 @@ Item {
     id: iconResolver
   }
 
+  function resolveActionIcon(identifier) {
+    if (!identifier) return "";
+    return iconResolver.resolveNamedOrPath(identifier);
+  }
+
   // Resolve best matching icon for app / notification
   function resolveNotifIcon(iconName, appName, desktopEntry) {
     if (iconName) {
@@ -384,7 +389,8 @@ Item {
             readonly property var visibleItems: isExpanded ? notifsList : notifsList.slice(0, 2)
 
             // Resolve icon source via IconResolver
-            readonly property string resolvedIcon: root.resolveNotifIcon(appIcon, appName, "")
+            readonly property string groupDesktopEntry: group ? (group.desktopEntry || "") : ""
+            readonly property string resolvedIcon: root.resolveNotifIcon(appIcon, appName, groupDelegate.groupDesktopEntry)
 
             width: contentCol.width
             spacing: 10
@@ -470,8 +476,13 @@ Item {
                       readonly property string imageSrc: notif ? (notif.image || "") : ""
                       readonly property var actionsList: notif ? (notif.actions || []) : []
                       readonly property string timeStr: root.service ? root.service.timeAgo(notif.timestamp) : "Just now"
-                      readonly property int urgencyVal: notif ? (notif.urgency || 1) : 1
+                      readonly property int urgencyVal: notif ? (notif.urgency ?? 1) : 1
                       readonly property bool isCritical: notifItem.urgencyVal === 2
+                      readonly property bool isLow: notifItem.urgencyVal === 0
+                      readonly property bool hasInlineReply: notif ? notif.hasInlineReply === true : false
+                      readonly property string replyPlaceholder: notif ? (notif.inlineReplyPlaceholder || "Reply…") : "Reply…"
+                      readonly property bool hasActionIcons: notif ? notif.hasActionIcons === true : false
+                      readonly property string desktopEntry: notif ? (notif.desktopEntry || "") : ""
 
                       width: groupCol.width
 
@@ -498,9 +509,10 @@ Item {
                               Text {
                                 width: Math.min(implicitWidth, parent.width - 130)
                                 text: notifItem.summaryText
+                                textFormat: Text.PlainText
                                 font.pixelSize: 13
                                 font.weight: Font.Medium
-                                color: notifItem.isCritical ? t.red : t.ink1
+                                color: notifItem.isCritical ? t.red : (notifItem.isLow ? t.ink2 : t.ink1)
                                 elide: Text.ElideRight
                               }
                               Text {
@@ -518,11 +530,14 @@ Item {
                               visible: notifItem.bodyText.length > 0
                               width: parent.width
                               text: notifItem.bodyText
+                              textFormat: Text.RichText
                               font.pixelSize: 12
                               color: t.ink2
+                              linkColor: t.accent
                               wrapMode: Text.WordWrap
                               maximumLineCount: 4
                               elide: Text.ElideRight
+                              onLinkActivated: link => Qt.openUrlExternally(link)
                             }
 
                             Text {
@@ -552,12 +567,72 @@ Item {
                               spacing: 2
                               Repeater {
                                 model: notifItem.actionsList
-                                TextBtn {
+                                delegate: Row {
+                                  id: ccActRow
                                   required property var modelData
-                                  text: modelData.text || "Action"
-                                  fs: 11
-                                  onClicked: {
-                                    if (root.service) root.service.invokeAction(notifItem.notif, modelData.identifier);
+                                  spacing: 4
+                                  IconImage {
+                                    visible: notifItem.hasActionIcons
+                                    width: 14
+                                    height: 14
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    source: root.resolveActionIcon(ccActRow.modelData.identifier)
+                                    asynchronous: true
+                                  }
+                                  TextBtn {
+                                    text: ccActRow.modelData.text || "Action"
+                                    fs: 11
+                                    onClicked: {
+                                      if (root.service) root.service.invokeAction(notifItem.notif, ccActRow.modelData.identifier);
+                                    }
+                                  }
+                                }
+                              }
+                            }
+
+                            RowLayout {
+                              visible: notifItem.hasInlineReply
+                              width: parent.width
+                              spacing: 6
+                              Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 30
+                                radius: 8
+                                color: t.inset
+                                border.color: ccReplyInput.activeFocus ? t.accent : t.line
+                                border.width: 1
+                                TextInput {
+                                  id: ccReplyInput
+                                  anchors.fill: parent
+                                  anchors.leftMargin: 8
+                                  anchors.rightMargin: 8
+                                  verticalAlignment: TextInput.AlignVCenter
+                                  font.pixelSize: 12
+                                  color: t.ink1
+                                  clip: true
+                                  onAccepted: {
+                                    if (root.service && text.trim().length > 0) {
+                                      root.service.sendInlineReply(notifItem.notif, text);
+                                      text = "";
+                                    }
+                                  }
+                                  Text {
+                                    visible: parent.text.length === 0
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: notifItem.replyPlaceholder
+                                    font.pixelSize: 12
+                                    color: t.ink3
+                                  }
+                                }
+                              }
+                              TextBtn {
+                                text: "Send"
+                                fs: 11
+                                fg: t.accent
+                                onClicked: {
+                                  if (root.service && ccReplyInput.text.trim().length > 0) {
+                                    root.service.sendInlineReply(notifItem.notif, ccReplyInput.text);
+                                    ccReplyInput.text = "";
                                   }
                                 }
                               }

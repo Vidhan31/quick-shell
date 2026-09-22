@@ -20,9 +20,13 @@ PanelWindow {
     id: iconResolver
   }
 
-  function resolveNotifIcon(iconName, appName) {
+  function resolveNotifIcon(iconName, appName, desktopEntry) {
     if (iconName) {
       const p = iconResolver.resolveNamedOrPath(iconName);
+      if (p) return p;
+    }
+    if (desktopEntry) {
+      const p = iconResolver.resolveIcon(desktopEntry, "");
       if (p) return p;
     }
     if (appName) {
@@ -30,6 +34,11 @@ PanelWindow {
       if (p) return p;
     }
     return iconResolver.resolveStockIcon("preferences-desktop-notification") || iconResolver.resolveStockIcon("dialog-information") || iconResolver.fallbackIcon();
+  }
+
+  function resolveActionIcon(identifier) {
+    if (!identifier) return "";
+    return iconResolver.resolveNamedOrPath(identifier);
   }
 
   readonly property var activeList: service ? (service.activeToasts || []) : []
@@ -44,7 +53,8 @@ PanelWindow {
 
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.exclusiveZone: 0
-  WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+  // OnDemand: toasts don't steal focus, but inline-reply fields work on click.
+  WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
 
   color: "transparent"
   implicitWidth: 340
@@ -157,16 +167,24 @@ PanelWindow {
         readonly property string bodyText: toast ? (toast.body || "") : ""
         readonly property string imageSrc: toast ? (toast.image || "") : ""
         readonly property var actionsList: toast ? (toast.actions || []) : []
-        readonly property int urgencyVal: toast ? (toast.urgency || 1) : 1
+        readonly property int urgencyVal: toast ? (toast.urgency ?? 1) : 1
         readonly property bool isCritical: toastItem.urgencyVal === 2
-        readonly property int timeoutMs: isCritical ? 10000 : (urgencyVal === 0 ? 3500 : 5000)
+        readonly property bool isLow: toastItem.urgencyVal === 0
+        // Service-provided timeout (category + expireTimeout aware, 0 = persist).
+        readonly property int timeoutMs: toast && toast.timeout > 0 ? toast.timeout : (isCritical ? 10000 : (isLow ? 3500 : 5000))
+        readonly property bool persistToast: toast ? toast.timeout === 0 : false
         readonly property string timeStr: (root.service && toast) ? root.service.timeAgo(toast.timestamp) : "Just now"
+        readonly property bool hasInlineReply: toast ? toast.hasInlineReply === true : false
+        readonly property string replyPlaceholder: toast ? (toast.inlineReplyPlaceholder || "Reply…") : "Reply…"
+        readonly property bool hasActionIcons: toast ? toast.hasActionIcons === true : false
+        readonly property string desktopEntry: toast ? (toast.desktopEntry || "") : ""
 
-        readonly property string resolvedIcon: root.resolveNotifIcon(appIcon, appName)
+        readonly property string resolvedIcon: root.resolveNotifIcon(appIcon, appName, toastItem.desktopEntry)
 
         property real dragOffset: 0
         property bool isDragging: false
         property bool isHovered: false
+        property bool replyActive: false
 
         width: toastCol.width
         implicitHeight: toastCard.implicitHeight
@@ -187,10 +205,11 @@ PanelWindow {
         }
 
         // Hover holds the toast; leaving restarts the countdown.
+        // Typing a reply also holds it.
         Timer {
           id: dismissTimer
           interval: toastItem.timeoutMs
-          running: true
+          running: !toastItem.persistToast && !toastItem.replyActive
           onTriggered: {
             if (root.service) root.service.dismissToast(toastItem.toast.id);
           }
@@ -226,7 +245,7 @@ PanelWindow {
 
             onExited: {
               toastItem.isHovered = false;
-              dismissTimer.restart();
+              if (!toastItem.replyActive && !toastItem.persistToast) dismissTimer.restart();
             }
 
             onClicked: mouse => {
@@ -325,9 +344,10 @@ PanelWindow {
                 Text {
                   width: parent.width
                   text: toastItem.summaryText
+                  textFormat: Text.PlainText
                   font.pixelSize: 13
                   font.weight: Font.Medium
-                  color: toastItem.isCritical ? t.red : t.ink1
+                  color: toastItem.isCritical ? t.red : (toastItem.isLow ? t.ink2 : t.ink1)
                   wrapMode: Text.WordWrap
                   maximumLineCount: 2
                   elide: Text.ElideRight
@@ -337,11 +357,14 @@ PanelWindow {
                   visible: toastItem.bodyText.length > 0
                   width: parent.width
                   text: toastItem.bodyText
+                  textFormat: Text.RichText
                   font.pixelSize: 12
                   color: t.ink2
+                  linkColor: t.accent
                   wrapMode: Text.WordWrap
                   maximumLineCount: 3
                   elide: Text.ElideRight
+                  onLinkActivated: link => Qt.openUrlExternally(link)
                 }
 
                 Rectangle {
@@ -371,14 +394,83 @@ PanelWindow {
                   spacing: 2
                   Repeater {
                     model: toastItem.actionsList
-                    TextBtn {
+                    delegate: Row {
+                      id: toastActRow
                       required property var modelData
                       required property int index
-                      text: modelData.text || "Action"
-                      onClicked: {
-                        if (root.service) {
-                          root.service.invokeAction(toastItem.toast, modelData.identifier);
+                      spacing: 4
+                      IconImage {
+                        visible: toastItem.hasActionIcons
+                        width: 14
+                        height: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        source: root.resolveActionIcon(toastActRow.modelData.identifier)
+                        asynchronous: true
+                      }
+                      TextBtn {
+                        text: toastActRow.modelData.text || "Action"
+                        onClicked: {
+                          if (root.service) {
+                            root.service.invokeAction(toastItem.toast, toastActRow.modelData.identifier);
+                          }
                         }
+                      }
+                    }
+                  }
+                }
+
+                Hairline {
+                  visible: toastItem.hasInlineReply
+                  width: parent.width
+                }
+
+                RowLayout {
+                  visible: toastItem.hasInlineReply
+                  width: parent.width
+                  spacing: 6
+                  Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 30
+                    radius: 8
+                    color: t.inset
+                    border.color: replyInput.activeFocus ? t.accent : t.line
+                    border.width: 1
+                    TextInput {
+                      id: replyInput
+                      anchors.fill: parent
+                      anchors.leftMargin: 8
+                      anchors.rightMargin: 8
+                      verticalAlignment: TextInput.AlignVCenter
+                      font.pixelSize: 12
+                      color: t.ink1
+                      clip: true
+                      text: ""
+                      onActiveFocusChanged: toastItem.replyActive = activeFocus || text.length > 0
+                      onTextChanged: toastItem.replyActive = activeFocus || text.length > 0
+                      onAccepted: {
+                        if (root.service && text.trim().length > 0) {
+                          root.service.sendInlineReply(toastItem.toast, text);
+                          text = "";
+                          toastItem.replyActive = false;
+                        }
+                      }
+                      Text {
+                        visible: parent.text.length === 0
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: toastItem.replyPlaceholder
+                        font.pixelSize: 12
+                        color: t.ink3
+                      }
+                    }
+                  }
+                  TextBtn {
+                    text: "Send"
+                    fg: t.accent
+                    onClicked: {
+                      if (root.service && replyInput.text.trim().length > 0) {
+                        root.service.sendInlineReply(toastItem.toast, replyInput.text);
+                        replyInput.text = "";
+                        toastItem.replyActive = false;
                       }
                     }
                   }

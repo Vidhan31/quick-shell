@@ -22,6 +22,8 @@ Item {
   property bool dnd: false
   property var expandedGroups: ({})
   property int maxNotifications: 100
+  // Extra capability hints advertised to clients (NotificationServer.extraHints).
+  property var extraHints: []
 
   // Stores. History entry: { notif, id, receivedAt: Date, read: bool,
   //   expiresAt: ms|Infinity, timeoutMs, _manual?: bool }
@@ -48,18 +50,23 @@ Item {
     id: qsLoader
     active: root.takeoverEnabled
     sourceComponent: qsServerComponent
+    onLoaded: root._reconcileTracked()
   }
 
   Component {
     id: qsServerComponent
     NotificationServer {
+      id: qsServer
       actionsSupported: true
+      actionIconsSupported: true
       bodySupported: true
       bodyMarkupSupported: true
       bodyHyperlinksSupported: true
       bodyImagesSupported: true
       imageSupported: true
       persistenceSupported: true
+      inlineReplySupported: true
+      extraHints: root.extraHints
       keepOnReload: true
       onNotification: n => root._onQsNotification(n)
     }
@@ -90,7 +97,7 @@ Item {
     persist.dnd = root.dnd;
     if (root.dnd) {
       // DND on: drop non-critical toasts (critical still shows)
-      root._toasts = root._toasts.filter(w => root._urgencyNum(w.notif) === 2);
+      root._toasts = root._toasts.filter(w => (w.snap ? w.snap.urgency : root._urgencyNum(w.notif)) === 2);
       root._rebuildQsMaps();
     }
   }
@@ -106,6 +113,7 @@ Item {
     triggeredOnStart: false
     onTriggered: {
       root._timeTickLocal++;
+      root._reconcileTracked();
       root._rebuildQsMaps();
     }
   }
@@ -130,8 +138,8 @@ Item {
           keep.push(w);
         }
       }
-      // notif.expire() triggers closed(Expired) which also removes; drop
-      // optimistically so UI hides even if close is delayed.
+      // notif.expire() triggers closed(Expired) which drops the toast but
+      // keeps history; drop optimistically so UI hides even if close lags.
       if (changed) {
         root._toasts = keep;
         root._recountUnread();
@@ -155,6 +163,57 @@ Item {
     return urgencyNum === 2 ? 10000 : (urgencyNum === 0 ? 3500 : 5000);
   }
 
+  function _snapshotQs(n, u) {
+    const acts = [];
+    try {
+      if (n.actions) {
+        for (let i = 0; i < n.actions.length; i++) {
+          const a = n.actions[i];
+          acts.push({ identifier: a.identifier, text: a.text || a.identifier });
+        }
+      }
+    } catch (e) {}
+    let hints = {};
+    try { if (n.hints) hints = n.hints; } catch (e) {}
+    let hasInline = false;
+    let inlinePh = "";
+    let hasActIcons = false;
+    try { hasInline = n.hasInlineReply === true; } catch (e) {}
+    try { inlinePh = n.inlineReplyPlaceholder || ""; } catch (e) {}
+    try { hasActIcons = n.hasActionIcons === true; } catch (e) {}
+    return {
+      appName: n.appName || "Application",
+      appIcon: n.appIcon || "",
+      summary: n.summary || "Notification",
+      body: n.body || "",
+      image: n.image || "",
+      desktopEntry: n.desktopEntry || "",
+      urgency: u,
+      actions: acts,
+      resident: n.resident === true,
+      transient: n.transient === true,
+      hasInlineReply: hasInline,
+      inlineReplyPlaceholder: inlinePh,
+      hasActionIcons: hasActIcons,
+      category: (hints["category"] || hints["Category"] || ""),
+      soundName: (hints["sound-name"] || ""),
+      soundFile: (hints["sound-file"] || ""),
+      suppressSound: (hints["suppress-sound"] === true)
+    };
+  }
+
+  // Category-aware timeout: calls/messaging ring longer, transfer/progress shorter.
+  function _timeoutForCategory(category, urgencyNum) {
+    const c = String(category || "").toLowerCase();
+    if (c.indexOf("call") === 0 || c === "incoming-call")
+      return 15000;
+    if (c.indexOf("im") === 0 || c === "email" || c === "message")
+      return urgencyNum === 2 ? 10000 : 7000;
+    if (c === "transfer" || c === "progress" || c.indexOf("presence") === 0)
+      return 3500;
+    return root._defaultTimeoutMs(urgencyNum);
+  }
+
   function _onQsNotification(n) {
     // Carried over from pre-reload generation: keep in history, no toast/unread.
     const carried = n.lastGeneration === true;
@@ -168,6 +227,12 @@ Item {
     const receivedAt = new Date();
     let timeoutMs = root._defaultTimeoutMs(u);
     try {
+      const snap0 = root._snapshotQs(n, u);
+      const catT = root._timeoutForCategory(snap0.category, u);
+      if (catT !== undefined)
+        timeoutMs = catT;
+    } catch (e) {}
+    try {
       if (n.expireTimeout !== undefined && n.expireTimeout !== null) {
         const s = Number(n.expireTimeout);
         if (s === 0)
@@ -175,12 +240,50 @@ Item {
         else if (s > 0)
           timeoutMs = Math.round(s * 1000);
         else if (s < 0)
-          timeoutMs = root._defaultTimeoutMs(u); // server default
+          timeoutMs = timeoutMs; // keep category/default
       }
     } catch (e) {}
 
+    const snap = root._snapshotQs(n, u);
+    // replaces_id / same-id update: replace in place instead of duplicating.
+    const hid = root._history.findIndex(x => x.id === n.id);
+    const tid = root._toasts.findIndex(x => x.id === n.id);
+    if (hid !== -1 || tid !== -1) {
+      const base = hid !== -1 ? root._history[hid] : root._toasts[tid];
+      base.notif = n;
+      base.snap = snap;
+      base.receivedAt = receivedAt;
+      base.timeoutMs = timeoutMs;
+      base.expiresAt = timeoutMs === Infinity ? Infinity : (receivedAt.getTime() + timeoutMs);
+      if (!carried)
+        base.read = false;
+      // Move updated entry to the end for recency in history.
+      if (hid !== -1) {
+        const nh = root._history.slice();
+        const w0 = nh.splice(hid, 1)[0];
+        nh.push(w0);
+        root._history = nh;
+      }
+      if (tid !== -1) {
+        const nt = root._toasts.slice();
+        const idx = (hid !== -1 && root._toasts[tid] === base) ? tid : nt.findIndex(x => x.id === n.id);
+        if (idx !== -1) {
+          const w1 = nt.splice(idx, 1)[0];
+          nt.push(w1);
+          root._toasts = nt.slice(-10);
+        }
+      } else if (!carried && (!root.dnd || u === 2) && snap.transient !== true) {
+        root._toasts = root._toasts.concat([base]).slice(-10);
+      }
+      if (!carried)
+        root._recountUnread();
+      root._rebuildQsMaps();
+      return;
+    }
+
     const w = {
       notif: n,
+      snap: snap,
       id: n.id,
       receivedAt: receivedAt,
       read: carried ? true : false,
@@ -188,7 +291,7 @@ Item {
       timeoutMs: timeoutMs
     };
 
-    if (n.transient === true) {
+    if (snap.transient === true) {
       // Transient: toast-only, skip history persistence (0.3.1 doc).
       if (!root.dnd || u === 2)
         root._toasts = root._toasts.concat([w]).slice(-10);
@@ -206,11 +309,52 @@ Item {
     root._rebuildQsMaps();
   }
 
+  function _isExpiredReason(reason) {
+    try {
+      if (reason === NotificationCloseReason.Expired)
+        return true;
+    } catch (e) {}
+    // Fallback: Expired is value 1 in freedesktop order (Dismissed=0).
+    try { if (Number(reason) === 1) return true; } catch (e2) {}
+    return false;
+  }
+
   function _onQsClosed(notifId, reason) {
+    // Expired (timeout) only clears the toast; history persists.
+    // Dismissed / CloseRequested clear both.
+    if (root._isExpiredReason(reason)) {
+      root._toasts = root._toasts.filter(w => w.id !== notifId);
+      root._rebuildQsMaps();
+      return;
+    }
     root._history = root._history.filter(w => w.id !== notifId);
     root._toasts = root._toasts.filter(w => w.id !== notifId);
     root._recountUnread();
     root._rebuildQsMaps();
+  }
+
+  // Reconcile against the canonical server model (missed signals safety net).
+  function _reconcileTracked() {
+    try {
+      const srv = qsLoader.item;
+      if (!srv || !srv.trackedNotifications)
+        return;
+      const count = srv.trackedNotifications.count || 0;
+      const seen = {};
+      for (let i = 0; i < count; i++) {
+        try {
+          const n = srv.trackedNotifications.get(i);
+          if (n)
+            seen[n.id] = true;
+        } catch (e) {}
+      }
+      // Drop toast entries the server no longer tracks (history keeps Expired).
+      const nt = root._toasts.filter(w => w._manual === true || seen[w.id] === true);
+      if (nt.length !== root._toasts.length) {
+        root._toasts = nt;
+        root._rebuildQsMaps();
+      }
+    } catch (e) {}
   }
 
   function _recountUnread() {
@@ -249,31 +393,64 @@ Item {
 
   function _wrapMap(w) {
     const n = w.notif;
-    const u = root._urgencyNum(n);
-    const acts = [];
+    const s = w.snap || {};
+    // Prefer live values while the object is alive, fall back to snapshot
+    // (Expired entries keep history after the C++ object is destroyed).
+    function live(key, fb) {
+      try {
+        const v = n ? n[key] : undefined;
+        if (v !== undefined && v !== null && v !== "")
+          return v;
+      } catch (e) {}
+      return (s[key] !== undefined && s[key] !== null) ? s[key] : fb;
+    }
+    let u = 1;
     try {
-      if (n.actions) {
+      if (s.urgency === 0 || s.urgency === 1 || s.urgency === 2)
+        u = s.urgency;
+      else
+        u = root._urgencyNum(n);
+    } catch (e) {}
+    let acts = s.actions || [];
+    try {
+      if (n && n.actions && n.actions.length !== undefined) {
+        const la = [];
         for (let i = 0; i < n.actions.length; i++) {
           const a = n.actions[i];
-          acts.push({ identifier: a.identifier, text: a.text || a.identifier });
+          la.push({ identifier: a.identifier, text: a.text || a.identifier });
         }
+        if (la.length > 0 || !s.actions)
+          acts = la;
       }
     } catch (e) {}
+    let hasInline = s.hasInlineReply === true;
+    let inlinePh = s.inlineReplyPlaceholder || "Reply…";
+    let hasActIcons = s.hasActionIcons === true;
+    try { if (n && n.hasInlineReply === true) hasInline = true; } catch (e) {}
+    try { if (n && n.inlineReplyPlaceholder) inlinePh = n.inlineReplyPlaceholder; } catch (e) {}
+    try { if (n && n.hasActionIcons === true) hasActIcons = true; } catch (e) {}
     return {
       id: w.id,
       notifId: String(w.id),
-      appName: n.appName || "Application",
-      appIcon: n.appIcon || "",
-      summary: n.summary || "Notification",
-      body: n.body || "",
-      image: n.image || "",
-      desktopEntry: n.desktopEntry || "",
+      appName: live("appName", "Application") || "Application",
+      appIcon: live("appIcon", ""),
+      summary: live("summary", "Notification") || "Notification",
+      body: live("body", ""),
+      image: live("image", ""),
+      desktopEntry: live("desktopEntry", ""),
       urgency: u,
       timeout: w.timeoutMs === Infinity ? 0 : w.timeoutMs,
       timestamp: w.receivedAt,
       timeAgo: root.timeAgo(w.receivedAt),
       read: w.read,
       actions: acts,
+      hasInlineReply: hasInline,
+      inlineReplyPlaceholder: inlinePh,
+      hasActionIcons: hasActIcons,
+      category: s.category || "",
+      soundName: s.soundName || "",
+      soundFile: s.soundFile || "",
+      suppressSound: s.suppressSound === true,
       isBridge: false
     };
   }
@@ -301,11 +478,13 @@ Item {
       const m = maps[i];
       const key = (m.appName || "Application").trim() || "Application";
       if (!groups[key]) {
-        groups[key] = { appName: key, appIcon: m.appIcon, notifications: [], totalCount: 0, expanded: root.isGroupExpanded(key) };
+        groups[key] = { appName: key, appIcon: m.appIcon, desktopEntry: m.desktopEntry || "", notifications: [], totalCount: 0, expanded: root.isGroupExpanded(key) };
         order.push(key);
       }
       if (!groups[key].appIcon && m.appIcon)
         groups[key].appIcon = m.appIcon;
+      if (!groups[key].desktopEntry && m.desktopEntry)
+        groups[key].desktopEntry = m.desktopEntry;
       groups[key].notifications.push(m);
       groups[key].totalCount++;
     }
@@ -314,9 +493,26 @@ Item {
 
   // ================= Public API =================
 
+  function _appNameOf(w) {
+    try { if (w.notif && w.notif.appName) return w.notif.appName; } catch (e) {}
+    if (w.snap && w.snap.appName)
+      return w.snap.appName;
+    return "Application";
+  }
+
+  function _isResident(w) {
+    try { if (w.notif && w.notif.resident === true) return true; } catch (e) {}
+    return w.snap && w.snap.resident === true;
+  }
+
+  function _isTransient(w) {
+    try { if (w.notif && w.notif.transient === true) return true; } catch (e) {}
+    return w.snap && w.snap.transient === true;
+  }
+
   function dismissToast(id) {
     const w = root._findQs(Number(id));
-    if (w && w.notif && w.notif.transient === true) {
+    if (w && root._isTransient(w)) {
       try { w.notif.expire(); } catch (e) {}
     }
     root._toasts = root._toasts.filter(x => x.id !== Number(id));
@@ -336,12 +532,12 @@ Item {
 
   function clearApp(appName) {
     for (let i = 0; i < root._history.length; i++) {
-      if ((root._history[i].notif.appName || "Application") === appName) {
+      if (root._appNameOf(root._history[i]) === appName) {
         try { root._history[i].notif.dismiss(); } catch (e) {}
       }
     }
-    root._history = root._history.filter(w => (w.notif.appName || "Application") !== appName);
-    root._toasts = root._toasts.filter(w => (w.notif.appName || "Application") !== appName);
+    root._history = root._history.filter(w => root._appNameOf(w) !== appName);
+    root._toasts = root._toasts.filter(w => root._appNameOf(w) !== appName);
     root._recountUnread();
     root._rebuildQsMaps();
   }
@@ -403,14 +599,44 @@ Item {
       try { w.notif.dismiss(); } catch (e2) {}
     }
     // invoke() auto-dismisses unless resident; ensure local state follows
-    let resident = false;
-    try { resident = w.notif.resident === true; } catch (e) {}
+    const resident = root._isResident(w);
     if (!resident) {
       root._history = root._history.filter(x => x.id !== id);
       root._toasts = root._toasts.filter(x => x.id !== id);
       root._recountUnread();
       root._rebuildQsMaps();
     }
+  }
+
+  function sendInlineReply(itemOrId, text) {
+    let id = 0;
+    if (typeof itemOrId === "number")
+      id = itemOrId;
+    else if (itemOrId && itemOrId.id !== undefined)
+      id = Number(itemOrId.id);
+    const reply = String(text || "").trim();
+    if (!reply)
+      return false;
+    const w = root._findQs(id);
+    if (!w || !w.notif)
+      return false;
+    let ok = false;
+    try {
+      if (w.notif.hasInlineReply === true || (w.snap && w.snap.hasInlineReply === true)) {
+        w.notif.sendInlineReply(reply);
+        ok = true;
+      }
+    } catch (e) {}
+    if (ok) {
+      // Reply sent: clear toast, keep history, mark read.
+      root._toasts = root._toasts.filter(x => x.id !== id);
+      for (let i = 0; i < root._history.length; i++)
+        if (root._history[i].id === id)
+          root._history[i].read = true;
+      root._recountUnread();
+      root._rebuildQsMaps();
+    }
+    return ok;
   }
 
   function timeAgo(date) {
@@ -447,11 +673,12 @@ Item {
 
   // Local test hook (no D-Bus involved). Plain-object stand-in with the
   // fields _wrapMap reads, so it flows through the same map path.
-  function addManualNotification(summary, body, appName, appIcon, image, urgency, actions) {
+  function addManualNotification(summary, body, appName, appIcon, image, urgency, actions, opts) {
     const now = new Date();
     const u = Math.max(0, Math.min(2, Number(urgency) || 1));
     const timeoutMs = root._defaultTimeoutMs(u);
     const id = 9000 + Math.floor(Math.random() * 8999);
+    const o = opts || {};
     const w = {
       notif: {
         id: id,
@@ -466,8 +693,13 @@ Item {
         resident: false,
         transient: false,
         tracked: true,
+        hasInlineReply: o.hasInlineReply === true,
+        inlineReplyPlaceholder: o.inlineReplyPlaceholder || "",
+        hasActionIcons: o.hasActionIcons === true,
+        hints: o.hints || {},
         dismiss: function () {},
-        expire: function () {}
+        expire: function () {},
+        sendInlineReply: function () {}
       },
       id: id,
       receivedAt: now,
@@ -476,6 +708,7 @@ Item {
       timeoutMs: timeoutMs,
       _manual: true
     };
+    w.snap = root._snapshotQs(w.notif, u);
     root._history = root._history.concat([w]);
     root._evictQsOverflow();
     if (!root.dnd || u === 2)
