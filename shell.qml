@@ -29,6 +29,10 @@ ShellRoot {
     service: notifService
   }
 
+  AudioService {
+    id: audioService
+  }
+
   Timer {
     interval: 1000
     running: true
@@ -74,6 +78,7 @@ ShellRoot {
         procPopup.visible = false;
         aiPopup.visible = false;
         mediaPopup.visible = false;
+        volPopup.visible = false;
         calPopup.visible = false;
         tsPopup.visible = false;
         ethPopup.visible = false;
@@ -170,11 +175,48 @@ ShellRoot {
         onRequestClosePopups: bar.closeAllPopups()
       }
 
+      // Volume hit button
+      BarChip {
+        id: volHit
+        anchors {
+          right: ethHit.left
+          rightMargin: 8
+          verticalCenter: parent.verticalCenter
+        }
+        active: volPopup.visible
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: bar.togglePopup(volPopup)
+        onRightClicked: volBarWidget.toggleMute()
+
+        VolumeBarWidget {
+          id: volBarWidget
+          audio: audioService
+        }
+      }
+
+      PopupWindow {
+        id: volPopup
+        anchor.window: bar
+        anchor.rect.x: Math.max(8, Math.min(volHit.x + volHit.width / 2 - volControlCenter.implicitWidth / 2, bar.width - volControlCenter.implicitWidth - 12))
+        anchor.rect.y: bar.implicitHeight + 6
+        visible: false
+        grabFocus: true
+        implicitWidth: volControlCenter.implicitWidth
+        implicitHeight: volControlCenter.implicitHeight
+        color: "transparent"
+
+        VolumeControlCenter {
+          id: volControlCenter
+          anchors.fill: parent
+          audio: audioService
+        }
+      }
+
       // Media control center hit button
       BarChip {
         id: mediaHit
         anchors {
-          right: ethHit.left
+          right: volHit.left
           rightMargin: 8
           verticalCenter: parent.verticalCenter
         }

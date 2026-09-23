@@ -9,3 +9,4 @@ PrimaryBtn 1.0 PrimaryBtn.qml
 Field 1.0 Field.qml
 Toast 1.0 Toast.qml
 TokenDonutCard 1.0 TokenDonutCard.qml
+VolumeSlider 1.0 VolumeSlider.qml
