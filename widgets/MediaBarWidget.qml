@@ -3,11 +3,13 @@
 import QtQuick
 import Quickshell
 import qs.services
+import "../theme"
 
 Item {
   id: root
 
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
+  readonly property var t: Theme
+  readonly property string monoFont: Theme.mono
 
   MediaService {
     id: media
@@ -47,7 +49,7 @@ Item {
           required property int index
           width: 2
           radius: 1
-          color: "#a6e3a1" // Green accent
+          color: Theme.ok // Green accent
 
           SequentialAnimation on height {
             running: root.isPlaying
@@ -76,7 +78,7 @@ Item {
       text: root.hasPlayer ? "󰏤" : "󰝚"
       font.family: root.monoFont
       font.pixelSize: 13
-      color: root.hasPlayer ? "#fab387" : "#a6adc8"
+      color: root.hasPlayer ? Theme.warn : Theme.ink2
     }
 
     // Track Title / Artist text
@@ -89,9 +91,9 @@ Item {
         return root.title;
       }
       font.family: root.monoFont
-      font.pixelSize: 12
+      font.pixelSize: Theme.fontBase
       font.bold: root.isPlaying
-      color: root.isPlaying ? "#ffffff" : "#cdd6f4"
+      color: root.isPlaying ? Theme.ink1 : Theme.ink2
       elide: Text.ElideRight
       width: Math.min(implicitWidth, 160)
     }

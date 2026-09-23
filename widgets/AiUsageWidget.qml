@@ -4,6 +4,7 @@
 import QtQuick
 import Quickshell.Plugins.TokenUsage
 import Quickshell.Plugins.AntigravityUsage
+import "../theme"
 
 Item {
   id: root
@@ -22,6 +23,8 @@ Item {
   readonly property bool isBusy: ocMonitor.busy || agyMonitor.busy
   readonly property bool ocConfigured: ocMonitor.configured
   readonly property bool agyConfigured: agyMonitor.configured
+
+  readonly property var t: Theme
 
   implicitWidth: contentRow.width
   implicitHeight: 20
@@ -53,41 +56,41 @@ Item {
     Text {
       anchors.verticalCenter: parent.verticalCenter
       text: "Σ"
-      font.family: "JetBrainsMono Nerd Font Mono"
+      font.family: Theme.mono
       font.pixelSize: 13
-      color: root.ocConfigured ? "#94e2d5" : "#6F6F84"
+      color: root.ocConfigured ? Theme.teal : Theme.ink3
     }
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
       text: root.ocText()
-      font.pixelSize: 12
-      font.family: "JetBrainsMono Nerd Font Mono"
-      color: "#C9C9D6"
+      font.pixelSize: Theme.fontBase
+      font.family: Theme.mono
+      color: Theme.ink1
     }
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
       text: "·"
-      font.pixelSize: 12
-      font.family: "JetBrainsMono Nerd Font Mono"
-      color: "#585b70"
+      font.pixelSize: Theme.fontBase
+      font.family: Theme.mono
+      color: Theme.ink3
     }
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
       text: "✦"
-      font.family: "JetBrainsMono Nerd Font Mono"
+      font.family: Theme.mono
       font.pixelSize: 13
-      color: root.agyConfigured ? "#c4b5fd" : "#6F6F84"
+      color: root.agyConfigured ? Theme.violet : Theme.ink3
     }
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
       text: root.agyText()
-      font.pixelSize: 12
-      font.family: "JetBrainsMono Nerd Font Mono"
-      color: "#C9C9D6"
+      font.pixelSize: Theme.fontBase
+      font.family: Theme.mono
+      color: Theme.ink1
     }
   }
 }

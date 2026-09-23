@@ -8,6 +8,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import "../theme"
+import "../components"
 
 Item {
   id: root
@@ -220,216 +222,7 @@ Item {
     { icon: "✦", label: "Antigravity", count: root.agyModelRows.length, alert: root.agyError !== "" }
   ]
 
-  // ================= Design tokens (mirrors TailscaleControlCenter) =================
-  QtObject {
-    id: t
-    readonly property color bg: "#17171E"
-    readonly property color surface: "#1F202B"
-    readonly property color inset: "#121217"
-    readonly property color line: "#2B2C3A"
-    readonly property color ink1: "#F1F1F6"
-    readonly property color ink2: "#A6A6B8"
-    readonly property color ink3: "#6F6F84"
-    readonly property color accent: "#5E9DFF"
-    readonly property color green: "#46C786"
-    readonly property color amber: "#E2A63B"
-    readonly property color red: "#DF6363"
-    readonly property color violet: "#AE8CFF"
-    readonly property color teal: "#94e2d5"
-    readonly property color darkInk: "#101018"
-    readonly property string mono: "JetBrainsMono Nerd Font Mono"
-  }
-
-  // ================= Reusable quiet components (mirrors TailscaleControlCenter) =================
-  component Hairline: Rectangle {
-    color: t.line
-    height: 1
-  }
-
-  component SectionHead: Item {
-    property string label: ""
-    property string actionText: ""
-    property color actionColor: t.ink2
-    signal actionClicked
-    implicitHeight: 20
-    Text {
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-      text: label
-      font.pixelSize: 11
-      font.bold: true
-      font.capitalization: Font.AllUppercase
-      font.letterSpacing: 0.8
-      color: t.ink3
-    }
-    TextBtn {
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      visible: actionText.length > 0
-      text: parent.actionText
-      fg: parent.actionColor
-      fs: 11
-      onClicked: parent.actionClicked()
-    }
-  }
-
-  component RowBase: Rectangle {
-    id: rb
-    signal clicked
-    property color base: "transparent"
-    property color hover: "#0FFFFFFF"
-    property color press: "#1AFFFFFF"
-    property real rad: 0
-    property bool actionable: true
-    radius: rb.rad
-    color: (!rb.actionable || (!ma.containsMouse && !ma.pressed)) ? base : (ma.pressed ? press : hover)
-    Behavior on color { ColorAnimation { duration: 90 } }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: rb.actionable
-      cursorShape: rb.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onClicked: {
-        if (rb.actionable) rb.clicked();
-      }
-    }
-  }
-
-  component TextBtn: Rectangle {
-    id: tb
-    signal clicked
-    property string text: ""
-    property color fg: t.ink2
-    property int fs: 12
-    property bool bold: false
-    implicitWidth: lbl.implicitWidth + 18
-    implicitHeight: 26
-    radius: 7
-    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
-    Behavior on color { ColorAnimation { duration: 90 } }
-    Text {
-      id: lbl
-      anchors.centerIn: parent
-      text: tb.text
-      font.pixelSize: tb.fs
-      font.bold: tb.bold
-      color: (ma.containsMouse || ma.pressed) ? t.ink1 : tb.fg
-      Behavior on color { ColorAnimation { duration: 90 } }
-    }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: tb.clicked()
-    }
-  }
-
-  component IconBtn: Rectangle {
-    id: ib
-    signal clicked
-    property string glyph: ""
-    property int fs: 14
-    property color fg: t.ink2
-    property bool spinning: false
-    width: 30
-    height: 30
-    radius: 8
-    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
-    Behavior on color { ColorAnimation { duration: 90 } }
-    Text {
-      id: ibGlyph
-      anchors.centerIn: parent
-      text: ib.glyph
-      font.family: t.mono
-      font.pixelSize: ib.fs
-      color: (ma.containsMouse || ma.pressed) ? t.ink1 : ib.fg
-      Behavior on color { ColorAnimation { duration: 90 } }
-      NumberAnimation on rotation {
-        running: ib.spinning
-        from: 0
-        to: 360
-        loops: Animation.Infinite
-        duration: 800
-      }
-    }
-    onSpinningChanged: {
-      if (!spinning) ibGlyph.rotation = 0;
-    }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: ib.clicked()
-    }
-  }
-
-  component Segments: Item {
-    id: sg
-    property var items: []
-    property int current: 0
-    signal selected(int index)
-    implicitHeight: 34
-    Rectangle {
-      anchors.fill: parent
-      radius: 10
-      color: t.inset
-    }
-    Row {
-      anchors.fill: parent
-      anchors.margins: 3
-      spacing: 2
-      Repeater {
-        model: sg.items
-        Item {
-          required property var modelData
-          required property int index
-          width: (parent.width - 2 * (sg.items.length - 1)) / sg.items.length
-          height: parent.height
-          Rectangle {
-            anchors.fill: parent
-            radius: 7
-            color: sg.current === index ? "#2E2F42" : (segMa.containsMouse || segMa.pressed ? "#22232F" : "transparent")
-            Behavior on color { ColorAnimation { duration: 110 } }
-          }
-          Row {
-            anchors.centerIn: parent
-            spacing: 6
-            Text {
-              visible: modelData.icon && modelData.icon.length > 0
-              anchors.verticalCenter: parent.verticalCenter
-              text: modelData.icon
-              font.family: t.mono
-              font.pixelSize: 12
-              color: sg.current === index ? t.ink1 : t.ink3
-            }
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: modelData.label
-              font.pixelSize: 12
-              font.weight: sg.current === index ? Font.DemiBold : Font.Normal
-              color: sg.current === index ? t.ink1 : t.ink2
-            }
-            Text {
-              visible: modelData.count > 0
-              anchors.verticalCenter: parent.verticalCenter
-              text: modelData.count
-              font.pixelSize: 11
-              color: (modelData.alert && sg.current !== index) ? t.amber : t.ink3
-            }
-          }
-          MouseArea {
-            id: segMa
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: sg.selected(index)
-          }
-        }
-      }
-    }
-  }
+  readonly property var t: Theme
 
   // Small "i" affordance shared by both detail tabs; arms the shared tooltip.
   component InfoDot: Item {
@@ -440,13 +233,13 @@ Item {
     Rectangle {
       anchors.fill: parent
       radius: 10
-      color: infoMouse.containsMouse ? "#45475a" : "transparent"
-      border.color: infoMouse.containsMouse ? "#89b4fa" : "#585b70"
+      color: infoMouse.containsMouse ? t.hoverFill : "transparent"
+      border.color: infoMouse.containsMouse ? t.accent : t.line
       border.width: 1
       Text {
         anchors.centerIn: parent
         text: "i"
-        color: "#a6adc8"
+        color: infoMouse.containsMouse ? t.ink1 : t.ink3
         font.pixelSize: 11
         font.family: t.mono
       }
@@ -519,9 +312,9 @@ Item {
   Rectangle {
     id: card
     anchors.fill: parent
-    radius: 14
-    color: t.bg
-    border.color: "#26272F"
+    radius: Theme.radiusCard
+    color: Theme.bg
+    border.color: Theme.cardBorder
     border.width: 1
 
     ColumnLayout {
@@ -1322,9 +1115,9 @@ Item {
         id: tipBox
         implicitWidth: Math.max(50, tipCol.implicitWidth + 16)
         implicitHeight: tipCol.implicitHeight + 10
-        radius: 6
-        color: "#181825"
-        border.color: "#45475a"
+        radius: t.radiusSm
+        color: t.surfaceElevated
+        border.color: t.line
         border.width: 1
 
         Column {
@@ -1344,14 +1137,14 @@ Item {
               Text {
                 width: 78
                 text: tipDelegate.modelData.k
-                color: "#6F6F84"
+                color: t.ink3
                 font.pixelSize: 11
                 font.family: t.mono
               }
 
               Text {
                 text: tipDelegate.modelData.v
-                color: "#C9C9D6"
+                color: t.ink1
                 font.pixelSize: 11
                 font.family: t.mono
               }

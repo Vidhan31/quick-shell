@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
 import qs.utils
+import "../theme"
 
 Item {
   id: root
@@ -113,18 +114,18 @@ Item {
       Rectangle {
         id: bg
         anchors.fill: parent
-        radius: 8
-        color: mouseArea.pressed ? "#1AFFFFFF" : (mouseArea.containsMouse ? "#0FFFFFFF" : "transparent")
+        radius: Theme.radiusBase
+        color: mouseArea.pressed ? Theme.pressWash : (mouseArea.containsMouse ? Theme.hoverWash : "transparent")
 
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { ColorAnimation { duration: Theme.durationFast } }
       }
 
       // Fallback text if icon fails to load
       Text {
         anchors.centerIn: parent
         text: (windowDelegate.winAppId ? windowDelegate.winAppId.charAt(0).toUpperCase() : "?")
-        color: "#F1F1F6"
-        font.pixelSize: 12
+        color: Theme.ink1
+        font.pixelSize: Theme.fontBase
         font.bold: true
         opacity: appIcon.opacity
         visible: appIcon.status === Image.Error || !windowDelegate.iconSrc
@@ -153,13 +154,13 @@ Item {
         height: 2
         radius: 1
         color: {
-          if (windowDelegate.isActivated) return "#5E9DFF";
-          if (mouseArea.containsMouse) return "#A6A6B8";
+          if (windowDelegate.isActivated) return Theme.accent;
+          if (mouseArea.containsMouse) return Theme.ink2;
           return "transparent";
         }
 
-        Behavior on width { NumberAnimation { duration: 120 } }
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on width { NumberAnimation { duration: Theme.durationFast } }
+        Behavior on color { ColorAnimation { duration: Theme.durationFast } }
       }
 
       // Small badge for Fullscreen or Maximized state
@@ -171,7 +172,7 @@ Item {
         width: 4
         height: 4
         radius: 2
-        color: windowDelegate.isFullscreen ? "#DF6363" : (windowDelegate.isMaximized ? "#46C786" : "transparent")
+        color: windowDelegate.isFullscreen ? Theme.red : (windowDelegate.isMaximized ? Theme.green : "transparent")
         visible: windowDelegate.isFullscreen || windowDelegate.isMaximized
       }
 

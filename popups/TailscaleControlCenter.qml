@@ -5,6 +5,8 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Plugins.Tailscale
+import "../theme"
+import "../components"
 
 Item {
   id: root
@@ -341,372 +343,15 @@ Item {
     }
   }
 
-  // ================= Design tokens =================
-  QtObject {
-    id: t
-    readonly property color bg: "#17171E"
-    readonly property color surface: "#1F202B"
-    readonly property color inset: "#121217"
-    readonly property color line: "#2B2C3A"
-    readonly property color ink1: "#F1F1F6"
-    readonly property color ink2: "#A6A6B8"
-    readonly property color ink3: "#6F6F84"
-    readonly property color accent: "#5E9DFF"
-    readonly property color green: "#46C786"
-    readonly property color amber: "#E2A63B"
-    readonly property color red: "#DF6363"
-    readonly property color violet: "#AE8CFF"
-    readonly property color darkInk: "#101018"
-    readonly property string mono: "JetBrainsMono Nerd Font Mono"
-  }
-
-  // ================= Reusable quiet components =================
-  component Hairline: Rectangle {
-    color: t.line
-    height: 1
-  }
-
-  // Small caps section label with an optional trailing quiet action.
-  component SectionHead: Item {
-    property string label: ""
-    property string actionText: ""
-    property color actionColor: t.ink2
-    signal actionClicked
-    implicitHeight: 20
-    Text {
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-      text: label
-      font.pixelSize: 11
-      font.bold: true
-      font.capitalization: Font.AllUppercase
-      font.letterSpacing: 0.8
-      color: t.ink3
-    }
-    TextBtn {
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      visible: actionText.length > 0
-      text: parent.actionText
-      fg: parent.actionColor
-      fs: 11
-      onClicked: parent.actionClicked()
-    }
-  }
-
-  // Base for every clickable row: same wash everywhere, no borders.
-  // Set actionable: false when there is nothing to do — the row then
-  // stays inert (no wash, no pointer cursor) instead of faking affordance.
-  component RowBase: Rectangle {
-    id: rb
-    signal clicked
-    property color base: "transparent"
-    property color hover: "#0FFFFFFF"
-    property color press: "#1AFFFFFF"
-    property real rad: 0
-    property bool actionable: true
-    radius: rb.rad
-    color: (!rb.actionable || (!ma.containsMouse && !ma.pressed)) ? base : (ma.pressed ? press : hover)
-    Behavior on color { ColorAnimation { duration: 90 } }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: rb.actionable
-      cursorShape: rb.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onClicked: {
-        if (rb.actionable) rb.clicked();
-      }
-    }
-  }
-
-  // Borderless text button.
-  component TextBtn: Rectangle {
-    id: tb
-    signal clicked
-    property string text: ""
-    property color fg: t.ink2
-    property int fs: 12
-    property bool bold: false
-    implicitWidth: lbl.implicitWidth + 18
-    implicitHeight: 26
-    radius: 7
-    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
-    Behavior on color { ColorAnimation { duration: 90 } }
-    Text {
-      id: lbl
-      anchors.centerIn: parent
-      text: tb.text
-      font.pixelSize: tb.fs
-      font.bold: tb.bold
-      color: (ma.containsMouse || ma.pressed) ? t.ink1 : tb.fg
-      Behavior on color { ColorAnimation { duration: 90 } }
-    }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: tb.clicked()
-    }
-  }
-
-  // Borderless square icon button.
-  component IconBtn: Rectangle {
-    id: ib
-    signal clicked
-    property string glyph: ""
-    property int fs: 14
-    property color fg: t.ink2
-    property bool spinning: false
-    width: 30
-    height: 30
-    radius: 8
-    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
-    Behavior on color { ColorAnimation { duration: 90 } }
-    Text {
-      id: ibGlyph
-      anchors.centerIn: parent
-      text: ib.glyph
-      font.family: t.mono
-      font.pixelSize: ib.fs
-      color: (ma.containsMouse || ma.pressed) ? t.ink1 : ib.fg
-      Behavior on color { ColorAnimation { duration: 90 } }
-      NumberAnimation on rotation {
-        running: ib.spinning
-        from: 0
-        to: 360
-        loops: Animation.Infinite
-        duration: 800
-      }
-    }
-    onSpinningChanged: {
-      if (!spinning) ibGlyph.rotation = 0;
-    }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: ib.clicked()
-    }
-  }
-
-  // macOS-style switch. Track carries the color, thumb just slides.
-  component TSwitch: Item {
-    id: sw
-    signal toggled
-    property bool on: false
-    property color onColor: t.green
-    width: 42
-    height: 24
-    Rectangle {
-      anchors.fill: parent
-      radius: 12
-      color: sw.on ? sw.onColor : "#3B3C4C"
-      Behavior on color { ColorAnimation { duration: 140 } }
-      Rectangle {
-        width: 20
-        height: 20
-        radius: 10
-        y: 2
-        x: sw.on ? parent.width - width - 2 : 2
-        color: "#F4F4F8"
-        Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-      }
-    }
-    MouseArea {
-      anchors.fill: parent
-      cursorShape: Qt.PointingHandCursor
-      onClicked: sw.toggled()
-    }
-  }
-
-  // One inset track, segments share it — not separate pills.
-  component Segments: Item {
-    id: sg
-    property var items: []
-    property int current: 0
-    signal selected(int index)
-    implicitHeight: 34
-    Rectangle {
-      anchors.fill: parent
-      radius: 10
-      color: t.inset
-    }
-    Row {
-      anchors.fill: parent
-      anchors.margins: 3
-      spacing: 2
-      Repeater {
-        model: sg.items
-        Item {
-          required property var modelData
-          required property int index
-          width: (parent.width - 2 * (sg.items.length - 1)) / sg.items.length
-          height: parent.height
-          Rectangle {
-            anchors.fill: parent
-            radius: 7
-            color: sg.current === index ? "#2E2F42" : (segMa.containsMouse || segMa.pressed ? "#22232F" : "transparent")
-            Behavior on color { ColorAnimation { duration: 110 } }
-          }
-          Row {
-            anchors.centerIn: parent
-            spacing: 6
-            Text {
-              visible: modelData.icon && modelData.icon.length > 0
-              anchors.verticalCenter: parent.verticalCenter
-              text: modelData.icon
-              font.family: t.mono
-              font.pixelSize: 12
-              color: sg.current === index ? t.ink1 : t.ink3
-            }
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: modelData.label
-              font.pixelSize: 12
-              font.weight: sg.current === index ? Font.DemiBold : Font.Normal
-              color: sg.current === index ? t.ink1 : t.ink2
-            }
-            Text {
-              visible: modelData.count > 0
-              anchors.verticalCenter: parent.verticalCenter
-              text: modelData.count
-              font.pixelSize: 11
-              color: (modelData.alert && sg.current !== index) ? t.amber : t.ink3
-            }
-          }
-          MouseArea {
-            id: segMa
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: sg.selected(index)
-          }
-        }
-      }
-    }
-  }
-
-  // Inset field with a soft focus ring and an optional clear key.
-  component Field: Rectangle {
-    id: fd
-    signal edited(string text)
-    property string placeholder: ""
-    property string initial: ""
-    property bool clearable: false
-    implicitHeight: 32
-    radius: 8
-    color: t.inset
-    border.color: Qt.rgba(0.37, 0.62, 1.0, 0.55)
-    border.width: input.activeFocus ? 1 : 0
-    function setText(v: string): void {
-      if (input.text !== v) input.text = v;
-    }
-    Component.onCompleted: input.text = fd.initial
-    TextInput {
-      id: input
-      anchors.fill: parent
-      anchors.leftMargin: 10
-      anchors.rightMargin: fd.clearable && text.length > 0 ? 26 : 10
-      verticalAlignment: TextInput.AlignVCenter
-      font.family: t.mono
-      font.pixelSize: 12
-      color: t.ink1
-      selectByMouse: true
-      onTextEdited: fd.edited(text)
-    }
-    Text {
-      anchors.fill: parent
-      anchors.leftMargin: 10
-      anchors.rightMargin: 10
-      verticalAlignment: Text.AlignVCenter
-      visible: input.text.length === 0 && !input.activeFocus
-      text: fd.placeholder
-      font.pixelSize: 12
-      color: t.ink3
-      elide: Text.ElideRight
-    }
-    Rectangle {
-      visible: fd.clearable && input.text.length > 0
-      anchors.right: parent.right
-      anchors.rightMargin: 5
-      anchors.verticalCenter: parent.verticalCenter
-      width: 18
-      height: 18
-      radius: 9
-      color: clearMa.containsMouse ? "#1CFFFFFF" : "transparent"
-      Text {
-        anchors.centerIn: parent
-        text: "✕"
-        font.pixelSize: 9
-        color: t.ink3
-      }
-      MouseArea {
-        id: clearMa
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onClicked: {
-          input.text = "";
-          fd.edited("");
-        }
-      }
-    }
-  }
-
-  // Single solid primary action. Fill darkens on press like a native button.
-  component PrimaryBtn: Rectangle {
-    id: pb
-    signal clicked
-    property string text: ""
-    property string glyph: ""
-    property color fill: t.accent
-    property color ink: t.darkInk
-    property bool enabledBtn: true
-    implicitHeight: 34
-    radius: 9
-    scale: (ma.pressed && pb.enabledBtn) ? 0.985 : 1.0
-    Behavior on scale { NumberAnimation { duration: 80 } }
-    color: !pb.enabledBtn ? "#24252F" : ma.pressed ? Qt.darker(fill, 1.2) : ma.containsMouse ? Qt.lighter(fill, 1.07) : fill
-    Behavior on color { ColorAnimation { duration: 90 } }
-    Row {
-      anchors.centerIn: parent
-      spacing: 7
-      Text {
-        visible: pb.glyph.length > 0
-        anchors.verticalCenter: parent.verticalCenter
-        text: pb.glyph
-        font.family: t.mono
-        font.pixelSize: 12
-        color: pb.enabledBtn ? pb.ink : t.ink3
-      }
-      Text {
-        anchors.verticalCenter: parent.verticalCenter
-        text: pb.text
-        font.pixelSize: 13
-        font.weight: Font.DemiBold
-        color: pb.enabledBtn ? pb.ink : t.ink3
-      }
-    }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: pb.enabledBtn
-      cursorShape: pb.enabledBtn ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onClicked: {
-        if (pb.enabledBtn) pb.clicked();
-      }
-    }
-  }
+  readonly property var t: Theme
 
   // ================= Card =================
   Rectangle {
     id: card
     anchors.fill: parent
-    radius: 14
-    color: t.bg
-    border.color: "#26272F"
+    radius: Theme.radiusCard
+    color: Theme.bg
+    border.color: Theme.cardBorder
     border.width: 1
 
     ColumnLayout {
@@ -1362,8 +1007,8 @@ Item {
                             height: 30
                             base: t.inset
                             rad: 8
-                            hover: "#1B1C26"
-                            press: "#22232F"
+                            hover: t.hoverFill
+                            press: t.selected
                             onClicked: root.copyText(modelData, "SSH command")
                             RowLayout {
                               anchors.fill: parent
@@ -1545,7 +1190,7 @@ Item {
                 width: parent.width
                 height: healthRow.height + 20
                 radius: 10
-                color: "#1AE2A63B"
+                color: Qt.rgba(t.amber.r, t.amber.g, t.amber.b, 0.1)
                 Row {
                   id: healthRow
                   anchors.left: parent.left
@@ -1563,7 +1208,7 @@ Item {
                     width: parent.width - 20
                     text: root.health.join("\n")
                     font.pixelSize: 11
-                    color: "#E8B54B"
+                    color: t.amber
                     wrapMode: Text.Wrap
                   }
                 }
@@ -1662,7 +1307,7 @@ Item {
       width: Math.min(toastLabel.implicitWidth + 30, parent.width - 32)
       height: 30
       radius: 15
-      color: "#2A2B38"
+      color: t.surfaceElevated
       opacity: root.toastMessage.length > 0 ? 1 : 0
       visible: opacity > 0
       Behavior on opacity { NumberAnimation { duration: 160 } }

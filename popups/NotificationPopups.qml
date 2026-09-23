@@ -9,6 +9,8 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
 import qs.utils
+import "../theme"
+import "../components"
 
 PanelWindow {
   id: root
@@ -70,87 +72,7 @@ PanelWindow {
     NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
   }
 
-  // ================= Design tokens (mirrors TailscaleControlCenter) =================
-  QtObject {
-    id: t
-    readonly property color bg: "#17171E"
-    readonly property color surface: "#1F202B"
-    readonly property color inset: "#121217"
-    readonly property color line: "#2B2C3A"
-    readonly property color ink1: "#F1F1F6"
-    readonly property color ink2: "#A6A6B8"
-    readonly property color ink3: "#6F6F84"
-    readonly property color accent: "#5E9DFF"
-    readonly property color green: "#46C786"
-    readonly property color amber: "#E2A63B"
-    readonly property color red: "#DF6363"
-    readonly property color violet: "#AE8CFF"
-    readonly property string mono: "JetBrainsMono Nerd Font Mono"
-  }
-
-  component Hairline: Rectangle {
-    color: t.line
-    height: 1
-  }
-
-  // Borderless text button.
-  component TextBtn: Rectangle {
-    id: tb
-    signal clicked
-    property string text: ""
-    property color fg: t.ink2
-    property int fs: 11
-    implicitWidth: lbl.implicitWidth + 18
-    implicitHeight: 26
-    radius: 7
-    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
-    Behavior on color { ColorAnimation { duration: 90 } }
-    Text {
-      id: lbl
-      anchors.centerIn: parent
-      text: tb.text
-      font.pixelSize: tb.fs
-      color: (ma.containsMouse || ma.pressed) ? t.ink1 : tb.fg
-      Behavior on color { ColorAnimation { duration: 90 } }
-    }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: tb.clicked()
-    }
-  }
-
-  // Borderless square icon button.
-  component IconBtn: Rectangle {
-    id: ib
-    signal clicked
-    property string glyph: ""
-    property int fs: 14
-    property color fg: t.ink2
-    property int btnSize: 30
-    width: btnSize
-    height: btnSize
-    radius: 8
-    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
-    Behavior on color { ColorAnimation { duration: 90 } }
-    Text {
-      anchors.centerIn: parent
-      text: ib.glyph
-      font.family: t.mono
-      font.pixelSize: ib.fs
-      color: (ma.containsMouse || ma.pressed) ? t.ink1 : ib.fg
-      Behavior on color { ColorAnimation { duration: 90 } }
-    }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: ib.clicked()
-    }
-  }
+  readonly property var t: Theme
 
   Column {
     id: toastCol
@@ -253,7 +175,7 @@ PanelWindow {
           x: toastItem.dragOffset
           radius: 14
           color: t.bg
-          border.color: "#26272F"
+          border.color: t.cardBorder
           border.width: 1
           clip: true
 

@@ -2,6 +2,7 @@
 // Native C++ Qt6 QML module (Quickshell.Plugins.Ethernet).
 import QtQuick
 import Quickshell.Plugins.Ethernet
+import "../theme"
 
 Item {
   id: root
@@ -18,7 +19,8 @@ Item {
   property var ethData: monitor.ethData
   readonly property bool isBusy: monitor.isBusy
 
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
+  readonly property var t: Theme
+  readonly property string monoFont: Theme.mono
   readonly property string currentStatus: monitor.currentStatus
   readonly property bool hasInternet: monitor.hasInternet
   readonly property bool isCarrier: monitor.carrier
@@ -34,10 +36,10 @@ Item {
 
   // Status-derived color
   readonly property color statusColor: {
-    if (!root.isCarrier) return "#f38ba8"; // Red (unplugged)
-    if (root.currentStatus === "connecting") return "#89dceb"; // Cyan (connecting)
-    if (root.hasInternet) return "#a6e3a1"; // Green (internet online)
-    return "#f9e2af"; // Yellow (LAN only, no internet)
+    if (!root.isCarrier) return Theme.err; // Red (unplugged)
+    if (root.currentStatus === "connecting") return Theme.accent; // Connecting
+    if (root.hasInternet) return Theme.ok; // Green (internet online)
+    return Theme.warn; // Amber (LAN only, no internet)
   }
 
   // Status description for tooltip

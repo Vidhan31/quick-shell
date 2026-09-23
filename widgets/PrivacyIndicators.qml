@@ -2,6 +2,7 @@
 // Native C++ Qt6 QML module (Quickshell.Plugins.Privacy).
 import QtQuick
 import Quickshell.Plugins.Privacy
+import "../theme"
 
 Item {
   id: root
@@ -23,7 +24,8 @@ Item {
   readonly property var cameraDevices: monitor.cameraDevices
   readonly property var micDevices: monitor.micDevices
 
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
+  readonly property var t: Theme
+  readonly property string monoFont: Theme.mono
 
   signal clicked()
 
@@ -31,7 +33,7 @@ Item {
     monitor.refresh();
   }
 
-  implicitHeight: 24
+  implicitHeight: Theme.btnHeightSm
   implicitWidth: contentRow.width
   width: implicitWidth
   height: implicitHeight
@@ -48,15 +50,15 @@ Item {
       id: camPill
       visible: root.cameraActive
       width: root.cameraActive ? (camInnerRow.width + 16) : 0
-      height: 24
+      height: Theme.btnHeightSm
       anchors.verticalCenter: parent.verticalCenter
 
       Rectangle {
         id: camBg
         anchors.fill: parent
-        radius: 6
-        color: camMouse.containsMouse ? "#264233" : "#1a2e22"
-        border.color: "#a6e3a1"
+        radius: Theme.radiusSm
+        color: camMouse.containsMouse ? Qt.rgba(0.27, 0.78, 0.53, 0.25) : Qt.rgba(0.27, 0.78, 0.53, 0.15)
+        border.color: Theme.ok
         border.width: 1
 
         Behavior on color { ColorAnimation { duration: 120 } }
@@ -74,7 +76,7 @@ Item {
           font.family: root.monoFont
           font.pixelSize: 13
           font.bold: true
-          color: "#a6e3a1"
+          color: Theme.ok
         }
 
         // Camera text label (app name if available, else "Cam")
@@ -82,9 +84,9 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           text: root.cameraApps.length > 0 ? ("Cam: " + root.cameraApps[0]) : "Camera"
           font.family: root.monoFont
-          font.pixelSize: 11
+          font.pixelSize: Theme.fontSm
           font.bold: true
-          color: "#a6e3a1"
+          color: Theme.ok
           elide: Text.ElideRight
           width: Math.min(implicitWidth, 110)
         }
@@ -95,7 +97,7 @@ Item {
           height: 6
           radius: 3
           anchors.verticalCenter: parent.verticalCenter
-          color: "#a6e3a1"
+          color: Theme.ok
 
           SequentialAnimation on opacity {
             running: root.cameraActive
@@ -122,15 +124,15 @@ Item {
       id: micPill
       visible: root.micActive
       width: root.micActive ? (micInnerRow.width + 16) : 0
-      height: 24
+      height: Theme.btnHeightSm
       anchors.verticalCenter: parent.verticalCenter
 
       Rectangle {
         id: micBg
         anchors.fill: parent
-        radius: 6
-        color: micMouse.containsMouse ? "#422f24" : "#2e2119"
-        border.color: "#fab387"
+        radius: Theme.radiusSm
+        color: micMouse.containsMouse ? Qt.rgba(0.89, 0.65, 0.23, 0.25) : Qt.rgba(0.89, 0.65, 0.23, 0.15)
+        border.color: Theme.warn
         border.width: 1
 
         Behavior on color { ColorAnimation { duration: 120 } }
@@ -148,7 +150,7 @@ Item {
           font.family: root.monoFont
           font.pixelSize: 13
           font.bold: true
-          color: "#fab387"
+          color: Theme.warn
         }
 
         // Microphone text label (app name if available, else "Mic")
@@ -156,9 +158,9 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           text: root.micApps.length > 0 ? ("Mic: " + root.micApps[0]) : "Microphone"
           font.family: root.monoFont
-          font.pixelSize: 11
+          font.pixelSize: Theme.fontSm
           font.bold: true
-          color: "#fab387"
+          color: Theme.warn
           elide: Text.ElideRight
           width: Math.min(implicitWidth, 110)
         }
@@ -169,7 +171,7 @@ Item {
           height: 6
           radius: 3
           anchors.verticalCenter: parent.verticalCenter
-          color: "#fab387"
+          color: Theme.warn
 
           SequentialAnimation on opacity {
             running: root.micActive

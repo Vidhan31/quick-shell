@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.SystemTray
 import Quickshell.Widgets
+import "../theme"
 
 Item {
   id: root
@@ -133,13 +134,13 @@ Item {
         Rectangle {
           id: bg
           anchors.fill: parent
-          radius: 6
-          color: (root.activeMenuTarget === delegateItem && contextMenuPopup.visible) ? "#45475a" : (mouseArea.containsMouse ? "#3b3e52" : "transparent")
-          border.color: (root.activeMenuTarget === delegateItem && contextMenuPopup.visible) ? "#89b4fa" : (mouseArea.containsMouse ? "#585b70" : "transparent")
+          radius: Theme.radiusSm
+          color: (root.activeMenuTarget === delegateItem && contextMenuPopup.visible) ? Theme.selected : (mouseArea.containsMouse ? Theme.hoverFill : "transparent")
+          border.color: (root.activeMenuTarget === delegateItem && contextMenuPopup.visible) ? Theme.accent : (mouseArea.containsMouse ? Theme.line : "transparent")
           border.width: 1
 
-          Behavior on color { ColorAnimation { duration: 120 } }
-          Behavior on border.color { ColorAnimation { duration: 120 } }
+          Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+          Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
         }
 
         IconImage {
@@ -160,10 +161,10 @@ Item {
             const s = delegateItem.item.title || delegateItem.item.id || "?";
             return s.charAt(0).toUpperCase();
           }
-          color: "#cdd6f4"
-          font.pixelSize: 11
+          color: Theme.ink1
+          font.pixelSize: Theme.fontSm
           font.bold: true
-          font.family: "JetBrainsMono Nerd Font Mono"
+          font.family: Theme.mono
         }
 
         // Status indicator dot for NeedsAttention
@@ -175,7 +176,7 @@ Item {
           width: 5
           height: 5
           radius: 2.5
-          color: "#f38ba8"
+          color: Theme.red
           visible: delegateItem.item ? (delegateItem.item.status === Status.NeedsAttention) : false
         }
 
@@ -241,21 +242,21 @@ Item {
 
       Rectangle {
         anchors.fill: parent
-        radius: 6
-        color: passivePopup.visible ? "#45475a" : (chevronMouse.containsMouse ? "#3b3e52" : "#313244")
-        border.color: passivePopup.visible ? "#89b4fa" : (chevronMouse.containsMouse ? "#585b70" : "transparent")
+        radius: Theme.radiusSm
+        color: passivePopup.visible ? Theme.selected : (chevronMouse.containsMouse ? Theme.hoverFill : Theme.surface)
+        border.color: passivePopup.visible ? Theme.accent : (chevronMouse.containsMouse ? Theme.line : "transparent")
         border.width: 1
 
-        Behavior on color { ColorAnimation { duration: 120 } }
-        Behavior on border.color { ColorAnimation { duration: 120 } }
+        Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+        Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
       }
 
       Text {
         anchors.centerIn: parent
         text: passivePopup.visible ? "󰅀" : "󰅃"
-        font.family: "JetBrainsMono Nerd Font Mono"
-        font.pixelSize: 13
-        color: chevronMouse.containsMouse || passivePopup.visible ? "#ffffff" : "#a6adc8"
+        font.family: Theme.mono
+        font.pixelSize: Theme.fontMd
+        color: chevronMouse.containsMouse || passivePopup.visible ? Theme.ink1 : Theme.ink2
       }
 
       MouseArea {
@@ -330,9 +331,9 @@ Item {
       id: tooltipBox
       implicitWidth: Math.max(50, tooltipCol.implicitWidth + 16)
       implicitHeight: tooltipCol.implicitHeight + 10
-      radius: 10
-      color: "#1F202B"
-      border.color: "#2B2C3A"
+      radius: Theme.radiusChip
+      color: Theme.surface
+      border.color: Theme.line
       border.width: 1
 
       Column {
@@ -345,18 +346,18 @@ Item {
             if (!root.hoveredItem) return "";
             return root.hoveredItem.tooltipTitle || root.hoveredItem.title || root.hoveredItem.id || "";
           }
-          color: "#F1F1F6"
-          font.pixelSize: 11
+          color: Theme.ink1
+          font.pixelSize: Theme.fontSm
           font.bold: true
-          font.family: "JetBrainsMono Nerd Font Mono"
+          font.family: Theme.mono
         }
 
         Text {
           text: (root.hoveredItem && root.hoveredItem.tooltipDescription) ? root.hoveredItem.tooltipDescription : ""
           visible: text !== ""
-          color: "#A6A6B8"
-          font.pixelSize: 10
-          font.family: "JetBrainsMono Nerd Font Mono"
+          color: Theme.ink2
+          font.pixelSize: Theme.fontXs
+          font.family: Theme.mono
         }
       }
     }
@@ -388,9 +389,9 @@ Item {
       implicitHeight: menuCol.implicitHeight + 16
       width: implicitWidth
       height: implicitHeight
-      radius: 14
-      color: "#17171E"
-      border.color: "#26272F"
+      radius: Theme.radiusCard
+      color: Theme.bg
+      border.color: Theme.cardBorder
       border.width: 1
 
       Column {
@@ -429,7 +430,7 @@ Item {
                 anchors.centerIn: parent
                 width: parent.width - 8
                 height: 1
-                color: "#2B2C3A"
+                color: Theme.line
               }
             }
 
@@ -438,9 +439,9 @@ Item {
               anchors.fill: parent
               radius: 7
               visible: !menuItem.isSep
-              color: menuMouse.containsMouse && menuItem.entry && menuItem.entry.enabled ? "#0FFFFFFF" : "transparent"
+              color: menuMouse.containsMouse && menuItem.entry && menuItem.entry.enabled ? Theme.hoverWash : "transparent"
 
-              Behavior on color { ColorAnimation { duration: 100 } }
+              Behavior on color { ColorAnimation { duration: Theme.durationFast } }
 
               Row {
                 id: itemRow
@@ -456,7 +457,7 @@ Item {
                   text: menuItem.entry && menuItem.entry.checkState === Qt.Checked ? "✓" : " "
                   font.pixelSize: 11
                   font.bold: true
-                  color: "#5E9DFF"
+                  color: Theme.accent
                 }
 
                 // Entry Icon
@@ -473,9 +474,9 @@ Item {
                   id: itemLabel
                   anchors.verticalCenter: parent.verticalCenter
                   text: menuItem.entry ? menuItem.entry.text.replace(/&/g, "") : ""
-                  color: menuItem.entry && menuItem.entry.enabled ? (menuMouse.containsMouse ? "#F1F1F6" : "#A6A6B8") : "#6F6F84"
-                  font.pixelSize: 11
-                  font.family: "JetBrainsMono Nerd Font Mono"
+                  color: menuItem.entry && menuItem.entry.enabled ? (menuMouse.containsMouse ? Theme.ink1 : Theme.ink2) : Theme.ink3
+                  font.pixelSize: Theme.fontSm
+                  font.family: Theme.mono
                 }
               }
 
@@ -485,8 +486,8 @@ Item {
                 anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
                 text: "›"
-                color: menuMouse.containsMouse ? "#F1F1F6" : "#6F6F84"
-                font.pixelSize: 13
+                color: menuMouse.containsMouse ? Theme.ink1 : Theme.ink3
+                font.pixelSize: Theme.fontMd
                 font.bold: true
                 visible: menuItem.entry ? menuItem.entry.hasChildren : false
               }
@@ -531,9 +532,9 @@ Item {
       id: passiveCard
       implicitWidth: Math.max(140, passiveCol.implicitWidth + 24)
       implicitHeight: passiveCol.implicitHeight + 20
-      radius: 14
-      color: "#17171E"
-      border.color: "#26272F"
+      radius: Theme.radiusCard
+      color: Theme.bg
+      border.color: Theme.cardBorder
       border.width: 1
 
       Column {
@@ -543,12 +544,12 @@ Item {
 
         Text {
           text: "Hidden Tray Icons"
-          color: "#6F6F84"
-          font.pixelSize: 11
+          color: Theme.ink3
+          font.pixelSize: Theme.fontSm
           font.bold: true
           font.capitalization: Font.AllUppercase
           font.letterSpacing: 0.8
-          font.family: "JetBrainsMono Nerd Font Mono"
+          font.family: Theme.mono
         }
 
         Row {
@@ -571,13 +572,13 @@ Item {
 
               Rectangle {
                 anchors.fill: parent
-                radius: 8
-                color: (root.activeMenuTarget === passiveDelegate && contextMenuPopup.visible) ? "#1AFFFFFF" : (passiveMouse.containsMouse ? "#0FFFFFFF" : "#1F202B")
-                border.color: "#2B2C3A"
+                radius: Theme.radiusBase
+                color: (root.activeMenuTarget === passiveDelegate && contextMenuPopup.visible) ? Theme.selected : (passiveMouse.containsMouse ? Theme.hoverWash : Theme.surface)
+                border.color: (root.activeMenuTarget === passiveDelegate && contextMenuPopup.visible) ? Theme.accent : Theme.line
                 border.width: 1
 
-                Behavior on color { ColorAnimation { duration: 120 } }
-                Behavior on border.color { ColorAnimation { duration: 120 } }
+                Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+                Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
               }
 
               IconImage {
@@ -597,10 +598,10 @@ Item {
                   const s = passiveDelegate.item.title || passiveDelegate.item.id || "?";
                   return s.charAt(0).toUpperCase();
                 }
-                color: "#cdd6f4"
-                font.pixelSize: 11
+                color: Theme.ink1
+                font.pixelSize: Theme.fontSm
                 font.bold: true
-                font.family: "JetBrainsMono Nerd Font Mono"
+                font.family: Theme.mono
               }
 
               MouseArea {

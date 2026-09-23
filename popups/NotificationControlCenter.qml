@@ -5,6 +5,8 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell.Widgets
 import qs.utils
+import "../theme"
+import "../components"
 
 Item {
   id: root
@@ -69,181 +71,15 @@ Item {
   width: implicitWidth
   height: implicitHeight
 
-  // ================= Design tokens (mirrors TailscaleControlCenter) =================
-  QtObject {
-    id: t
-    readonly property color bg: "#17171E"
-    readonly property color surface: "#1F202B"
-    readonly property color inset: "#121217"
-    readonly property color line: "#2B2C3A"
-    readonly property color ink1: "#F1F1F6"
-    readonly property color ink2: "#A6A6B8"
-    readonly property color ink3: "#6F6F84"
-    readonly property color accent: "#5E9DFF"
-    readonly property color green: "#46C786"
-    readonly property color amber: "#E2A63B"
-    readonly property color red: "#DF6363"
-    readonly property color violet: "#AE8CFF"
-    readonly property color darkInk: "#101018"
-    readonly property string mono: "JetBrainsMono Nerd Font Mono"
-  }
-
-  // ================= Reusable quiet components (mirrors TailscaleControlCenter) =================
-  component Hairline: Rectangle {
-    color: t.line
-    height: 1
-  }
-
-  // Small caps section label with an optional trailing quiet action.
-  component SectionHead: Item {
-    property string label: ""
-    property string actionText: ""
-    property color actionColor: t.ink2
-    signal actionClicked
-    implicitHeight: 20
-    Text {
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-      text: label
-      font.pixelSize: 11
-      font.bold: true
-      font.capitalization: Font.AllUppercase
-      font.letterSpacing: 0.8
-      color: t.ink3
-    }
-    TextBtn {
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      visible: actionText.length > 0
-      text: parent.actionText
-      fg: parent.actionColor
-      fs: 11
-      onClicked: parent.actionClicked()
-    }
-  }
-
-  // Base for every clickable row: same wash everywhere, no borders.
-  component RowBase: Rectangle {
-    id: rb
-    signal clicked
-    property color base: "transparent"
-    property color hover: "#0FFFFFFF"
-    property color press: "#1AFFFFFF"
-    property real rad: 0
-    property bool actionable: true
-    radius: rb.rad
-    color: (!rb.actionable || (!ma.containsMouse && !ma.pressed)) ? base : (ma.pressed ? press : hover)
-    Behavior on color { ColorAnimation { duration: 90 } }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: rb.actionable
-      cursorShape: rb.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onClicked: {
-        if (rb.actionable) rb.clicked();
-      }
-    }
-  }
-
-  // Borderless text button.
-  component TextBtn: Rectangle {
-    id: tb
-    signal clicked
-    property string text: ""
-    property color fg: t.ink2
-    property int fs: 12
-    property bool bold: false
-    implicitWidth: lbl.implicitWidth + 18
-    implicitHeight: 26
-    radius: 7
-    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
-    Behavior on color { ColorAnimation { duration: 90 } }
-    Text {
-      id: lbl
-      anchors.centerIn: parent
-      text: tb.text
-      font.pixelSize: tb.fs
-      font.bold: tb.bold
-      color: (ma.containsMouse || ma.pressed) ? t.ink1 : tb.fg
-      Behavior on color { ColorAnimation { duration: 90 } }
-    }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: tb.clicked()
-    }
-  }
-
-  // Borderless square icon button.
-  component IconBtn: Rectangle {
-    id: ib
-    signal clicked
-    property string glyph: ""
-    property int fs: 14
-    property color fg: t.ink2
-    property int btnSize: 30
-    width: btnSize
-    height: btnSize
-    radius: 8
-    color: ma.pressed ? "#1CFFFFFF" : ma.containsMouse ? "#0FFFFFFF" : "transparent"
-    Behavior on color { ColorAnimation { duration: 90 } }
-    Text {
-      id: ibGlyph
-      anchors.centerIn: parent
-      text: ib.glyph
-      font.family: t.mono
-      font.pixelSize: ib.fs
-      color: (ma.containsMouse || ma.pressed) ? t.ink1 : ib.fg
-      Behavior on color { ColorAnimation { duration: 90 } }
-    }
-    MouseArea {
-      id: ma
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: ib.clicked()
-    }
-  }
-
-  // macOS-style switch. Track carries the color, thumb just slides.
-  component TSwitch: Item {
-    id: sw
-    signal toggled
-    property bool on: false
-    property color onColor: t.green
-    width: 42
-    height: 24
-    Rectangle {
-      anchors.fill: parent
-      radius: 12
-      color: sw.on ? sw.onColor : "#3B3C4C"
-      Behavior on color { ColorAnimation { duration: 140 } }
-      Rectangle {
-        width: 20
-        height: 20
-        radius: 10
-        y: 2
-        x: sw.on ? parent.width - width - 2 : 2
-        color: "#F4F4F8"
-        Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-      }
-    }
-    MouseArea {
-      anchors.fill: parent
-      cursorShape: Qt.PointingHandCursor
-      onClicked: sw.toggled()
-    }
-  }
+  readonly property var t: Theme
 
   // ================= Card =================
   Rectangle {
     id: card
     anchors.fill: parent
-    radius: 14
-    color: t.bg
-    border.color: "#26272F"
+    radius: Theme.radiusCard
+    color: Theme.bg
+    border.color: Theme.cardBorder
     border.width: 1
 
     Flickable {

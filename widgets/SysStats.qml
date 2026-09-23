@@ -5,6 +5,7 @@
 // - https://quickshell.org/docs/v0.3.1/guide/qml-language/ (implicit import as `SysStats`)
 import QtQuick
 import Quickshell.Io
+import "../theme"
 
 Item {
   id: root
@@ -19,8 +20,9 @@ Item {
   property double _prevTotal: -1
   property double _prevIdle: -1
 
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
-  readonly property int valuePixelSize: 13
+  readonly property var t: Theme
+  readonly property string monoFont: Theme.mono
+  readonly property int valuePixelSize: Theme.fontMd
 
   implicitWidth: row.width
   implicitHeight: row.height
@@ -128,7 +130,7 @@ Item {
       width: 32
       horizontalAlignment: Text.AlignHCenter
       text: Math.round(root.cpuPercent) + "%"
-      color: "#89b4fa"
+      color: Theme.cpu
       font.pixelSize: root.valuePixelSize
       font.family: root.monoFont
     }
@@ -136,7 +138,7 @@ Item {
       width: 32
       horizontalAlignment: Text.AlignHCenter
       text: Math.round(root.memPercent) + "%"
-      color: "#cba6f7"
+      color: Theme.mem
       font.pixelSize: root.valuePixelSize
       font.family: root.monoFont
     }
@@ -145,7 +147,7 @@ Item {
       width: visible ? 32 : 0
       horizontalAlignment: Text.AlignHCenter
       text: Math.round(root.gpuPercent) + "%"
-      color: "#fab387"
+      color: Theme.gpu
       font.pixelSize: root.valuePixelSize
       font.family: root.monoFont
     }

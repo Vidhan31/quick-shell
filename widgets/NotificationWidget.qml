@@ -2,12 +2,14 @@ pragma ComponentBehavior: Bound
 // NotificationWidget.qml — Quiet top-bar indicator for notifications.
 // Single glyph + single word. No badge pill, no dot: the tint carries state.
 import QtQuick
+import "../theme"
 
 Item {
   id: root
 
   property var service: null
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
+  readonly property var t: Theme
+  readonly property string monoFont: Theme.mono
 
   readonly property bool isDnd: service ? (service.dnd === true) : false
   readonly property int unreadCount: service ? (service.unreadCount || 0) : 0
@@ -23,10 +25,10 @@ Item {
 
   // Tint carries state: amber when muted, accent when new, quiet grey otherwise.
   readonly property color iconColor: {
-    if (root.isDnd) return "#E2A63B";
-    if (root.unreadCount > 0) return "#5E9DFF";
-    if (root.totalCount > 0) return "#A6A6B8";
-    return "#6F6F84";
+    if (root.isDnd) return Theme.amber;
+    if (root.unreadCount > 0) return Theme.accent;
+    if (root.totalCount > 0) return Theme.ink2;
+    return Theme.ink3;
   }
 
   readonly property string labelText: {
@@ -36,9 +38,9 @@ Item {
   }
 
   readonly property color labelColor: {
-    if (root.isDnd) return "#6F6F84";
-    if (root.unreadCount > 0) return "#C9C9D6";
-    return "#6F6F84";
+    if (root.isDnd) return Theme.ink3;
+    if (root.unreadCount > 0) return Theme.ink1;
+    return Theme.ink3;
   }
 
   implicitWidth: contentRow.width

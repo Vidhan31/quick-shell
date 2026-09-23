@@ -11,6 +11,8 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import "../theme"
+import "../components"
 
 Item {
   id: root
@@ -25,25 +27,7 @@ Item {
   property var eventsMap: ({})
   property var selectedEvents: []
 
-  // ---- Design tokens (mirrors TailscaleControlCenter) ----
-  QtObject {
-    id: t
-    readonly property color bg: "#17171E"
-    readonly property color surface: "#1F202B"
-    readonly property color inset: "#121217"
-    readonly property color line: "#2B2C3A"
-    readonly property color cardBorder: "#26272F"
-    readonly property color ink1: "#F1F1F6"
-    readonly property color ink2: "#A6A6B8"
-    readonly property color ink3: "#6F6F84"
-    readonly property color accent: "#5E9DFF"
-    readonly property color amber: "#E2A63B"
-    readonly property color red: "#DF6363"
-    readonly property color darkInk: "#101018"
-    readonly property color selected: "#2E2F42"
-    readonly property color hoverFill: "#22232F"
-    readonly property string mono: "JetBrainsMono Nerd Font Mono"
-  }
+  readonly property var t: Theme
 
   readonly property string monoFont: t.mono
 
@@ -249,7 +233,7 @@ Item {
   Rectangle {
     id: card
     anchors.fill: parent
-    radius: 14
+    radius: Theme.radiusCard
     color: t.bg
     border.color: t.cardBorder
     border.width: 1
@@ -293,90 +277,32 @@ Item {
           }
         }
 
-        // Today: borderless text button (Tailscale TextBtn pattern)
-        Rectangle {
-          readonly property bool isTodayView: root.shownMonth === root.today.getMonth() && root.shownYear === root.today.getFullYear()
-          visible: !isTodayView
-          implicitWidth: todayLabel.implicitWidth + 18
-          implicitHeight: 30
+        TextBtn {
+          visible: !(root.shownMonth === root.today.getMonth() && root.shownYear === root.today.getFullYear())
           Layout.alignment: Qt.AlignVCenter
-          radius: 7
-          color: todayMouse.pressed ? "#1CFFFFFF" : todayMouse.containsMouse ? "#0FFFFFFF" : "transparent"
-          Behavior on color { ColorAnimation { duration: 90 } }
-
-          Text {
-            id: todayLabel
-            anchors.centerIn: parent
-            text: "Today"
-            font.pixelSize: 11
-            font.bold: true
-            color: todayMouse.containsMouse || todayMouse.pressed ? t.ink1 : t.accent
-            Behavior on color { ColorAnimation { duration: 90 } }
-          }
-
-          MouseArea {
-            id: todayMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.goToday()
-          }
+          text: "Today"
+          bold: true
+          fg: t.accent
+          fs: 11
+          onClicked: root.goToday()
         }
 
-        // Chevron prev: borderless square icon button (Tailscale IconBtn pattern)
-        Rectangle {
-          Layout.preferredWidth: 30
-          Layout.preferredHeight: 30
+        IconBtn {
           Layout.alignment: Qt.AlignVCenter
-          radius: 8
-          color: prevMouse.pressed ? "#1CFFFFFF" : prevMouse.containsMouse ? "#0FFFFFFF" : "transparent"
-          Behavior on color { ColorAnimation { duration: 90 } }
-
-          Text {
-            anchors.centerIn: parent
-            anchors.verticalCenterOffset: -1
-            text: "‹"
-            font.pixelSize: 17
-            font.bold: true
-            color: prevMouse.containsMouse || prevMouse.pressed ? t.ink1 : t.ink2
-            Behavior on color { ColorAnimation { duration: 90 } }
-          }
-
-          MouseArea {
-            id: prevMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.prevMonth()
-          }
+          glyph: "‹"
+          fs: 17
+          fg: t.ink2
+          btnSize: 30
+          onClicked: root.prevMonth()
         }
 
-        // Chevron next
-        Rectangle {
-          Layout.preferredWidth: 30
-          Layout.preferredHeight: 30
+        IconBtn {
           Layout.alignment: Qt.AlignVCenter
-          radius: 8
-          color: nextMouse.pressed ? "#1CFFFFFF" : nextMouse.containsMouse ? "#0FFFFFFF" : "transparent"
-          Behavior on color { ColorAnimation { duration: 90 } }
-
-          Text {
-            anchors.centerIn: parent
-            anchors.verticalCenterOffset: -1
-            text: "›"
-            font.pixelSize: 17
-            font.bold: true
-            color: nextMouse.containsMouse || nextMouse.pressed ? t.ink1 : t.ink2
-            Behavior on color { ColorAnimation { duration: 90 } }
-          }
-
-          MouseArea {
-            id: nextMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.nextMonth()
-          }
+          glyph: "›"
+          fs: 17
+          fg: t.ink2
+          btnSize: 30
+          onClicked: root.nextMonth()
         }
       }
 
@@ -439,7 +365,7 @@ Item {
               color: {
                 if (isToday) return t.accent;
                 if (isSelected) return t.selected;
-                if (cellHover.pressed && modelData.inMonth) return "#1AFFFFFF";
+                if (cellHover.pressed && modelData.inMonth) return t.pressWash;
                 if (cellHover.containsMouse && modelData.inMonth) return t.hoverFill;
                 return "transparent";
               }

@@ -3,6 +3,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Plugins.Tailscale
+import "../theme"
 
 Item {
   id: root
@@ -42,12 +43,12 @@ Item {
     Text {
       anchors.verticalCenter: parent.verticalCenter
       text: "󰖩"
-      font.family: "JetBrainsMono Nerd Font Mono"
+      font.family: Theme.mono
       font.pixelSize: 13
       color: {
-        if (!root.isConnected) return "#6F6F84";
-        if (root.hasFunnel) return "#AE8CFF";
-        return "#5E9DFF";
+        if (!root.isConnected) return Theme.ink3;
+        if (root.hasFunnel) return Theme.violet;
+        return Theme.accent;
       }
     }
 
@@ -59,8 +60,8 @@ Item {
         if (root.serveCount > 0) return "Serve " + root.serveCount;
         return "Tailscale";
       }
-      font.pixelSize: 12
-      color: root.isConnected ? "#C9C9D6" : "#6F6F84"
+      font.pixelSize: Theme.fontBase
+      color: root.isConnected ? Theme.ink1 : Theme.ink3
     }
   }
 }

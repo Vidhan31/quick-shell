@@ -2,6 +2,8 @@
 // Native C++ Qt6 QML module (Quickshell.Plugins.TopProcesses).
 import QtQuick
 import Quickshell.Plugins.TopProcesses
+import "../theme"
+import "../components"
 
 Item {
   id: root
@@ -12,7 +14,8 @@ Item {
   property double maxMem: monitor.maxMem
   property string updatedAt: monitor.updatedAt
 
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
+  readonly property var t: Theme
+  readonly property string monoFont: Theme.mono
 
   implicitWidth: 412
   implicitHeight: 442
@@ -37,9 +40,9 @@ Item {
   Rectangle {
     id: card
     anchors.fill: parent
-    radius: 16
-    color: "#1e1e2e"
-    border.color: "#313244"
+    radius: Theme.radiusCard
+    color: Theme.bg
+    border.color: Theme.cardBorder
     border.width: 1
 
     Column {
@@ -77,9 +80,9 @@ Item {
               text: rowDelegate.modelData ? (rowDelegate.modelData.name + (rowDelegate.modelData.count > 1 ? " ×" + rowDelegate.modelData.count : "")) : ""
               elide: Text.ElideRight
               maximumLineCount: 1
-              color: rowDelegate.index === 0 ? "#f38ba8" : "#cdd6f4"
+              color: rowDelegate.index === 0 ? Theme.err : Theme.ink1
               font.family: root.monoFont
-              font.pixelSize: 12
+              font.pixelSize: Theme.fontBase
             }
             Text {
               anchors {
@@ -90,9 +93,9 @@ Item {
               text: rowDelegate.modelData ? rowDelegate.modelData.mpid : ""
               elide: Text.ElideRight
               maximumLineCount: 1
-              color: "#6c7086"
+              color: Theme.ink3
               font.family: root.monoFont
-              font.pixelSize: 10
+              font.pixelSize: Theme.fontXs
             }
           }
 
@@ -112,14 +115,14 @@ Item {
 
             Rectangle {
               anchors.fill: parent
-              radius: 4
-              color: "#313244"
+              radius: Theme.radiusXs
+              color: Theme.inset
             }
             Rectangle {
               height: parent.height
-              radius: 4
+              radius: Theme.radiusXs
               width: parent.width * parent.fillFrac
-              color: rowDelegate.index === 0 ? "#f38ba8" : "#89b4fa"
+              color: rowDelegate.index === 0 ? Theme.err : Theme.accent
               opacity: 0.85
             }
             // Dark label on the fill (only when it fits), else light label
@@ -129,9 +132,9 @@ Item {
               anchors.leftMargin: 6
               anchors.verticalCenter: parent.verticalCenter
               text: parent.barLabel
-              color: "#11111b"
+              color: Theme.darkInk
               font.family: root.monoFont
-              font.pixelSize: 11
+              font.pixelSize: Theme.fontSm
               font.bold: true
               visible: (parent.width * parent.fillFrac) > 92
             }
@@ -141,9 +144,9 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               horizontalAlignment: Text.AlignRight
               text: parent.barLabel
-              color: "#a6adc8"
+              color: Theme.ink2
               font.family: root.monoFont
-              font.pixelSize: 11
+              font.pixelSize: Theme.fontSm
               visible: (parent.width * parent.fillFrac) <= 92
             }
           }
@@ -156,9 +159,9 @@ Item {
         horizontalAlignment: Text.AlignHCenter
         visible: root.processes.length === 0
         text: "󰑓 loading…"
-        color: "#6c7086"
+        color: Theme.ink3
         font.family: root.monoFont
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontBase
       }
     }
   }

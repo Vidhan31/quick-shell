@@ -11,6 +11,8 @@ import Quickshell.Wayland
 import qs.services
 import qs.widgets
 import qs.popups
+import "theme"
+import "components"
 
 ShellRoot {
   id: root
@@ -52,106 +54,62 @@ ShellRoot {
         left: true
         right: true
       }
-      implicitHeight: 32
-      color: "#1e1e2e"
+      implicitHeight: Theme.barHeight
+      color: Theme.barBg
 
       WlrLayershell.layer: WlrLayer.Top
-      WlrLayershell.exclusiveZone: 32
+      WlrLayershell.exclusiveZone: Theme.barHeight
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
+      function togglePopup(popup): void {
+        const wasVisible = popup.visible;
+        closeAllPopups();
+        if (!wasVisible) {
+          popup.visible = true;
+        }
+      }
+
+      function closeAllPopups(): void {
+        trayWidget.closePopup();
+        procPopup.visible = false;
+        aiPopup.visible = false;
+        mediaPopup.visible = false;
+        calPopup.visible = false;
+        tsPopup.visible = false;
+        ethPopup.visible = false;
+        privacyPopup.visible = false;
+        notifPopup.visible = false;
+      }
+
       // Left: CPU / MEM / GPU stats button — clicking toggles top processes popup.
-      // Background highlight behind all 3 stats.
-      Item {
+      BarChip {
         id: sysStatsHit
         anchors {
           left: parent.left
           verticalCenter: parent.verticalCenter
           leftMargin: 12
         }
-        width: sysStats.width + 12
-        height: 24
-
-        Rectangle {
-          id: sysStatsBg
-          anchors.fill: parent
-          radius: 6
-          color: procPopup.visible ? "#45475a" : (sysStatsMouse.containsMouse ? "#3b3e52" : "#313244")
-          border.color: procPopup.visible ? "#89b4fa" : (sysStatsMouse.containsMouse ? "#585b70" : "transparent")
-          border.width: 1
-
-          Behavior on color { ColorAnimation { duration: 120 } }
-          Behavior on border.color { ColorAnimation { duration: 120 } }
-        }
+        active: procPopup.visible
+        onClicked: bar.togglePopup(procPopup)
 
         SysStats {
           id: sysStats
-          anchors.centerIn: parent
-        }
-
-        MouseArea {
-          id: sysStatsMouse
-          anchors.fill: parent
-          cursorShape: Qt.PointingHandCursor
-          hoverEnabled: true
-          onClicked: {
-            trayWidget.closePopup();
-            mediaPopup.visible = false;
-            calPopup.visible = false;
-            tsPopup.visible = false;
-            ethPopup.visible = false;
-            privacyPopup.visible = false;
-            notifPopup.visible = false;
-            aiPopup.visible = false;
-            procPopup.visible = !procPopup.visible;
-          }
         }
       }
 
-      // Combined AI usage chip (OpenCode Σ + Antigravity ✦) — manual
-      // refresh only, single tabbed popup below.
-      Item {
+      // Combined AI usage chip (OpenCode Σ + Antigravity ✦)
+      BarChip {
         id: aiHit
         anchors {
           left: sysStatsHit.right
           leftMargin: 8
           verticalCenter: parent.verticalCenter
         }
-        width: aiBarWidget.width + 16
-        height: 24
-
-        Rectangle {
-          id: aiBg
-          anchors.fill: parent
-          radius: 6
-          color: aiPopup.visible ? "#45475a" : (aiMouse.containsMouse ? "#3b3e52" : "#313244")
-          border.color: aiPopup.visible ? "#89b4fa" : (aiMouse.containsMouse ? "#585b70" : "transparent")
-          border.width: 1
-
-          Behavior on color { ColorAnimation { duration: 120 } }
-          Behavior on border.color { ColorAnimation { duration: 120 } }
-        }
+        active: aiPopup.visible
+        onClicked: bar.togglePopup(aiPopup)
 
         AiUsageWidget {
           id: aiBarWidget
-          anchors.centerIn: parent
-        }
-
-        MouseArea {
-          id: aiMouse
-          anchors.fill: parent
-          cursorShape: Qt.PointingHandCursor
-          hoverEnabled: true
-          onClicked: {
-            trayWidget.closePopup();
-            procPopup.visible = false;
-            mediaPopup.visible = false;
-            calPopup.visible = false;
-            tsPopup.visible = false;
-            ethPopup.visible = false;
-            privacyPopup.visible = false;
-            notifPopup.visible = false;
-            aiPopup.visible = !aiPopup.visible;
-          }
         }
       }
 
@@ -200,7 +158,6 @@ ShellRoot {
         }
       }
 
-
       // System Tray icons for background / minimized apps
       SystemTrayWidget {
         id: trayWidget
@@ -210,69 +167,28 @@ ShellRoot {
           rightMargin: (visible && width > 0) ? 12 : 0
           verticalCenter: parent.verticalCenter
         }
-        onRequestClosePopups: {
-          procPopup.visible = false;
-          mediaPopup.visible = false;
-          tsPopup.visible = false;
-          ethPopup.visible = false;
-          privacyPopup.visible = false;
-          notifPopup.visible = false;
-          calPopup.visible = false;
-          aiPopup.visible = false;
-        }
+        onRequestClosePopups: bar.closeAllPopups()
       }
 
       // Media control center hit button
-      Item {
+      BarChip {
         id: mediaHit
         anchors {
           right: ethHit.left
           rightMargin: 8
           verticalCenter: parent.verticalCenter
         }
-        width: mediaBarWidget.width + 16
-        height: 24
-
-        Rectangle {
-          id: mediaBg
-          anchors.fill: parent
-          radius: 6
-          color: mediaPopup.visible ? "#45475a" : (mediaMouse.containsMouse ? "#3b3e52" : "#313244")
-          border.color: mediaPopup.visible ? "#89b4fa" : (mediaMouse.containsMouse ? "#585b70" : "transparent")
-          border.width: 1
-
-          Behavior on color { ColorAnimation { duration: 120 } }
-          Behavior on border.color { ColorAnimation { duration: 120 } }
+        active: mediaPopup.visible
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: bar.togglePopup(mediaPopup)
+        onRightClicked: {
+          if (mediaBarWidget.activePlayer && mediaBarWidget.activePlayer.canTogglePlaying) {
+            mediaBarWidget.activePlayer.togglePlaying();
+          }
         }
 
         MediaBarWidget {
           id: mediaBarWidget
-          anchors.centerIn: parent
-        }
-
-        MouseArea {
-          id: mediaMouse
-          anchors.fill: parent
-          cursorShape: Qt.PointingHandCursor
-          hoverEnabled: true
-          acceptedButtons: Qt.LeftButton | Qt.RightButton
-          onClicked: mouse => {
-            if (mouse.button === Qt.RightButton) {
-              if (mediaBarWidget.activePlayer && mediaBarWidget.activePlayer.canTogglePlaying) {
-                mediaBarWidget.activePlayer.togglePlaying();
-              }
-            } else {
-              trayWidget.closePopup();
-              procPopup.visible = false;
-              calPopup.visible = false;
-              tsPopup.visible = false;
-              ethPopup.visible = false;
-              privacyPopup.visible = false;
-              notifPopup.visible = false;
-              aiPopup.visible = false;
-              mediaPopup.visible = !mediaPopup.visible;
-            }
-          }
         }
       }
 
@@ -295,49 +211,18 @@ ShellRoot {
       }
 
       // Tailscale hit button
-      Item {
+      BarChip {
         id: tsHit
         anchors {
           left: aiHit.right
           leftMargin: 8
           verticalCenter: parent.verticalCenter
         }
-        width: tsBarWidget.width + 16
-        height: 24
-
-        Rectangle {
-          id: tsBg
-          anchors.fill: parent
-          radius: 6
-          color: tsPopup.visible ? "#45475a" : (tsMouse.containsMouse ? "#3b3e52" : "#313244")
-          border.color: tsPopup.visible ? "#89b4fa" : (tsMouse.containsMouse ? "#585b70" : "transparent")
-          border.width: 1
-
-          Behavior on color { ColorAnimation { duration: 120 } }
-          Behavior on border.color { ColorAnimation { duration: 120 } }
-        }
+        active: tsPopup.visible
+        onClicked: bar.togglePopup(tsPopup)
 
         TailscaleWidget {
           id: tsBarWidget
-          anchors.centerIn: parent
-        }
-
-        MouseArea {
-          id: tsMouse
-          anchors.fill: parent
-          cursorShape: Qt.PointingHandCursor
-          hoverEnabled: true
-          onClicked: {
-            trayWidget.closePopup();
-            procPopup.visible = false;
-            mediaPopup.visible = false;
-            calPopup.visible = false;
-            ethPopup.visible = false;
-            privacyPopup.visible = false;
-            notifPopup.visible = false;
-            aiPopup.visible = false;
-            tsPopup.visible = !tsPopup.visible;
-          }
         }
       }
 
@@ -362,49 +247,18 @@ ShellRoot {
       }
 
       // Ethernet hit button — small ethernet icon reflecting current status
-      Item {
+      BarChip {
         id: ethHit
         anchors {
           right: privacyHit.left
           rightMargin: 8
           verticalCenter: parent.verticalCenter
         }
-        width: ethBarWidget.width + 16
-        height: 24
-
-        Rectangle {
-          id: ethBg
-          anchors.fill: parent
-          radius: 6
-          color: ethPopup.visible ? "#45475a" : (ethMouse.containsMouse ? "#3b3e52" : "#313244")
-          border.color: ethPopup.visible ? "#89b4fa" : (ethMouse.containsMouse ? "#585b70" : "transparent")
-          border.width: 1
-
-          Behavior on color { ColorAnimation { duration: 120 } }
-          Behavior on border.color { ColorAnimation { duration: 120 } }
-        }
+        active: ethPopup.visible
+        onClicked: bar.togglePopup(ethPopup)
 
         EthernetWidget {
           id: ethBarWidget
-          anchors.centerIn: parent
-        }
-
-        MouseArea {
-          id: ethMouse
-          anchors.fill: parent
-          cursorShape: Qt.PointingHandCursor
-          hoverEnabled: true
-          onClicked: {
-            trayWidget.closePopup();
-            procPopup.visible = false;
-            mediaPopup.visible = false;
-            tsPopup.visible = false;
-            calPopup.visible = false;
-            privacyPopup.visible = false;
-            notifPopup.visible = false;
-            aiPopup.visible = false;
-            ethPopup.visible = !ethPopup.visible;
-          }
         }
       }
 
@@ -438,7 +292,7 @@ ShellRoot {
         }
         visible: privacyWidget.hasActive || width > 0
         width: privacyWidget.hasActive ? privacyWidget.implicitWidth : 0
-        height: 24
+        height: Theme.btnHeightSm
         clip: true
 
         Behavior on width {
@@ -448,17 +302,7 @@ ShellRoot {
         PrivacyIndicators {
           id: privacyWidget
           anchors.centerIn: parent
-          onClicked: {
-            trayWidget.closePopup();
-            procPopup.visible = false;
-            mediaPopup.visible = false;
-            calPopup.visible = false;
-            ethPopup.visible = false;
-            tsPopup.visible = false;
-            notifPopup.visible = false;
-            aiPopup.visible = false;
-            privacyPopup.visible = !privacyPopup.visible;
-          }
+          onClicked: bar.togglePopup(privacyPopup)
         }
       }
 
@@ -481,50 +325,19 @@ ShellRoot {
       }
 
       // Notification center hit button
-      Item {
+      BarChip {
         id: notifHit
         anchors {
           right: (trayWidget.visible && trayWidget.width > 0) ? trayWidget.left : parent.right
           rightMargin: (trayWidget.visible && trayWidget.width > 0) ? 8 : 12
           verticalCenter: parent.verticalCenter
         }
-        width: notifBarWidget.width + 16
-        height: 24
-
-        Rectangle {
-          id: notifBg
-          anchors.fill: parent
-          radius: 6
-          color: notifPopup.visible ? "#45475a" : (notifMouse.containsMouse ? "#3b3e52" : "#313244")
-          border.color: notifPopup.visible ? "#89b4fa" : (notifMouse.containsMouse ? "#585b70" : "transparent")
-          border.width: 1
-
-          Behavior on color { ColorAnimation { duration: 120 } }
-          Behavior on border.color { ColorAnimation { duration: 120 } }
-        }
+        active: notifPopup.visible
+        onClicked: bar.togglePopup(notifPopup)
 
         NotificationWidget {
           id: notifBarWidget
-          anchors.centerIn: parent
           service: notifService
-        }
-
-        MouseArea {
-          id: notifMouse
-          anchors.fill: parent
-          cursorShape: Qt.PointingHandCursor
-          hoverEnabled: true
-          onClicked: {
-            trayWidget.closePopup();
-            procPopup.visible = false;
-            mediaPopup.visible = false;
-            calPopup.visible = false;
-            tsPopup.visible = false;
-            ethPopup.visible = false;
-            privacyPopup.visible = false;
-            aiPopup.visible = false;
-            notifPopup.visible = !notifPopup.visible;
-          }
         }
       }
 
@@ -568,61 +381,29 @@ ShellRoot {
       }
 
       // Center: Clickable date / time — toggles the calendar popup below.
-      // PopupWindow anchored to the bar (docs: PopupWindow anchor.window + anchor.rect).
-      Item {
+      BarChip {
         id: clockHit
         anchors.centerIn: parent
-        width: clockContent.width + 16
-        height: 24
-
-        Rectangle {
-          id: clockBg
-          anchors.fill: parent
-          radius: 6
-          color: calPopup.visible ? "#45475a" : (clockMouse.containsMouse ? "#3b3e52" : "#313244")
-          border.color: calPopup.visible ? "#89b4fa" : (clockMouse.containsMouse ? "#585b70" : "transparent")
-          border.width: 1
-
-          Behavior on color { ColorAnimation { duration: 120 } }
-          Behavior on border.color { ColorAnimation { duration: 120 } }
-        }
+        active: calPopup.visible
+        onClicked: bar.togglePopup(calPopup)
 
         Row {
           id: clockContent
-          anchors.centerIn: parent
           spacing: 8
 
           Text {
             text: root.date
-            color: "#a6adc8"
-            font.pixelSize: 13
-            font.family: "JetBrainsMono Nerd Font Mono"
+            color: Theme.ink2
+            font.pixelSize: Theme.fontMd
+            font.family: Theme.mono
           }
 
           Text {
             text: root.time
-            color: "#ffffff"
-            font.pixelSize: 13
+            color: Theme.ink1
+            font.pixelSize: Theme.fontMd
             font.bold: true
-            font.family: "JetBrainsMono Nerd Font Mono"
-          }
-        }
-
-        MouseArea {
-          id: clockMouse
-          anchors.fill: parent
-          cursorShape: Qt.PointingHandCursor
-          hoverEnabled: true
-          onClicked: {
-            trayWidget.closePopup();
-            procPopup.visible = false;
-            mediaPopup.visible = false;
-            tsPopup.visible = false;
-            ethPopup.visible = false;
-            privacyPopup.visible = false;
-            notifPopup.visible = false;
-            aiPopup.visible = false;
-            calPopup.visible = !calPopup.visible;
+            font.family: Theme.mono
           }
         }
       }
