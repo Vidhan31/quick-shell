@@ -57,7 +57,7 @@ Item {
         id: camBg
         anchors.fill: parent
         radius: Theme.radiusSm
-        color: camMouse.containsMouse ? Qt.rgba(0.27, 0.78, 0.53, 0.25) : Qt.rgba(0.27, 0.78, 0.53, 0.15)
+        color: camMouse.containsMouse ? Qt.rgba(Theme.green.r, Theme.green.g, Theme.green.b, 0.25) : Qt.rgba(Theme.green.r, Theme.green.g, Theme.green.b, 0.15)
         border.color: Theme.ok
         border.width: 1
 
@@ -131,7 +131,7 @@ Item {
         id: micBg
         anchors.fill: parent
         radius: Theme.radiusSm
-        color: micMouse.containsMouse ? Qt.rgba(0.89, 0.65, 0.23, 0.25) : Qt.rgba(0.89, 0.65, 0.23, 0.15)
+        color: micMouse.containsMouse ? Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.25) : Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.15)
         border.color: Theme.warn
         border.width: 1
 

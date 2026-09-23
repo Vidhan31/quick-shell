@@ -48,6 +48,9 @@ Item {
     return agyMonitor.compact(agyMonitor.todayTokens);
   }
 
+  readonly property double totalTodayTokens: ocMonitor.todayTokens + agyMonitor.todayTokens
+  readonly property double ocRatio: root.totalTodayTokens > 0 ? (ocMonitor.todayTokens / root.totalTodayTokens) : 0.5
+
   Row {
     id: contentRow
     spacing: 7
@@ -69,13 +72,42 @@ Item {
       color: Theme.ink1
     }
 
-    Text {
+    Item {
       anchors.verticalCenter: parent.verticalCenter
-      text: "·"
-      font.pixelSize: Theme.fontBase
-      font.family: Theme.mono
-      color: Theme.ink3
+      width: root.totalTodayTokens > 0 ? 18 : 6
+      height: 14
+
+      Text {
+        anchors.centerIn: parent
+        visible: root.totalTodayTokens <= 0
+        text: "·"
+        font.pixelSize: Theme.fontBase
+        font.family: Theme.mono
+        color: Theme.ink3
+      }
+
+      Row {
+        anchors.centerIn: parent
+        width: 18
+        height: 4
+        spacing: 1
+        visible: root.totalTodayTokens > 0
+
+        Rectangle {
+          width: Math.max(2, Math.min(15, Math.round(17 * root.ocRatio)))
+          height: parent.height
+          radius: 2
+          color: Theme.teal
+        }
+        Rectangle {
+          width: Math.max(2, 17 - Math.max(2, Math.min(15, Math.round(17 * root.ocRatio))))
+          height: parent.height
+          radius: 2
+          color: Theme.violet
+        }
+      }
     }
+
 
     Text {
       anchors.verticalCenter: parent.verticalCenter

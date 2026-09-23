@@ -45,14 +45,6 @@ Singleton {
   readonly property color teal: "#94E2D5"
   readonly property color inactive: "#6F6F84"
 
-  // --- Domain semantics ---
-  readonly property color cpu: green
-  readonly property color mem: accent
-  readonly property color temp: amber
-  readonly property color gpu: violet
-  readonly property color tailscale: accent
-  readonly property color ethernet: green
-  readonly property color privacyActive: red
 
   // --- Geometry ---
   readonly property real radiusXs: 4

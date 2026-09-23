@@ -47,7 +47,6 @@ Item {
   signal triggerRefresh()
 
   property int currentTab: 0 // 0: Sharing, 1: Devices, 2: Settings
-  property string toastMessage: ""
   property string pingingIp: ""
 
   // Launcher state
@@ -228,14 +227,7 @@ Item {
   }
 
   function showToast(msg: string): void {
-    root.toastMessage = msg;
-    toastTimer.restart();
-  }
-
-  Timer {
-    id: toastTimer
-    interval: 2500
-    onTriggered: root.toastMessage = ""
+    toast.show(msg);
   }
 
   function refresh(): void {
@@ -1299,29 +1291,9 @@ Item {
       }
     }
 
-    // ---- Toast: one quiet overlay, fades in place ----
-    Rectangle {
-      anchors.horizontalCenter: parent.horizontalCenter
-      anchors.bottom: parent.bottom
-      anchors.bottomMargin: 14
-      width: Math.min(toastLabel.implicitWidth + 30, parent.width - 32)
-      height: 30
-      radius: 15
-      color: t.surfaceElevated
-      opacity: root.toastMessage.length > 0 ? 1 : 0
-      visible: opacity > 0
-      Behavior on opacity { NumberAnimation { duration: 160 } }
-      Text {
-        id: toastLabel
-        anchors.centerIn: parent
-        width: parent.width - 30
-        text: "✓  " + root.toastMessage
-        font.pixelSize: 11
-        font.weight: Font.Medium
-        color: t.ink1
-        elide: Text.ElideRight
-        horizontalAlignment: Text.AlignHCenter
-      }
+    Toast {
+      id: toast
+      timeout: 2500
     }
   }
 }

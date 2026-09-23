@@ -6,6 +6,6 @@ IconBtn 1.0 IconBtn.qml
 TSwitch 1.0 TSwitch.qml
 Segments 1.0 Segments.qml
 PrimaryBtn 1.0 PrimaryBtn.qml
-PopupCard 1.0 PopupCard.qml
 Field 1.0 Field.qml
 Toast 1.0 Toast.qml
+TokenDonutCard 1.0 TokenDonutCard.qml

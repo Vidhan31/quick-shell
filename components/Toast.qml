@@ -32,9 +32,12 @@ Rectangle {
   Text {
     id: toastLabel
     anchors.centerIn: parent
-    text: root.message
+    width: parent ? parent.width - 30 : implicitWidth
+    text: root.message.length > 0 ? ("✓  " + root.message) : ""
     font.pixelSize: Theme.fontSm
     font.weight: Font.Medium
     color: Theme.ink1
+    elide: Text.ElideRight
+    horizontalAlignment: Text.AlignHCenter
   }
 }

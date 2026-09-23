@@ -130,7 +130,7 @@ Item {
       width: 32
       horizontalAlignment: Text.AlignHCenter
       text: Math.round(root.cpuPercent) + "%"
-      color: Theme.cpu
+      color: Theme.green
       font.pixelSize: root.valuePixelSize
       font.family: root.monoFont
     }
@@ -138,7 +138,7 @@ Item {
       width: 32
       horizontalAlignment: Text.AlignHCenter
       text: Math.round(root.memPercent) + "%"
-      color: Theme.mem
+      color: Theme.accent
       font.pixelSize: root.valuePixelSize
       font.family: root.monoFont
     }
@@ -147,7 +147,7 @@ Item {
       width: visible ? 32 : 0
       horizontalAlignment: Text.AlignHCenter
       text: Math.round(root.gpuPercent) + "%"
-      color: Theme.gpu
+      color: Theme.violet
       font.pixelSize: root.valuePixelSize
       font.family: root.monoFont
     }

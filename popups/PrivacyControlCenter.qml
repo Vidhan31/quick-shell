@@ -1,6 +1,5 @@
 // PrivacyControlCenter.qml — Detailed popup for active Camera and Microphone usage.
 import QtQuick
-import QtQuick.Layouts
 import "../theme"
 import "../components"
 
@@ -92,7 +91,7 @@ Item {
         width: statusText.implicitWidth + 14
         height: 20
         radius: Theme.radiusChip
-        color: root.hasActive ? Qt.rgba(0.87, 0.39, 0.39, 0.15) : Theme.inset
+        color: root.hasActive ? Qt.rgba(Theme.red.r, Theme.red.g, Theme.red.b, 0.15) : Theme.inset
         border.color: root.hasActive ? (root.cameraActive ? Theme.ok : Theme.warn) : Theme.line
         border.width: 1
 
@@ -119,7 +118,7 @@ Item {
       width: parent.width
       height: camContentCol.height + 20
       radius: Theme.radiusBase
-      color: Qt.rgba(0.27, 0.78, 0.53, 0.12)
+      color: Qt.rgba(Theme.green.r, Theme.green.g, Theme.green.b, 0.12)
       border.color: Theme.ok
       border.width: 1
 
@@ -200,7 +199,7 @@ Item {
       width: parent.width
       height: micContentCol.height + 20
       radius: Theme.radiusBase
-      color: Qt.rgba(0.89, 0.65, 0.23, 0.12)
+      color: Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.12)
       border.color: Theme.warn
       border.width: 1
 

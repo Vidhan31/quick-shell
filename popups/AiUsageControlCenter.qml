@@ -43,12 +43,14 @@ Item {
   Component.onCompleted: root.syncLastN()
 
   implicitWidth: 440
-  // Chrome: card margins 32 + header 40 + gap 14 + segments 34 + gap 12 = 132.
-  implicitHeight: root.currentTab === 0 ? Math.min(620, Math.max(380, 132 + overviewCol.height)) : 620
+  // Chrome: card margins 32 + segments 34 + gap 12 = 78.
+  implicitHeight: root.currentTab === 0 ? Math.min(640, Math.max(340, 78 + overviewCol.height)) : 620
   width: implicitWidth
   height: implicitHeight
 
+
   // ---- Shared tooltip state (one system for all tabs) ----
+
   property var tipDetails: null
   property Item tipTarget: null
   property int tipX: 0
@@ -92,28 +94,8 @@ Item {
   readonly property string ocUpdated: (root.ocMonitor && root.ocMonitor.lastRefresh !== "") ? root.ocMonitor.lastRefresh : "never"
   readonly property string agyUpdated: (root.agyMonitor && root.agyMonitor.lastRefresh !== "") ? root.agyMonitor.lastRefresh : "never"
 
-  readonly property string combinedToday: {
-    if (root.ocMonitor === null || root.agyMonitor === null) return "--";
-    if (root.ocMonitor.lastRefresh === "" && root.agyMonitor.lastRefresh === "") return "--";
-    return root.ocMonitor.compact(root.ocMonitor.todayTokens + root.agyMonitor.todayTokens);
-  }
-
-  readonly property string subtitleText: {
-    if (root.ocMonitor === null || root.agyMonitor === null) return "Not connected";
-    return "Today " + root.combinedToday + " · Σ " + root.ocText(root.ocMonitor.todayTokens, root.ocMonitor.lastRefresh) + " + ✦ " + root.agyText(root.agyMonitor.todayTokens, root.agyMonitor.lastRefresh);
-  }
-
-  function ocText(tokens: double, stamp: string): string {
-    if (root.ocMonitor === null || stamp === "") return "--";
-    return root.ocMonitor.compact(tokens);
-  }
-
-  function agyText(tokens: double, stamp: string): string {
-    if (root.agyMonitor === null || stamp === "") return "--";
-    return root.agyMonitor.compact(tokens);
-  }
-
   function money(value: double): string {
+
     return "$" + value.toFixed(2);
   }
 
@@ -141,15 +123,15 @@ Item {
   }
 
   readonly property var ocRows: root.ocMonitor === null ? [] : [
-    { label: "Today", tokens: root.ocMonitor.compact(root.ocMonitor.todayTokens), details: root.ocSplitDetails(root.ocMonitor.todaySplit, root.ocMonitor.todayCost, root.ocMonitor.todayMessages) },
-    { label: "This week", tokens: root.ocMonitor.compact(root.ocMonitor.weekTokens), details: root.ocSplitDetails(root.ocMonitor.weekSplit, root.ocMonitor.weekCost, root.ocMonitor.weekMessages) },
-    { label: "This month", tokens: root.ocMonitor.compact(root.ocMonitor.monthTokens), details: root.ocSplitDetails(root.ocMonitor.monthSplit, root.ocMonitor.monthCost, root.ocMonitor.monthMessages) }
+    { label: "Today", tokens: root.ocMonitor.compact(root.ocMonitor.todayTokens), rawTokens: root.ocMonitor.todayTokens, split: root.ocMonitor.todaySplit, cost: root.ocMonitor.todayCost, details: root.ocSplitDetails(root.ocMonitor.todaySplit, root.ocMonitor.todayCost, root.ocMonitor.todayMessages) },
+    { label: "This week", tokens: root.ocMonitor.compact(root.ocMonitor.weekTokens), rawTokens: root.ocMonitor.weekTokens, split: root.ocMonitor.weekSplit, cost: root.ocMonitor.weekCost, details: root.ocSplitDetails(root.ocMonitor.weekSplit, root.ocMonitor.weekCost, root.ocMonitor.weekMessages) },
+    { label: "This month", tokens: root.ocMonitor.compact(root.ocMonitor.monthTokens), rawTokens: root.ocMonitor.monthTokens, split: root.ocMonitor.monthSplit, cost: root.ocMonitor.monthCost, details: root.ocSplitDetails(root.ocMonitor.monthSplit, root.ocMonitor.monthCost, root.ocMonitor.monthMessages) }
   ]
 
   readonly property var agyRows: root.agyMonitor === null ? [] : [
-    { label: "Today", tokens: root.agyMonitor.compact(root.agyMonitor.todayTokens), details: root.agySplitDetails(root.agyMonitor.todaySplit, root.agyMonitor.todayMessages) },
-    { label: "This week", tokens: root.agyMonitor.compact(root.agyMonitor.weekTokens), details: root.agySplitDetails(root.agyMonitor.weekSplit, root.agyMonitor.weekMessages) },
-    { label: "This month", tokens: root.agyMonitor.compact(root.agyMonitor.monthTokens), details: root.agySplitDetails(root.agyMonitor.monthSplit, root.agyMonitor.monthMessages) }
+    { label: "Today", tokens: root.agyMonitor.compact(root.agyMonitor.todayTokens), rawTokens: root.agyMonitor.todayTokens, split: root.agyMonitor.todaySplit, details: root.agySplitDetails(root.agyMonitor.todaySplit, root.agyMonitor.todayMessages) },
+    { label: "This week", tokens: root.agyMonitor.compact(root.agyMonitor.weekTokens), rawTokens: root.agyMonitor.weekTokens, split: root.agyMonitor.weekSplit, details: root.agySplitDetails(root.agyMonitor.weekSplit, root.agyMonitor.weekMessages) },
+    { label: "This month", tokens: root.agyMonitor.compact(root.agyMonitor.monthTokens), rawTokens: root.agyMonitor.monthTokens, split: root.agyMonitor.monthSplit, details: root.agySplitDetails(root.agyMonitor.monthSplit, root.agyMonitor.monthMessages) }
   ]
 
   // ---- Overview: combined period cards ----
@@ -163,39 +145,48 @@ Item {
       label: "Today",
       oc: root.ocMonitor.compact(root.ocMonitor.todayTokens),
       ocSub: root.money(root.ocMonitor.todayCost),
+      ocRaw: root.ocMonitor.todayTokens,
       agy: root.agyMonitor.compact(root.agyMonitor.todayTokens),
       agySub: root.agyMonitor.compact(root.agyMonitor.todayMessages) + " msgs",
+      agyRaw: root.agyMonitor.todayTokens,
+      totalRaw: root.ocMonitor.todayTokens + root.agyMonitor.todayTokens,
       total: root.periodTotal(root.ocMonitor.todayTokens, root.agyMonitor.todayTokens)
     },
     {
       label: "This week",
       oc: root.ocMonitor.compact(root.ocMonitor.weekTokens),
       ocSub: root.money(root.ocMonitor.weekCost),
+      ocRaw: root.ocMonitor.weekTokens,
       agy: root.agyMonitor.compact(root.agyMonitor.weekTokens),
       agySub: root.agyMonitor.compact(root.agyMonitor.weekMessages) + " msgs",
+      agyRaw: root.agyMonitor.weekTokens,
+      totalRaw: root.ocMonitor.weekTokens + root.agyMonitor.weekTokens,
       total: root.periodTotal(root.ocMonitor.weekTokens, root.agyMonitor.weekTokens)
     },
     {
       label: "This month",
       oc: root.ocMonitor.compact(root.ocMonitor.monthTokens),
       ocSub: root.money(root.ocMonitor.monthCost),
+      ocRaw: root.ocMonitor.monthTokens,
       agy: root.agyMonitor.compact(root.agyMonitor.monthTokens),
       agySub: root.agyMonitor.compact(root.agyMonitor.monthMessages) + " msgs",
+      agyRaw: root.agyMonitor.monthTokens,
+      totalRaw: root.ocMonitor.monthTokens + root.agyMonitor.monthTokens,
       total: root.periodTotal(root.ocMonitor.monthTokens, root.agyMonitor.monthTokens)
     }
   ]
 
-  // Last-N card: most-recent message rows, not a calendar window. OpenCode
-  // counts user+assistant rows (valid JSON); Antigravity counts deduped
-  // assistant turns ordered by file mtime then idx (approximate across
-  // sessions). Actual rows can be < N when history is short.
+  // Last-N card: most-recent message rows, not a calendar window.
   readonly property var lastNCard: (root.ocMonitor === null || root.agyMonitor === null) ? null : ({
     oc: root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.compact(root.ocMonitor.lastNTokens) : "--",
     ocSub: (root.ocMonitor.lastNCost !== undefined ? root.money(root.ocMonitor.lastNCost) : "--") + " · " + (root.ocMonitor.lastNMessages !== undefined ? root.ocMonitor.compact(root.ocMonitor.lastNMessages) : "?") + " msgs",
+    ocRaw: root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.lastNTokens : 0,
     ocDetails: root.ocMonitor.lastNSplit !== undefined ? root.ocSplitDetails(root.ocMonitor.lastNSplit, root.ocMonitor.lastNCost, root.ocMonitor.lastNMessages) : [],
     agy: root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.compact(root.agyMonitor.lastNTokens) : "--",
     agySub: (root.agyMonitor.lastNMessages !== undefined ? root.agyMonitor.compact(root.agyMonitor.lastNMessages) : "?") + " msgs",
+    agyRaw: root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.lastNTokens : 0,
     agyDetails: root.agyMonitor.lastNSplit !== undefined ? root.agySplitDetails(root.agyMonitor.lastNSplit, root.agyMonitor.lastNMessages) : [],
+    totalRaw: (root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.lastNTokens : 0) + (root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.lastNTokens : 0),
     total: root.periodTotal(
       root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.lastNTokens : 0,
       root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.lastNTokens : 0)
@@ -203,18 +194,115 @@ Item {
 
   // ---- Models, tagged by source and merged for the Overview tab ----
   readonly property var ocModelRows: root.ocMonitor === null ? [] : root.ocMonitor.monthModels.map(function (m) {
-    return { name: m.name, tokens: root.ocMonitor.compact(m.tokens), sub: root.ocMonitor.compact(m.messages) + " msgs", raw: m.tokens, src: "oc" };
+    const avg = m.messages > 0 ? Math.round(m.tokens / m.messages) : 0;
+    return {
+      name: m.name,
+      tokens: root.ocMonitor.compact(m.tokens),
+      sub: root.ocMonitor.compact(m.messages) + " msgs · ~" + root.ocMonitor.compact(avg) + "/msg",
+      raw: m.tokens,
+      src: "oc"
+    };
   })
 
   readonly property var agyModelRows: root.agyMonitor === null ? [] : root.agyMonitor.monthModels.map(function (m) {
-    return { name: m.name, tokens: root.agyMonitor.compact(m.tokens), sub: root.agyMonitor.compact(m.messages) + " msgs", raw: m.tokens, src: "agy" };
+    const avg = m.messages > 0 ? Math.round(m.tokens / m.messages) : 0;
+    return {
+      name: m.name,
+      tokens: root.agyMonitor.compact(m.tokens),
+      sub: root.agyMonitor.compact(m.messages) + " msgs · ~" + root.agyMonitor.compact(avg) + "/msg",
+      raw: m.tokens,
+      src: "agy"
+    };
   })
+
 
   readonly property var combinedModels: root.ocModelRows.concat(root.agyModelRows).slice().sort(function (a, b) { return b.raw - a.raw; }).slice(0, 12)
 
   readonly property var agySourceRows: root.agyMonitor === null ? [] : root.agyMonitor.monthSources.map(function (s) {
-    return { name: s.name, tokens: root.agyMonitor.compact(s.tokens), sub: root.agyMonitor.compact(s.messages) + " msgs" };
+    return { name: s.name, tokens: root.agyMonitor.compact(s.tokens), sub: root.agyMonitor.compact(s.messages) + " msgs", raw: s.tokens };
   })
+  readonly property double maxAgySourceTokens: (root.agySourceRows.length > 0 && root.agySourceRows[0].raw > 0) ? root.agySourceRows[0].raw : 1
+
+
+  // ---- Chart data and period selection ----
+  property int overviewChartPeriod: 0 // 0: Today, 1: Last N, 2: Month
+  property int ocChartPeriod: 0 // 0: Today, 1: Week, 2: Month
+  property int agyChartPeriod: 0 // 0: Today, 1: Week, 2: Month
+
+  readonly property var overviewChartData: {
+    if (root.ocMonitor === null || root.agyMonitor === null) {
+      return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, totalText: "--", totalSub: "tokens", ocTokens: 0, agyTokens: 0 };
+    }
+    const ocS = root.overviewChartPeriod === 0 ? root.ocMonitor.todaySplit
+              : (root.overviewChartPeriod === 1 ? root.ocMonitor.lastNSplit : root.ocMonitor.monthSplit);
+    const agyS = root.overviewChartPeriod === 0 ? root.agyMonitor.todaySplit
+               : (root.overviewChartPeriod === 1 ? root.agyMonitor.lastNSplit : root.agyMonitor.monthSplit);
+
+    const ocT = root.overviewChartPeriod === 0 ? root.ocMonitor.todayTokens
+              : (root.overviewChartPeriod === 1 ? (root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.lastNTokens : 0) : root.ocMonitor.monthTokens);
+    const agyT = root.overviewChartPeriod === 0 ? root.agyMonitor.todayTokens
+               : (root.overviewChartPeriod === 1 ? (root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.lastNTokens : 0) : root.agyMonitor.monthTokens);
+
+    const inp = (ocS ? (ocS.input || 0) : 0) + (agyS ? (agyS.input || 0) : 0);
+    const out = (ocS ? (ocS.output || 0) : 0) + (agyS ? (agyS.output || 0) : 0);
+    const cr = (ocS ? (ocS.cacheRead || 0) : 0) + (agyS ? (agyS.cacheRead || 0) : 0);
+    const cw = (ocS ? (ocS.cacheWrite || 0) : 0);
+    const rz = (ocS ? (ocS.reasoning || 0) : 0) + (agyS ? (agyS.reasoning || 0) : 0);
+    const total = ocT + agyT;
+
+    return {
+      input: inp,
+      output: out,
+      cacheRead: cr,
+      cacheWrite: cw,
+      reasoning: rz,
+      totalText: root.ocMonitor.compact(total),
+      totalSub: root.overviewChartPeriod === 0 ? "today" : (root.overviewChartPeriod === 1 ? ("last " + root.lastN) : "month"),
+      ocTokens: ocT,
+      agyTokens: agyT
+    };
+  }
+
+  readonly property var ocChartData: {
+    if (root.ocMonitor === null) {
+      return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, totalText: "--", totalSub: "tokens" };
+    }
+    const s = root.ocChartPeriod === 0 ? root.ocMonitor.todaySplit
+            : (root.ocChartPeriod === 1 ? root.ocMonitor.weekSplit : root.ocMonitor.monthSplit);
+    const t = root.ocChartPeriod === 0 ? root.ocMonitor.todayTokens
+            : (root.ocChartPeriod === 1 ? root.ocMonitor.weekTokens : root.ocMonitor.monthTokens);
+    return {
+      input: s ? (s.input || 0) : 0,
+      output: s ? (s.output || 0) : 0,
+      cacheRead: s ? (s.cacheRead || 0) : 0,
+      cacheWrite: s ? (s.cacheWrite || 0) : 0,
+      reasoning: s ? (s.reasoning || 0) : 0,
+      totalText: root.ocMonitor.compact(t),
+      totalSub: root.ocChartPeriod === 0 ? "today" : (root.ocChartPeriod === 1 ? "this week" : "this month")
+    };
+  }
+
+  readonly property var agyChartData: {
+    if (root.agyMonitor === null) {
+      return { input: 0, output: 0, cacheRead: 0, reasoning: 0, totalText: "--", totalSub: "tokens" };
+    }
+    const s = root.agyChartPeriod === 0 ? root.agyMonitor.todaySplit
+            : (root.agyChartPeriod === 1 ? root.agyMonitor.weekSplit : root.agyMonitor.monthSplit);
+    const t = root.agyChartPeriod === 0 ? root.agyMonitor.todayTokens
+            : (root.agyChartPeriod === 1 ? root.agyMonitor.weekTokens : root.agyMonitor.monthTokens);
+    return {
+      input: s ? (s.input || 0) : 0,
+      output: s ? (s.output || 0) : 0,
+      cacheRead: s ? (s.cacheRead || 0) : 0,
+      reasoning: s ? (s.reasoning || 0) : 0,
+      totalText: root.agyMonitor.compact(t),
+      totalSub: root.agyChartPeriod === 0 ? "today" : (root.agyChartPeriod === 1 ? "this week" : "this month")
+    };
+  }
+
+  readonly property double maxCombinedModelTokens: (root.combinedModels.length > 0 && root.combinedModels[0].raw > 0) ? root.combinedModels[0].raw : 1
+  readonly property double maxOcModelTokens: (root.ocModelRows.length > 0 && root.ocModelRows[0].raw > 0) ? root.ocModelRows[0].raw : 1
+  readonly property double maxAgyModelTokens: (root.agyModelRows.length > 0 && root.agyModelRows[0].raw > 0) ? root.agyModelRows[0].raw : 1
 
   readonly property var segItems: [
     { icon: "", label: "Overview", count: 0, alert: root.hasError },
@@ -223,6 +311,7 @@ Item {
   ]
 
   readonly property var t: Theme
+
 
   // Small "i" affordance shared by both detail tabs; arms the shared tooltip.
   component InfoDot: Item {
@@ -259,12 +348,14 @@ Item {
     }
   }
 
-  // One period row inside a detail-tab surface card.
+  // One period row inside a detail-tab surface card with inline segmented ribbon.
   component PeriodRow: Item {
     id: prow
     property string label: ""
     property string tokens: ""
     property var details: []
+    property var split: null
+    property double rawTokens: 0
     property bool first: false
     width: parent ? parent.width : 0
     height: innerCol.height
@@ -280,7 +371,7 @@ Item {
       }
       RowLayout {
         width: parent.width
-        height: 46
+        height: 42
         Text {
           Layout.fillWidth: true
           Layout.leftMargin: 12
@@ -305,8 +396,60 @@ Item {
           verticalAlignment: Text.AlignVCenter
         }
       }
+
+      // Inline Segmented Ribbon: immediate composition at a glance
+      Item {
+        width: parent.width - 24
+        height: 5
+        anchors.horizontalCenter: parent.horizontalCenter
+        visible: prow.rawTokens > 0 && prow.split !== null
+
+        Row {
+          anchors.fill: parent
+          spacing: 1
+
+          Rectangle {
+            visible: prow.split && prow.split.input > 0
+            width: Math.max(2, Math.round((parent.width - 3) * (prow.split.input / prow.rawTokens)))
+            height: parent.height
+            radius: 2
+            color: t.accent
+          }
+          Rectangle {
+            visible: prow.split && prow.split.output > 0
+            width: Math.max(2, Math.round((parent.width - 3) * (prow.split.output / prow.rawTokens)))
+            height: parent.height
+            radius: 2
+            color: t.green
+          }
+          Rectangle {
+            visible: prow.split && prow.split.cacheRead > 0
+            width: Math.max(2, Math.round((parent.width - 3) * (prow.split.cacheRead / prow.rawTokens)))
+            height: parent.height
+            radius: 2
+            color: t.violet
+          }
+          Rectangle {
+            visible: prow.split && prow.split.cacheWrite !== undefined && prow.split.cacheWrite > 0
+            width: Math.max(2, Math.round((parent.width - 3) * (prow.split.cacheWrite / prow.rawTokens)))
+            height: parent.height
+            radius: 2
+            color: t.teal
+          }
+          Rectangle {
+            visible: prow.split && prow.split.reasoning > 0
+            width: Math.max(2, Math.round((parent.width - 3) * (prow.split.reasoning / prow.rawTokens)))
+            height: parent.height
+            radius: 2
+            color: t.amber
+          }
+        }
+      }
+
+      Item { width: 1; height: 6 }
     }
   }
+
 
   // ================= Card =================
   Rectangle {
@@ -322,36 +465,17 @@ Item {
       anchors.margins: 16
       spacing: 0
 
-      // ---- Header: identity left, refresh right ----
+      // ---- Navigation & Actions ----
       RowLayout {
         Layout.fillWidth: true
-        Layout.preferredHeight: 40
-        spacing: 10
+        Layout.preferredHeight: 34
+        spacing: 8
 
-        Text {
-          text: "󰚩"
-          font.family: t.mono
-          font.pixelSize: 19
-          color: root.hasError ? t.amber : t.teal
-        }
-
-        Column {
+        Segments {
           Layout.fillWidth: true
-          spacing: 1
-          Text {
-            text: "AI usage"
-            font.pixelSize: 14
-            font.weight: Font.DemiBold
-            color: t.ink1
-          }
-          Text {
-            width: parent.width
-            text: root.subtitleText
-            font.family: t.mono
-            font.pixelSize: 11
-            color: t.ink3
-            elide: Text.ElideRight
-          }
+          items: root.segItems
+          current: root.currentTab
+          onSelected: index => root.currentTab = index
         }
 
         IconBtn {
@@ -362,14 +486,6 @@ Item {
         }
       }
 
-      Item { Layout.preferredHeight: 14; Layout.fillWidth: true }
-
-      Segments {
-        Layout.fillWidth: true
-        items: root.segItems
-        current: root.currentTab
-        onSelected: index => root.currentTab = index
-      }
 
       Item { Layout.preferredHeight: 12; Layout.fillWidth: true }
 
@@ -396,8 +512,37 @@ Item {
 
             SectionHead {
               width: parent.width
+              label: "Token distribution"
+            }
+
+            TokenDonutCard {
+              width: parent.width
+              title: "Composition"
+              periods: ["Today", "Last " + root.lastN, "Month"]
+              selectedPeriod: root.overviewChartPeriod
+              onPeriodSelected: idx => root.overviewChartPeriod = idx
+
+              inputTokens: root.overviewChartData.input
+              outputTokens: root.overviewChartData.output
+              cacheReadTokens: root.overviewChartData.cacheRead
+              cacheWriteTokens: root.overviewChartData.cacheWrite
+              reasoningTokens: root.overviewChartData.reasoning
+              showCacheWrite: true
+
+              totalFormatted: root.overviewChartData.totalText
+              totalSubtitle: root.overviewChartData.totalSub
+
+              showProviderBar: true
+              ocTokens: root.overviewChartData.ocTokens
+              agyTokens: root.overviewChartData.agyTokens
+              compactFn: v => root.ocMonitor ? root.ocMonitor.compact(v) : (v >= 1e6 ? (v/1e6).toFixed(1) + "M" : v.toString())
+            }
+
+            SectionHead {
+              width: parent.width
               label: "Last " + root.lastN + " messages"
             }
+
 
             Row {
               width: parent.width
@@ -510,6 +655,30 @@ Item {
                 }
 
                 Hairline { width: parent.width; anchors.horizontalCenter: parent.horizontalCenter }
+
+                // Proportional provider balance bar
+                Item {
+                  width: parent.width
+                  height: 4
+                  visible: root.lastNCard && root.lastNCard.totalRaw > 0
+
+                  Row {
+                    anchors.fill: parent
+                    spacing: 2
+                    Rectangle {
+                      width: Math.max(2, Math.round((parent.width - 2) * (root.lastNCard.ocRaw / root.lastNCard.totalRaw)))
+                      height: parent.height
+                      radius: 2
+                      color: t.teal
+                    }
+                    Rectangle {
+                      width: Math.max(2, (parent.width - 2) - Math.max(2, Math.round((parent.width - 2) * (root.lastNCard.ocRaw / root.lastNCard.totalRaw))))
+                      height: parent.height
+                      radius: 2
+                      color: t.violet
+                    }
+                  }
+                }
 
                 RowLayout {
                   width: parent.width
@@ -626,6 +795,30 @@ Item {
 
                     Hairline { width: parent.width; anchors.horizontalCenter: parent.horizontalCenter }
 
+                    // Proportional provider balance bar
+                    Item {
+                      width: parent.width
+                      height: 4
+                      visible: modelData.totalRaw > 0
+
+                      Row {
+                        anchors.fill: parent
+                        spacing: 2
+                        Rectangle {
+                          width: Math.max(2, Math.round((parent.width - 2) * (modelData.ocRaw / modelData.totalRaw)))
+                          height: parent.height
+                          radius: 2
+                          color: t.teal
+                        }
+                        Rectangle {
+                          width: Math.max(2, (parent.width - 2) - Math.max(2, Math.round((parent.width - 2) * (modelData.ocRaw / modelData.totalRaw))))
+                          height: parent.height
+                          radius: 2
+                          color: t.violet
+                        }
+                      }
+                    }
+
                     RowLayout {
                       width: parent.width
                       height: 34
@@ -648,6 +841,7 @@ Item {
                 }
               }
             }
+
 
             SectionHead {
               width: overviewCol.width
@@ -695,14 +889,31 @@ Item {
                         radius: 4
                         color: modelData.src === "oc" ? t.teal : t.violet
                       }
-                      Text {
+                      Column {
                         Layout.fillWidth: true
-                        text: modelData.name
-                        font.pixelSize: 12
-                        font.family: t.mono
-                        color: t.ink2
-                        elide: Text.ElideMiddle
+                        spacing: 3
+                        Text {
+                          width: parent.width
+                          text: modelData.name
+                          font.pixelSize: 12
+                          font.family: t.mono
+                          color: t.ink2
+                          elide: Text.ElideMiddle
+                        }
+                        Rectangle {
+                          width: parent.width
+                          height: 3
+                          radius: 1.5
+                          color: t.cardBorder
+                          Rectangle {
+                            height: parent.height
+                            radius: parent.radius
+                            width: Math.max(3, Math.round(parent.width * Math.min(1.0, modelData.raw / root.maxCombinedModelTokens)))
+                            color: modelData.src === "oc" ? t.teal : t.violet
+                          }
+                        }
                       }
+
                       ColumnLayout {
                         spacing: 0
                         Text {
@@ -777,8 +988,33 @@ Item {
 
               SectionHead {
                 width: parent.width
+                label: "Token composition"
+              }
+
+              TokenDonutCard {
+                width: parent.width
+                title: "OpenCode breakdown"
+                periods: ["Today", "Week", "Month"]
+                selectedPeriod: root.ocChartPeriod
+                onPeriodSelected: idx => root.ocChartPeriod = idx
+
+                inputTokens: root.ocChartData.input
+                outputTokens: root.ocChartData.output
+                cacheReadTokens: root.ocChartData.cacheRead
+                cacheWriteTokens: root.ocChartData.cacheWrite
+                reasoningTokens: root.ocChartData.reasoning
+                showCacheWrite: true
+
+                totalFormatted: root.ocChartData.totalText
+                totalSubtitle: root.ocChartData.totalSub
+                compactFn: v => root.ocMonitor ? root.ocMonitor.compact(v) : (v >= 1e6 ? (v/1e6).toFixed(1) + "M" : v.toString())
+              }
+
+              SectionHead {
+                width: parent.width
                 label: "Usage"
               }
+
 
               Rectangle {
                 width: parent.width
@@ -797,17 +1033,21 @@ Item {
                       label: modelData.label
                       tokens: modelData.tokens
                       details: modelData.details
+                      split: modelData.split
+                      rawTokens: modelData.rawTokens
                       first: index === 0
                     }
                   }
                 }
               }
 
+
               SectionHead {
                 width: parent.width
                 visible: root.ocModelRows.length > 0
                 label: "Models · this month"
               }
+
 
               Rectangle {
                 visible: root.ocModelRows.length > 0
@@ -841,14 +1081,31 @@ Item {
                       RowLayout {
                         width: parent.width
                         height: 46
-                        Text {
+                        Column {
                           Layout.fillWidth: true
-                          text: modelData.name
-                          font.pixelSize: 12
-                          font.family: t.mono
-                          color: t.ink2
-                          elide: Text.ElideMiddle
+                          spacing: 3
+                          Text {
+                            width: parent.width
+                            text: modelData.name
+                            font.pixelSize: 12
+                            font.family: t.mono
+                            color: t.ink2
+                            elide: Text.ElideMiddle
+                          }
+                          Rectangle {
+                            width: parent.width
+                            height: 3
+                            radius: 1.5
+                            color: t.cardBorder
+                            Rectangle {
+                              height: parent.height
+                              radius: parent.radius
+                              width: Math.max(3, Math.round(parent.width * Math.min(1.0, modelData.raw / root.maxOcModelTokens)))
+                              color: t.teal
+                            }
+                          }
                         }
+
                         ColumnLayout {
                           spacing: 2
                           Text {
@@ -913,8 +1170,32 @@ Item {
 
               SectionHead {
                 width: parent.width
+                label: "Token composition"
+              }
+
+              TokenDonutCard {
+                width: parent.width
+                title: "Antigravity breakdown"
+                periods: ["Today", "Week", "Month"]
+                selectedPeriod: root.agyChartPeriod
+                onPeriodSelected: idx => root.agyChartPeriod = idx
+
+                inputTokens: root.agyChartData.input
+                outputTokens: root.agyChartData.output
+                cacheReadTokens: root.agyChartData.cacheRead
+                reasoningTokens: root.agyChartData.reasoning
+                showCacheWrite: false
+
+                totalFormatted: root.agyChartData.totalText
+                totalSubtitle: root.agyChartData.totalSub
+                compactFn: v => root.agyMonitor ? root.agyMonitor.compact(v) : (v >= 1e6 ? (v/1e6).toFixed(1) + "M" : v.toString())
+              }
+
+              SectionHead {
+                width: parent.width
                 label: "Usage"
               }
+
 
               Rectangle {
                 width: parent.width
@@ -933,8 +1214,11 @@ Item {
                       label: modelData.label
                       tokens: modelData.tokens
                       details: modelData.details
+                      split: modelData.split
+                      rawTokens: modelData.rawTokens
                       first: index === 0
                     }
+
                   }
                 }
               }
@@ -977,14 +1261,31 @@ Item {
                       RowLayout {
                         width: parent.width
                         height: 46
-                        Text {
+                        Column {
                           Layout.fillWidth: true
-                          text: modelData.name
-                          font.pixelSize: 12
-                          font.family: t.mono
-                          color: t.ink2
-                          elide: Text.ElideMiddle
+                          spacing: 3
+                          Text {
+                            width: parent.width
+                            text: modelData.name
+                            font.pixelSize: 12
+                            font.family: t.mono
+                            color: t.ink2
+                            elide: Text.ElideMiddle
+                          }
+                          Rectangle {
+                            width: parent.width
+                            height: 3
+                            radius: 1.5
+                            color: t.cardBorder
+                            Rectangle {
+                              height: parent.height
+                              radius: parent.radius
+                              width: Math.max(3, Math.round(parent.width * Math.min(1.0, (modelData.raw !== undefined ? modelData.raw : 1) / root.maxAgySourceTokens)))
+                              color: t.violet
+                            }
+                          }
                         }
+
                         ColumnLayout {
                           spacing: 2
                           Text {
@@ -1046,14 +1347,31 @@ Item {
                       RowLayout {
                         width: parent.width
                         height: 46
-                        Text {
+                        Column {
                           Layout.fillWidth: true
-                          text: modelData.name
-                          font.pixelSize: 12
-                          font.family: t.mono
-                          color: t.ink2
-                          elide: Text.ElideMiddle
+                          spacing: 3
+                          Text {
+                            width: parent.width
+                            text: modelData.name
+                            font.pixelSize: 12
+                            font.family: t.mono
+                            color: t.ink2
+                            elide: Text.ElideMiddle
+                          }
+                          Rectangle {
+                            width: parent.width
+                            height: 3
+                            radius: 1.5
+                            color: t.cardBorder
+                            Rectangle {
+                              height: parent.height
+                              radius: parent.radius
+                              width: Math.max(3, Math.round(parent.width * Math.min(1.0, modelData.raw / root.maxAgyModelTokens)))
+                              color: t.violet
+                            }
+                          }
                         }
+
                         ColumnLayout {
                           spacing: 2
                           Text {
