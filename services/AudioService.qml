@@ -23,6 +23,32 @@ Item {
   // All nodes from PipeWire graph
   readonly property var allNodes: Pipewire.nodes.values
 
+  // Sinks: hardware output devices (speakers, headphones)
+  readonly property var sinks: {
+    const res = [];
+    const list = root.allNodes;
+    for (let i = 0; i < list.length; i++) {
+      const n = list[i];
+      if (n && n.audio && n.isSink && !n.isStream) {
+        res.push(n);
+      }
+    }
+    return res;
+  }
+
+  // Sources: hardware input devices (microphones)
+  readonly property var sources: {
+    const res = [];
+    const list = root.allNodes;
+    for (let i = 0; i < list.length; i++) {
+      const n = list[i];
+      if (n && n.audio && !n.isSink && !n.isStream) {
+        res.push(n);
+      }
+    }
+    return res;
+  }
+
   // Streams: application playback audio streams (Brave, Spotify, Discord, etc.)
   readonly property var streams: {
     const res = [];
@@ -120,6 +146,18 @@ Item {
   function toggleMicMute(): void {
     if (root.hasSource && root.source.audio) {
       root.source.audio.muted = !root.source.audio.muted;
+    }
+  }
+
+  function setSink(node: PwNode): void {
+    if (node) {
+      Pipewire.preferredDefaultAudioSink = node;
+    }
+  }
+
+  function setSource(node: PwNode): void {
+    if (node) {
+      Pipewire.preferredDefaultAudioSource = node;
     }
   }
 

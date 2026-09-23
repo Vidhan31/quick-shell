@@ -2,12 +2,13 @@ pragma ComponentBehavior: Bound
 // VolumeControlCenter.qml — Sound and PipeWire audio control center popup.
 //
 // Follows the quick-shell design system: card frame, surface containers with
-// hairlines, SectionHead, VolumeSlider, IconBtn.
-// Displays connected output/input device info, master controls, and per-app streams.
+// hairlines, SectionHead, VolumeSlider, IconBtn, RowBase.
+// Manages master output, microphone, device routing, and per-application streams.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.Pipewire
 import qs.services
 import "../theme"
 import "../components"
@@ -27,6 +28,13 @@ Item {
 
   readonly property var t: Theme
   readonly property string monoFont: Theme.mono
+
+  // Real-time audio peak monitor on active output node
+  PwNodePeakMonitor {
+    id: outputPeak
+    node: (root.activeAudio && root.activeAudio.sink) ? root.activeAudio.sink : null
+    enabled: root.visible
+  }
 
   // System settings launcher for audio
   Process {
@@ -56,8 +64,8 @@ Item {
     return "󰓃";
   }
 
-  implicitWidth: 420
-  implicitHeight: Math.min(560, 32 + bodyCol.height)
+  implicitWidth: 440
+  implicitHeight: Math.min(680, 32 + bodyCol.height)
   width: implicitWidth
   height: implicitHeight
 
@@ -134,7 +142,7 @@ Item {
 
         Hairline { width: parent.width }
 
-        // ================= Section 1: Connected Output Device & Volume =================
+        // ================= Section 1: Master Output =================
         Column {
           width: parent.width
           spacing: 6
@@ -208,11 +216,35 @@ Item {
                   if (root.activeAudio) root.activeAudio.setVolume(val);
                 }
               }
+
+              // Real-time Peak Visualizer Bar
+              Item {
+                width: parent.width
+                height: 3
+                visible: root.visible
+
+                Rectangle {
+                  anchors.fill: parent
+                  radius: 1.5
+                  color: t.inset
+
+                  Rectangle {
+                    height: parent.height
+                    radius: parent.radius
+                    width: Math.min(parent.width, parent.width * (outputPeak.peak || 0.0))
+                    color: outputPeak.peak > 0.85 ? t.err : (outputPeak.peak > 0.65 ? t.warn : t.accent)
+
+                    Behavior on width {
+                      NumberAnimation { duration: 60; easing.type: Easing.OutQuad }
+                    }
+                  }
+                }
+              }
             }
           }
         }
 
-        // ================= Section 2: Connected Input / Microphone =================
+        // ================= Section 2: Input / Microphone =================
         Column {
           width: parent.width
           spacing: 6
@@ -404,6 +436,162 @@ Item {
                     to: 1.5
                     onMoved: val => {
                       if (root.activeAudio) root.activeAudio.setStreamVolume(streamItem.modelData, val);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // ================= Section 4: Output Devices =================
+        Column {
+          width: parent.width
+          spacing: 6
+          visible: (root.activeAudio ? root.activeAudio.sinks.length : 0) > 1
+
+          SectionHead {
+            label: "Output Devices"
+          }
+
+          Rectangle {
+            width: parent.width
+            radius: Theme.radiusBase
+            color: Theme.surface
+            border.color: Theme.line
+            border.width: 1
+            implicitHeight: sinksCol.height + 16
+
+            Column {
+              id: sinksCol
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.margins: 8
+              spacing: 2
+
+              Repeater {
+                model: root.activeAudio ? root.activeAudio.sinks : []
+
+                delegate: RowBase {
+                  id: sinkRow
+                  required property var modelData
+                  required property int index
+                  width: sinksCol.width
+                  height: 34
+                  rad: Theme.radiusSm
+                  onClicked: {
+                    if (root.activeAudio) root.activeAudio.setSink(sinkRow.modelData);
+                  }
+
+                  readonly property bool isCurrent: root.activeAudio && root.activeAudio.sink && root.activeAudio.sink.id === sinkRow.modelData.id
+
+                  RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    spacing: 8
+
+                    Text {
+                      text: root.deviceIcon(sinkRow.modelData.description || sinkRow.modelData.name, false)
+                      font.family: t.mono
+                      font.pixelSize: 14
+                      color: sinkRow.isCurrent ? t.accent : t.ink3
+                    }
+
+                    Text {
+                      Layout.fillWidth: true
+                      text: sinkRow.modelData.description || sinkRow.modelData.name || "Output"
+                      font.pixelSize: 12
+                      font.weight: sinkRow.isCurrent ? Font.Medium : Font.Normal
+                      color: sinkRow.isCurrent ? t.ink1 : t.ink2
+                      elide: Text.ElideRight
+                    }
+
+                    Text {
+                      visible: sinkRow.isCurrent
+                      text: "󰄬"
+                      font.family: t.mono
+                      font.pixelSize: 14
+                      color: t.accent
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // ================= Section 5: Input Devices =================
+        Column {
+          width: parent.width
+          spacing: 6
+          visible: (root.activeAudio ? root.activeAudio.sources.length : 0) > 1
+
+          SectionHead {
+            label: "Input Devices"
+          }
+
+          Rectangle {
+            width: parent.width
+            radius: Theme.radiusBase
+            color: Theme.surface
+            border.color: Theme.line
+            border.width: 1
+            implicitHeight: sourcesCol.height + 16
+
+            Column {
+              id: sourcesCol
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.margins: 8
+              spacing: 2
+
+              Repeater {
+                model: root.activeAudio ? root.activeAudio.sources : []
+
+                delegate: RowBase {
+                  id: srcRow
+                  required property var modelData
+                  required property int index
+                  width: sourcesCol.width
+                  height: 34
+                  rad: Theme.radiusSm
+                  onClicked: {
+                    if (root.activeAudio) root.activeAudio.setSource(srcRow.modelData);
+                  }
+
+                  readonly property bool isCurrent: root.activeAudio && root.activeAudio.source && root.activeAudio.source.id === srcRow.modelData.id
+
+                  RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    spacing: 8
+
+                    Text {
+                      text: root.deviceIcon(srcRow.modelData.description || srcRow.modelData.name, true)
+                      font.family: t.mono
+                      font.pixelSize: 14
+                      color: srcRow.isCurrent ? t.green : t.ink3
+                    }
+
+                    Text {
+                      Layout.fillWidth: true
+                      text: srcRow.modelData.description || srcRow.modelData.name || "Microphone"
+                      font.pixelSize: 12
+                      font.weight: srcRow.isCurrent ? Font.Medium : Font.Normal
+                      color: srcRow.isCurrent ? t.ink1 : t.ink2
+                      elide: Text.ElideRight
+                    }
+
+                    Text {
+                      visible: srcRow.isCurrent
+                      text: "󰄬"
+                      font.family: t.mono
+                      font.pixelSize: 14
+                      color: t.green
                     }
                   }
                 }
