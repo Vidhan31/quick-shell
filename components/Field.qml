@@ -10,6 +10,7 @@ Rectangle {
   property bool clearable: false
 
   implicitHeight: Theme.inputHeight
+  implicitWidth: 200
   radius: Theme.radiusBase
   color: Theme.inset
   border.color: Theme.accentHover

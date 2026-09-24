@@ -80,7 +80,11 @@ PanelWindow {
     spacing: 8
 
     Repeater {
-      model: root.activeList
+      model: ScriptModel {
+        values: root.activeList
+        objectProp: "id"
+        comparisonMode: ObjectComparison.Identity
+      }
 
       delegate: Item {
         id: toastItem
@@ -319,13 +323,12 @@ PanelWindow {
                   onLinkActivated: link => Qt.openUrlExternally(link)
                 }
 
-                Rectangle {
+                ClippingRectangle {
                   visible: toastItem.imageSrc.length > 0
                   width: parent.width
                   height: Math.min(80, width * 0.45)
                   radius: 8
                   color: t.inset
-                  clip: true
 
                   Image {
                     anchors.fill: parent

@@ -38,9 +38,7 @@ Item {
   readonly property var weekDays: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
   implicitWidth: 328
-  implicitHeight: root.selectedEvents.length > 0 ? 388 : 336
-
-  Behavior on implicitHeight { NumberAnimation { duration: 110 } }
+  implicitHeight: 388
 
   FileView {
     id: icsFile

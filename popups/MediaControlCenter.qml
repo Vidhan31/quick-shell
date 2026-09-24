@@ -8,6 +8,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Widgets
 import Quickshell.Services.Mpris
 import qs.services
 import "../theme"
@@ -131,12 +132,19 @@ Item {
   }
 
   implicitWidth: 440
-  // Hug the content (chrome 32 + body), capped so overflow scrolls inside
-  // the card instead of growing off-screen. bodyCol.height is driven only
-  // by its children (width comes from the viewport), so no binding loop.
-  implicitHeight: Math.min(640, 32 + bodyCol.height)
-  width: implicitWidth
-  height: implicitHeight
+  readonly property int preferredHeight: Math.min(640, 32 + bodyCol.height)
+  property int popupHeight: 360
+
+  function syncHeight() {
+    popupHeight = preferredHeight;
+  }
+
+  onPreferredHeightChanged: {
+    if (!root.visible)
+      popupHeight = preferredHeight;
+  }
+
+  implicitHeight: popupHeight
 
   readonly property var t: Theme
 
@@ -265,12 +273,11 @@ Item {
                 anchors.bottomMargin: 8
                 spacing: 12
 
-                Rectangle {
+                ClippingRectangle {
                   Layout.preferredWidth: 80
                   Layout.preferredHeight: 80
                   radius: 8
                   color: t.inset
-                  clip: true
 
                   Image {
                     id: artImage

@@ -24,10 +24,8 @@ Item {
   readonly property string monoFont: Theme.mono
   readonly property int valuePixelSize: Theme.fontMd
 
-  implicitWidth: row.width
-  implicitHeight: row.height
-  width: implicitWidth
-  height: implicitHeight
+  implicitWidth: row.implicitWidth
+  implicitHeight: row.implicitHeight
 
   // System specs: AMD Ryzen 3600 (12 threads), 16GB RAM (16284056 kB)
   readonly property double totalMemKb: 16284056

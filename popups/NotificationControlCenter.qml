@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 // Grouped rows with hairlines, borderless buttons, words instead of badges.
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Widgets
 import qs.utils
 import "../theme"
@@ -60,16 +61,31 @@ Item {
   }
 
   implicitWidth: 440
-  // Hug the content (chrome 32 + body), capped so overflow scrolls inside
-  // the card instead of growing off-screen. bodyCol.height is driven only
-  // by its children (width comes from the viewport), so no binding loop.
-  // Previously this used ColumnLayout + Layout.fillHeight with a
-  // Layout.preferredHeight bound to content height — clearing the list
-  // collapsed the content while the layout still tried to fill, leaving
-  // the popover stuck at the wrong height.
-  implicitHeight: Math.min(620, 32 + bodyCol.height)
-  width: implicitWidth
-  height: implicitHeight
+  // Hug the content when closed / opened, capped so overflow scrolls inside the card.
+  // CRITICAL (Wayland / KWin): Do NOT dynamically shrink the window height while the
+  // popup is visible. Resizing an active xdg_popup causes KWin to squish the surface
+  // buffer and corrupt the input region grab. We freeze popupHeight while visible, and
+  // update it when closed or opened.
+  readonly property int preferredHeight: Math.min(620, Math.max(180, 32 + bodyCol.height))
+  property int popupHeight: 320
+
+  function syncHeight() {
+    popupHeight = preferredHeight;
+  }
+
+  onPreferredHeightChanged: {
+    if (!root.visible) {
+      popupHeight = preferredHeight;
+    }
+  }
+
+  onVisibleChanged: {
+    if (visible) {
+      popupHeight = preferredHeight;
+    }
+  }
+
+  implicitHeight: popupHeight
 
   readonly property var t: Theme
 
@@ -83,11 +99,20 @@ Item {
     border.width: 1
 
     Flickable {
+      id: flickable
       anchors.fill: parent
       anchors.margins: 16
       contentWidth: width
       contentHeight: bodyCol.height
+      boundsBehavior: Flickable.StopAtBounds
       clip: true
+
+      onContentHeightChanged: {
+        returnToBounds();
+        if (contentHeight <= height) {
+          contentY = 0;
+        }
+      }
 
       Column {
         id: bodyCol
@@ -237,7 +262,7 @@ Item {
               actionText: "Clear"
               actionColor: t.red
               onActionClicked: {
-                if (root.service) root.service.clearApp(groupDelegate.appName);
+                if (root.service && groupDelegate.appName) root.service.clearApp(groupDelegate.appName);
               }
             }
 
@@ -382,13 +407,12 @@ Item {
                               color: t.ink3
                             }
 
-                            Rectangle {
+                            ClippingRectangle {
                               visible: notifItem.imageSrc.length > 0
                               width: parent.width
                               height: Math.min(80, width * 0.45)
                               radius: 8
                               color: t.inset
-                              clip: true
                               Image {
                                 anchors.fill: parent
                                 source: notifItem.imageSrc
@@ -482,7 +506,9 @@ Item {
                             btnSize: 24
                             fg: t.ink3
                             onClicked: {
-                              if (root.service) root.service.dismissNotification(notifItem.notif.id);
+                              if (root.service && notifItem.notif && notifItem.notif.id !== undefined) {
+                                root.service.dismissNotification(notifItem.notif.id);
+                              }
                             }
                           }
                         }

@@ -1,10 +1,8 @@
 pragma ComponentBehavior: Bound
 // AiUsageControlCenter.qml — Combined OpenCode + Antigravity usage.
 // Tailscale visual system: same tokens, Segments, RowBase, SectionHead,
-// IconBtn, Hairline. Fixed 620 height on detail tabs (internal scroll);
-// the Overview tab hugs its content like the Tailscale Sharing tab:
-// outer height is derived from content height (overviewCol.height),
-// never from the viewport, so no binding loop is possible.
+// IconBtn, Hairline. All tabs use a fixed 620 height and scroll internally,
+// so switching tabs never resizes the mapped Wayland popup surface.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -43,11 +41,7 @@ Item {
   Component.onCompleted: root.syncLastN()
 
   implicitWidth: 440
-  // Chrome: card margins 32 + segments 34 + gap 12 = 78.
-  implicitHeight: root.currentTab === 0 ? Math.min(640, Math.max(340, 78 + overviewCol.height)) : 620
-  width: implicitWidth
-  height: implicitHeight
-
+  implicitHeight: 620
 
   // ---- Shared tooltip state (one system for all tabs) ----
 

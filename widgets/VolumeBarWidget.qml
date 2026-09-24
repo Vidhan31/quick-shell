@@ -29,10 +29,8 @@ Item {
   readonly property bool micMuted: activeAudio ? activeAudio.micMuted : false
   readonly property bool hasMic: activeAudio ? activeAudio.hasSource : false
 
-  implicitWidth: contentRow.width
-  implicitHeight: 20
-  width: implicitWidth
-  height: implicitHeight
+  implicitWidth: contentRow.implicitWidth
+  implicitHeight: Math.max(20, contentRow.implicitHeight)
 
   function stepVolume(delta: real): void {
     if (activeAudio) activeAudio.stepVolume(delta);

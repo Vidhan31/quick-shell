@@ -1,6 +1,5 @@
-// TopProcesses.qml — top 10 processes by memory with proportional MEM bar + CPU.
-// Native C++ Qt6 QML module (Quickshell.Plugins.TopProcesses).
 import QtQuick
+import Quickshell
 import Quickshell.Plugins.TopProcesses
 import "../theme"
 import "../components"
@@ -50,17 +49,21 @@ Item {
       anchors.margins: 14
       spacing: 6
 
-      // Rows — fixed 10 delegates to avoid destroying and recreating 90 scene graph items every tick
+      // Rows — dynamic diffed delegates via ScriptModel
       Repeater {
-        model: 10
+        model: ScriptModel {
+          values: root.processes || []
+          objectProp: "mpid"
+          comparisonMode: ObjectComparison.Identity
+        }
         delegate: Item {
           id: rowDelegate
           required property int index
-          readonly property var modelData: (root.processes && rowDelegate.index < root.processes.length) ? root.processes[rowDelegate.index] : null
+          required property var modelData
 
           visible: rowDelegate.modelData !== null
           width: parent.width
-          height: visible ? 36 : 0
+          height: 36
 
           // Left: grouped name + count on top, main pid below
           Item {

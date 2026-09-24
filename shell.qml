@@ -5,6 +5,7 @@
 // - PanelWindow: anchors, height, color, screen
 // - WlrLayershell: layer, exclusiveZone, keyboardFocus
 import QtQuick
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
 
@@ -86,339 +87,44 @@ ShellRoot {
         notifPopup.visible = false;
       }
 
-      // Left: CPU / MEM / GPU stats button — clicking toggles top processes popup.
-      BarChip {
-        id: sysStatsHit
+      // Left: CPU/MEM/GPU, AI tokens, and Tailscale
+      RowLayout {
+        id: leftBarRow
         anchors {
           left: parent.left
-          verticalCenter: parent.verticalCenter
           leftMargin: 12
-        }
-        active: procPopup.visible
-        onClicked: bar.togglePopup(procPopup)
-
-        SysStats {
-          id: sysStats
-        }
-      }
-
-      // Combined AI usage chip (OpenCode Σ + Antigravity ✦)
-      BarChip {
-        id: aiHit
-        anchors {
-          left: sysStatsHit.right
-          leftMargin: 8
           verticalCenter: parent.verticalCenter
         }
-        active: aiPopup.visible
-        onClicked: bar.togglePopup(aiPopup)
+        spacing: 8
 
-        AiUsageWidget {
-          id: aiBarWidget
-        }
-      }
+        BarChip {
+          id: sysStatsHit
+          active: procPopup.visible
+          onClicked: bar.togglePopup(procPopup)
 
-      PopupWindow {
-        id: aiPopup
-        anchor.window: bar
-        anchor.rect.x: Math.max(8, Math.min(aiHit.x + aiHit.width / 2 - aiControlCenter.implicitWidth / 2, bar.width - aiControlCenter.implicitWidth - 12))
-        anchor.rect.y: bar.implicitHeight + 6
-        visible: false
-        grabFocus: true
-        implicitWidth: aiControlCenter.implicitWidth
-        implicitHeight: aiControlCenter.implicitHeight
-        color: "transparent"
-
-        onVisibleChanged: {
-          if (!visible)
-            aiControlCenter.hideTip();
-        }
-
-        AiUsageControlCenter {
-          id: aiControlCenter
-          anchors.fill: parent
-          ocMonitor: aiBarWidget.oc
-          agyMonitor: aiBarWidget.agy
-          barWindow: bar
-          popupWindow: aiPopup
-          onTriggerRefreshAll: aiBarWidget.refreshAll()
-        }
-      }
-
-      PopupWindow {
-        id: procPopup
-        anchor.window: bar
-        anchor.rect.x: sysStatsHit.x
-        anchor.rect.y: bar.implicitHeight + 6
-        visible: false
-        grabFocus: true
-        implicitWidth: topProcesses.implicitWidth
-        implicitHeight: topProcesses.implicitHeight
-        color: "transparent"
-
-        TopProcesses {
-          id: topProcesses
-          anchors.fill: parent
-          visible: procPopup.visible
-        }
-      }
-
-      // System Tray icons for background / minimized apps
-      SystemTrayWidget {
-        id: trayWidget
-        barWindow: bar
-        anchors {
-          right: parent.right
-          rightMargin: (visible && width > 0) ? 12 : 0
-          verticalCenter: parent.verticalCenter
-        }
-        onRequestClosePopups: bar.closeAllPopups()
-      }
-
-      // Volume hit button
-      BarChip {
-        id: volHit
-        anchors {
-          right: ethHit.left
-          rightMargin: 8
-          verticalCenter: parent.verticalCenter
-        }
-        active: volPopup.visible
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onClicked: bar.togglePopup(volPopup)
-        onRightClicked: volBarWidget.toggleMute()
-
-        VolumeBarWidget {
-          id: volBarWidget
-          audio: audioService
-        }
-      }
-
-      PopupWindow {
-        id: volPopup
-        anchor.window: bar
-        anchor.rect.x: Math.max(8, Math.min(volHit.x + volHit.width / 2 - volControlCenter.implicitWidth / 2, bar.width - volControlCenter.implicitWidth - 12))
-        anchor.rect.y: bar.implicitHeight + 6
-        visible: false
-        grabFocus: true
-        implicitWidth: volControlCenter.implicitWidth
-        implicitHeight: volControlCenter.implicitHeight
-        color: "transparent"
-
-        VolumeControlCenter {
-          id: volControlCenter
-          anchors.fill: parent
-          audio: audioService
-        }
-      }
-
-      // Media control center hit button
-      BarChip {
-        id: mediaHit
-        anchors {
-          right: volHit.left
-          rightMargin: 8
-          verticalCenter: parent.verticalCenter
-        }
-        active: mediaPopup.visible
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onClicked: bar.togglePopup(mediaPopup)
-        onRightClicked: {
-          if (mediaBarWidget.activePlayer && mediaBarWidget.activePlayer.canTogglePlaying) {
-            mediaBarWidget.activePlayer.togglePlaying();
+          SysStats {
+            id: sysStats
           }
         }
 
-        MediaBarWidget {
-          id: mediaBarWidget
-        }
-      }
+        BarChip {
+          id: aiHit
+          active: aiPopup.visible
+          onClicked: bar.togglePopup(aiPopup)
 
-      PopupWindow {
-        id: mediaPopup
-        anchor.window: bar
-        anchor.rect.x: Math.max(8, Math.min(mediaHit.x + mediaHit.width / 2 - mediaControlCenter.implicitWidth / 2, bar.width - mediaControlCenter.implicitWidth - 12))
-        anchor.rect.y: bar.implicitHeight + 6
-        visible: false
-        grabFocus: true
-        implicitWidth: mediaControlCenter.implicitWidth
-        implicitHeight: mediaControlCenter.implicitHeight
-        color: "transparent"
-
-        MediaControlCenter {
-          id: mediaControlCenter
-          anchors.fill: parent
-          media: mediaBarWidget.media
-        }
-      }
-
-      // Tailscale hit button
-      BarChip {
-        id: tsHit
-        anchors {
-          left: aiHit.right
-          leftMargin: 8
-          verticalCenter: parent.verticalCenter
-        }
-        active: tsPopup.visible
-        onClicked: bar.togglePopup(tsPopup)
-
-        TailscaleWidget {
-          id: tsBarWidget
-        }
-      }
-
-      PopupWindow {
-        id: tsPopup
-        anchor.window: bar
-        anchor.rect.x: Math.max(8, Math.min(tsHit.x + tsHit.width / 2 - tsControlCenter.implicitWidth / 2, bar.width - tsControlCenter.implicitWidth - 12))
-        anchor.rect.y: bar.implicitHeight + 6
-        visible: false
-        grabFocus: true
-        implicitWidth: tsControlCenter.implicitWidth
-        implicitHeight: tsControlCenter.implicitHeight
-        color: "transparent"
-
-        TailscaleControlCenter {
-          id: tsControlCenter
-          anchors.fill: parent
-          monitor: tsBarWidget.monitor
-          tsData: tsBarWidget.tsData
-          onTriggerRefresh: tsBarWidget.refresh()
-        }
-      }
-
-      // Ethernet hit button — small ethernet icon reflecting current status
-      BarChip {
-        id: ethHit
-        anchors {
-          right: privacyHit.left
-          rightMargin: 8
-          verticalCenter: parent.verticalCenter
-        }
-        active: ethPopup.visible
-        onClicked: bar.togglePopup(ethPopup)
-
-        EthernetWidget {
-          id: ethBarWidget
-        }
-      }
-
-      PopupWindow {
-        id: ethPopup
-        anchor.window: bar
-        anchor.rect.x: Math.max(8, Math.min(ethHit.x + ethHit.width / 2 - ethControlCenter.implicitWidth / 2, bar.width - ethControlCenter.implicitWidth - 12))
-        anchor.rect.y: bar.implicitHeight + 6
-        visible: false
-        grabFocus: true
-        implicitWidth: ethControlCenter.implicitWidth
-        implicitHeight: ethControlCenter.implicitHeight
-        color: "transparent"
-
-        EthernetControlCenter {
-          id: ethControlCenter
-          anchors.fill: parent
-          monitor: ethBarWidget.monitor
-          ethData: ethBarWidget.ethData
-          onTriggerRefresh: ethBarWidget.refresh()
-        }
-      }
-
-      // Privacy indicators hit button — Camera and Microphone when active
-      Item {
-        id: privacyHit
-        anchors {
-          right: notifHit.left
-          rightMargin: privacyWidget.hasActive ? 8 : 0
-          verticalCenter: parent.verticalCenter
-        }
-        visible: privacyWidget.hasActive || width > 0
-        width: privacyWidget.hasActive ? privacyWidget.implicitWidth : 0
-        height: Theme.btnHeightSm
-        clip: true
-
-        Behavior on width {
-          NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
-
-        PrivacyIndicators {
-          id: privacyWidget
-          anchors.centerIn: parent
-          onClicked: bar.togglePopup(privacyPopup)
-        }
-      }
-
-      PopupWindow {
-        id: privacyPopup
-        anchor.window: bar
-        anchor.rect.x: Math.max(8, Math.min(privacyHit.x + privacyHit.width / 2 - privacyControlCenter.implicitWidth / 2, bar.width - privacyControlCenter.implicitWidth - 12))
-        anchor.rect.y: bar.implicitHeight + 6
-        visible: false
-        grabFocus: true
-        implicitWidth: privacyControlCenter.implicitWidth
-        implicitHeight: privacyControlCenter.implicitHeight
-        color: "transparent"
-
-        PrivacyControlCenter {
-          id: privacyControlCenter
-          anchors.fill: parent
-          privacyData: privacyWidget.privacyData
-        }
-      }
-
-      // Notification center hit button
-      BarChip {
-        id: notifHit
-        anchors {
-          right: (trayWidget.visible && trayWidget.width > 0) ? trayWidget.left : parent.right
-          rightMargin: (trayWidget.visible && trayWidget.width > 0) ? 8 : 12
-          verticalCenter: parent.verticalCenter
-        }
-        active: notifPopup.visible
-        onClicked: bar.togglePopup(notifPopup)
-
-        NotificationWidget {
-          id: notifBarWidget
-          service: notifService
-        }
-      }
-
-      Timer {
-        id: markReadTimer
-        interval: 400
-        repeat: false
-        onTriggered: {
-          if (notifPopup.visible) {
-            notifService.markAllRead();
-          }
-        }
-      }
-
-      PopupWindow {
-        id: notifPopup
-        anchor.window: bar
-        anchor.rect.x: Math.max(8, Math.min(notifHit.x + notifHit.width / 2 - notifControlCenter.implicitWidth / 2, bar.width - notifControlCenter.implicitWidth - 12))
-        anchor.rect.y: bar.implicitHeight + 6
-        visible: false
-        grabFocus: true
-        implicitWidth: notifControlCenter.implicitWidth
-        implicitHeight: notifControlCenter.implicitHeight
-        color: "transparent"
-
-        onVisibleChanged: {
-          if (visible) {
-            markReadTimer.start();
-          } else {
-            markReadTimer.stop();
-            notifService.markAllRead();
+          AiUsageWidget {
+            id: aiBarWidget
           }
         }
 
-        NotificationControlCenter {
-          id: notifControlCenter
-          anchors.fill: parent
-          service: notifService
-          onCloseRequested: notifPopup.visible = false
+        BarChip {
+          id: tsHit
+          active: tsPopup.visible
+          onClicked: bar.togglePopup(tsPopup)
+
+          TailscaleWidget {
+            id: tsBarWidget
+          }
         }
       }
 
@@ -450,11 +156,301 @@ ShellRoot {
         }
       }
 
+      // Right: Media, Volume, Ethernet, Privacy, Notifications, and System Tray
+      RowLayout {
+        id: rightBarRow
+        anchors {
+          right: parent.right
+          rightMargin: 12
+          verticalCenter: parent.verticalCenter
+        }
+        spacing: 8
+
+        BarChip {
+          id: mediaHit
+          active: mediaPopup.visible
+          acceptedButtons: Qt.LeftButton | Qt.RightButton
+          onClicked: bar.togglePopup(mediaPopup)
+          onRightClicked: {
+            if (mediaBarWidget.activePlayer && mediaBarWidget.activePlayer.canTogglePlaying) {
+              mediaBarWidget.activePlayer.togglePlaying();
+            }
+          }
+
+          MediaBarWidget {
+            id: mediaBarWidget
+          }
+        }
+
+        BarChip {
+          id: volHit
+          active: volPopup.visible
+          acceptedButtons: Qt.LeftButton | Qt.RightButton
+          onClicked: bar.togglePopup(volPopup)
+          onRightClicked: volBarWidget.toggleMute()
+
+          VolumeBarWidget {
+            id: volBarWidget
+            audio: audioService
+          }
+        }
+
+        BarChip {
+          id: ethHit
+          active: ethPopup.visible
+          onClicked: bar.togglePopup(ethPopup)
+
+          EthernetWidget {
+            id: ethBarWidget
+          }
+        }
+
+        Item {
+          id: privacyHit
+          visible: privacyWidget.hasActive || implicitWidth > 0
+          implicitWidth: privacyWidget.hasActive ? privacyWidget.implicitWidth : 0
+          implicitHeight: Theme.btnHeightSm
+          clip: true
+
+          Behavior on implicitWidth {
+            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+          }
+
+          PrivacyIndicators {
+            id: privacyWidget
+            anchors.centerIn: parent
+            onClicked: bar.togglePopup(privacyPopup)
+          }
+        }
+
+        BarChip {
+          id: notifHit
+          active: notifPopup.visible
+          onClicked: bar.togglePopup(notifPopup)
+
+          NotificationWidget {
+            id: notifBarWidget
+            service: notifService
+          }
+        }
+
+        SystemTrayWidget {
+          id: trayWidget
+          barWindow: bar
+          visible: width > 0
+          onRequestClosePopups: bar.closeAllPopups()
+        }
+      }
+
+      // Popups positioned declaratively via anchor.item and PopupAdjustment
+      PopupWindow {
+        id: procPopup
+        anchor.item: sysStatsHit
+        anchor.edges: Edges.Bottom | Edges.Left
+        anchor.gravity: Edges.Bottom | Edges.Right
+        anchor.margins.top: 6
+        anchor.adjustment: PopupAdjustment.SlideX
+        visible: false
+        grabFocus: true
+        implicitWidth: topProcesses.implicitWidth
+        implicitHeight: topProcesses.implicitHeight
+        color: "transparent"
+
+        TopProcesses {
+          id: topProcesses
+          anchors.fill: parent
+          visible: procPopup.visible
+        }
+      }
+
+      PopupWindow {
+        id: aiPopup
+        anchor.item: aiHit
+        anchor.edges: Edges.Bottom | Edges.Left
+        anchor.gravity: Edges.Bottom | Edges.Right
+        anchor.margins.top: 6
+        anchor.adjustment: PopupAdjustment.SlideX
+        visible: false
+        grabFocus: true
+        implicitWidth: aiControlCenter.implicitWidth
+        implicitHeight: aiControlCenter.implicitHeight
+        color: "transparent"
+
+        onVisibleChanged: {
+          if (!visible)
+            aiControlCenter.hideTip();
+        }
+
+        AiUsageControlCenter {
+          id: aiControlCenter
+          anchors.fill: parent
+          ocMonitor: aiBarWidget.oc
+          agyMonitor: aiBarWidget.agy
+          barWindow: bar
+          popupWindow: aiPopup
+          onTriggerRefreshAll: aiBarWidget.refreshAll()
+        }
+      }
+
+      PopupWindow {
+        id: tsPopup
+        anchor.item: tsHit
+        anchor.edges: Edges.Bottom | Edges.Left
+        anchor.gravity: Edges.Bottom | Edges.Right
+        anchor.margins.top: 6
+        anchor.adjustment: PopupAdjustment.SlideX
+        visible: false
+        grabFocus: true
+        implicitWidth: tsControlCenter.implicitWidth
+        implicitHeight: tsControlCenter.implicitHeight
+        color: "transparent"
+
+        TailscaleControlCenter {
+          id: tsControlCenter
+          anchors.fill: parent
+          monitor: tsBarWidget.monitor
+          tsData: tsBarWidget.tsData
+          onTriggerRefresh: tsBarWidget.refresh()
+        }
+      }
+
+      PopupWindow {
+        id: mediaPopup
+        anchor.item: mediaHit
+        anchor.edges: Edges.Bottom
+        anchor.gravity: Edges.Bottom
+        anchor.margins.top: 6
+        anchor.adjustment: PopupAdjustment.SlideX
+        visible: false
+        grabFocus: true
+        implicitWidth: mediaControlCenter.implicitWidth
+        implicitHeight: mediaControlCenter.implicitHeight
+        color: "transparent"
+
+        onVisibleChanged: mediaControlCenter.syncHeight()
+
+        MediaControlCenter {
+          id: mediaControlCenter
+          anchors.fill: parent
+          media: mediaBarWidget.media
+        }
+      }
+
+      PopupWindow {
+        id: volPopup
+        anchor.item: volHit
+        anchor.edges: Edges.Bottom
+        anchor.gravity: Edges.Bottom
+        anchor.margins.top: 6
+        anchor.adjustment: PopupAdjustment.SlideX
+        visible: false
+        grabFocus: true
+        implicitWidth: volControlCenter.implicitWidth
+        implicitHeight: volControlCenter.implicitHeight
+        color: "transparent"
+
+        onVisibleChanged: volControlCenter.syncHeight()
+
+        VolumeControlCenter {
+          id: volControlCenter
+          anchors.fill: parent
+          audio: audioService
+        }
+      }
+
+      PopupWindow {
+        id: ethPopup
+        anchor.item: ethHit
+        anchor.edges: Edges.Bottom
+        anchor.gravity: Edges.Bottom
+        anchor.margins.top: 6
+        anchor.adjustment: PopupAdjustment.SlideX
+        visible: false
+        grabFocus: true
+        implicitWidth: ethControlCenter.implicitWidth
+        implicitHeight: ethControlCenter.implicitHeight
+        color: "transparent"
+
+        onVisibleChanged: ethControlCenter.syncHeight()
+
+        EthernetControlCenter {
+          id: ethControlCenter
+          anchors.fill: parent
+          monitor: ethBarWidget.monitor
+          ethData: ethBarWidget.ethData
+          onTriggerRefresh: ethBarWidget.refresh()
+        }
+      }
+
+      PopupWindow {
+        id: privacyPopup
+        anchor.item: privacyHit
+        anchor.edges: Edges.Bottom
+        anchor.gravity: Edges.Bottom
+        anchor.margins.top: 6
+        anchor.adjustment: PopupAdjustment.SlideX
+        visible: false
+        grabFocus: true
+        implicitWidth: privacyControlCenter.implicitWidth
+        implicitHeight: privacyControlCenter.implicitHeight
+        color: "transparent"
+
+        PrivacyControlCenter {
+          id: privacyControlCenter
+          anchors.fill: parent
+          privacyData: privacyWidget.privacyData
+        }
+      }
+
+      Timer {
+        id: markReadTimer
+        interval: 400
+        repeat: false
+        onTriggered: {
+          if (notifPopup.visible) {
+            notifService.markAllRead();
+          }
+        }
+      }
+
+      PopupWindow {
+        id: notifPopup
+        anchor.item: notifHit
+        anchor.edges: Edges.Bottom
+        anchor.gravity: Edges.Bottom
+        anchor.margins.top: 6
+        anchor.adjustment: PopupAdjustment.SlideX
+        visible: false
+        grabFocus: true
+        implicitWidth: notifControlCenter.implicitWidth
+        implicitHeight: notifControlCenter.implicitHeight
+        color: "transparent"
+
+        onVisibleChanged: {
+          if (visible) {
+            notifControlCenter.syncHeight();
+            markReadTimer.start();
+          } else {
+            markReadTimer.stop();
+            notifService.markAllRead();
+          }
+        }
+
+        NotificationControlCenter {
+          id: notifControlCenter
+          anchors.fill: parent
+          service: notifService
+          onCloseRequested: notifPopup.visible = false
+        }
+      }
+
       PopupWindow {
         id: calPopup
-        anchor.window: bar
-        anchor.rect.x: Math.max(8, Math.min(clockHit.x + clockHit.width / 2 - calView.implicitWidth / 2, bar.width - calView.implicitWidth - 12))
-        anchor.rect.y: bar.implicitHeight + 6
+        anchor.item: clockHit
+        anchor.edges: Edges.Bottom
+        anchor.gravity: Edges.Bottom
+        anchor.margins.top: 6
+        anchor.adjustment: PopupAdjustment.SlideX
         visible: false
         grabFocus: true
         implicitWidth: calView.implicitWidth

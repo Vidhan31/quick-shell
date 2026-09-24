@@ -55,10 +55,8 @@ Item {
     return "Ethernet (" + iface + "): No Internet (Local Only)";
   }
 
-  implicitWidth: contentRow.width
-  implicitHeight: 20
-  width: implicitWidth
-  height: implicitHeight
+  implicitWidth: contentRow.implicitWidth
+  implicitHeight: Math.max(20, contentRow.implicitHeight)
 
   function refresh(): void {
     monitor.refresh();

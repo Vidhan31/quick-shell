@@ -25,10 +25,8 @@ Item {
   readonly property string title: media.title
   readonly property string artist: media.artist
 
-  implicitWidth: contentRow.width
-  implicitHeight: 20
-  width: implicitWidth
-  height: implicitHeight
+  implicitWidth: contentRow.implicitWidth
+  implicitHeight: Math.max(20, contentRow.implicitHeight)
 
   Row {
     id: contentRow

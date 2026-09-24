@@ -14,15 +14,11 @@ Item {
   property PanelWindow barWindow: null
   property bool filterByScreen: false
 
-  // ListModel populated from KWin bridge
-  ListModel {
-    id: windowModel
-  }
+  // Raw windows array from KWin bridge
+  property var rawWindows: []
 
   implicitHeight: 26
-  implicitWidth: windowModel.count > 0 ? (windowModel.count * 28 + (windowModel.count - 1) * 4) : 0
-  width: implicitWidth
-  height: implicitHeight
+  implicitWidth: root.rawWindows.length > 0 ? (root.rawWindows.length * 28 + (root.rawWindows.length - 1) * 4) : 0
 
   IconResolver {
     id: iconResolver
@@ -42,19 +38,7 @@ Item {
         if (!trimmed || !trimmed.startsWith("[")) return;
         try {
           let list = JSON.parse(trimmed);
-          windowModel.clear();
-          for (let i = 0; i < list.length; i++) {
-            let it = list[i];
-            windowModel.append({
-              appId: it.appId || "",
-              title: it.title || "",
-              winId: it.id || "",
-              active: !!it.active,
-              minimized: !!it.minimized,
-              maximized: !!it.maximized,
-              fullscreen: !!it.fullscreen
-            });
-          }
+          root.rawWindows = Array.isArray(list) ? list : [];
         } catch (e) {
           console.warn("Taskbar: Failed to parse KWin window list:", e);
         }
@@ -84,26 +68,23 @@ Item {
     spacing: 4
     boundsBehavior: Flickable.StopAtBounds
 
-    model: windowModel
+    model: ScriptModel {
+      values: root.rawWindows
+      comparisonMode: ObjectComparison.Structure
+    }
 
     delegate: Item {
       id: windowDelegate
       required property var modelData
-      required property string appId
-      required property string title
-      required property string winId
-      required property bool active
-      required property bool minimized
-      required property bool maximized
-      required property bool fullscreen
 
-      readonly property string winAppId: windowDelegate.appId
-      readonly property string winTitle: windowDelegate.title
-      readonly property string windowId: windowDelegate.winId
-      readonly property bool isActivated: windowDelegate.active
-      readonly property bool isMinimized: windowDelegate.minimized
-      readonly property bool isMaximized: windowDelegate.maximized
-      readonly property bool isFullscreen: windowDelegate.fullscreen
+      readonly property var it: windowDelegate.modelData
+      readonly property string winAppId: it ? (it.appId || "") : ""
+      readonly property string winTitle: it ? (it.title || "") : ""
+      readonly property string windowId: it ? (it.id || it.winId || "") : ""
+      readonly property bool isActivated: it ? !!it.active : false
+      readonly property bool isMinimized: it ? !!it.minimized : false
+      readonly property bool isMaximized: it ? !!it.maximized : false
+      readonly property bool isFullscreen: it ? !!it.fullscreen : false
 
       readonly property string iconSrc: iconResolver.resolveIcon(windowDelegate.winAppId, windowDelegate.winTitle)
 
@@ -136,8 +117,7 @@ Item {
         id: appIcon
         anchors.centerIn: parent
         anchors.verticalCenterOffset: -1
-        width: 18
-        height: 18
+        implicitSize: 18
         asynchronous: true
         source: windowDelegate.iconSrc
         opacity: windowDelegate.isActivated ? 1.0 : (mouseArea.containsMouse ? 1.0 : 0.85)

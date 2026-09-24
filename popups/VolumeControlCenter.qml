@@ -65,9 +65,19 @@ Item {
   }
 
   implicitWidth: 440
-  implicitHeight: Math.min(680, 32 + bodyCol.height)
-  width: implicitWidth
-  height: implicitHeight
+  readonly property int preferredHeight: Math.min(680, 32 + bodyCol.height)
+  property int popupHeight: 360
+
+  function syncHeight() {
+    popupHeight = preferredHeight;
+  }
+
+  onPreferredHeightChanged: {
+    if (!root.visible)
+      popupHeight = preferredHeight;
+  }
+
+  implicitHeight: popupHeight
 
   // ================= Card Frame =================
   Rectangle {
@@ -359,7 +369,11 @@ Item {
 
               Repeater {
                 id: appStreamsRepeater
-                model: root.activeAudio ? root.activeAudio.streams : []
+                model: ScriptModel {
+                  values: (root.activeAudio && root.activeAudio.streams) ? root.activeAudio.streams : []
+                  objectProp: "id"
+                  comparisonMode: ObjectComparison.Identity
+                }
 
                 delegate: Column {
                   id: streamItem
@@ -471,7 +485,11 @@ Item {
               spacing: 2
 
               Repeater {
-                model: root.activeAudio ? root.activeAudio.sinks : []
+                model: ScriptModel {
+                  values: (root.activeAudio && root.activeAudio.sinks) ? root.activeAudio.sinks : []
+                  objectProp: "id"
+                  comparisonMode: ObjectComparison.Identity
+                }
 
                 delegate: RowBase {
                   id: sinkRow
@@ -549,7 +567,11 @@ Item {
               spacing: 2
 
               Repeater {
-                model: root.activeAudio ? root.activeAudio.sources : []
+                model: ScriptModel {
+                  values: (root.activeAudio && root.activeAudio.sources) ? root.activeAudio.sources : []
+                  objectProp: "id"
+                  comparisonMode: ObjectComparison.Identity
+                }
 
                 delegate: RowBase {
                   id: srcRow

@@ -9,8 +9,8 @@ Item {
   property color onColor: Theme.green
   property bool enabledSwitch: true
 
-  width: 42
-  height: 24
+  implicitWidth: 42
+  implicitHeight: 24
   opacity: root.enabledSwitch ? 1.0 : 0.35
 
   Rectangle {

@@ -12,8 +12,8 @@ Rectangle {
   property bool dimmed: false
   property int btnSize: 30
 
-  width: btnSize
-  height: btnSize
+  implicitWidth: btnSize
+  implicitHeight: btnSize
   radius: Theme.radiusBase
   color: ma.pressed ? Theme.pressWash : ma.containsMouse ? Theme.hoverWash : "transparent"
   Behavior on color { ColorAnimation { duration: Theme.durationFast } }

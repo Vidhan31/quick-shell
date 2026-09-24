@@ -25,8 +25,6 @@ Item {
 
   implicitWidth: 330
   implicitHeight: mainCol.height + 28
-  width: implicitWidth
-  height: implicitHeight
 
   Rectangle {
     id: cardBg

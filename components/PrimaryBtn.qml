@@ -12,6 +12,7 @@ Rectangle {
   property bool enabledBtn: true
 
   implicitHeight: 34
+  implicitWidth: contentRow.implicitWidth + 24
   radius: 9
   scale: (ma.pressed && root.enabledBtn) ? 0.985 : 1.0
   Behavior on scale { NumberAnimation { duration: 80 } }
@@ -19,6 +20,7 @@ Rectangle {
   Behavior on color { ColorAnimation { duration: Theme.durationFast } }
 
   Row {
+    id: contentRow
     anchors.centerIn: parent
     spacing: 7
 

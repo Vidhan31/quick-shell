@@ -19,12 +19,7 @@ Item {
   readonly property TailscaleMonitor activeMonitor: root.monitor ? root.monitor : fallbackMonitor
 
   implicitWidth: 440
-  // Hug the Sharing tab content (chrome 266 + tab chrome 70 + list + composer),
-  // capped so long share lists scroll inside the card instead. Other tabs keep
-  // a fixed height since they scroll. Popover resizing per tab is native behavior.
-  implicitHeight: root.currentTab === 0 ? Math.min(660, 336 + (root.serveItems.length > 0 ? sharesCol.height : 44) + composerRect.height) : 620
-  width: implicitWidth
-  height: implicitHeight
+  implicitHeight: 620
 
   property var tsData: activeMonitor ? activeMonitor.tsData : ({
     connected: false,

@@ -77,12 +77,19 @@ Item {
   }
 
   implicitWidth: 440
-  // Hug the content (chrome 32 + body), capped so overflow scrolls inside
-  // the card instead of growing off-screen. bodyCol.height is driven only
-  // by its children (width comes from the viewport), so no binding loop.
-  implicitHeight: Math.min(640, 32 + bodyCol.height)
-  width: implicitWidth
-  height: implicitHeight
+  readonly property int preferredHeight: Math.min(640, 32 + bodyCol.height)
+  property int popupHeight: 360
+
+  function syncHeight() {
+    popupHeight = preferredHeight;
+  }
+
+  onPreferredHeightChanged: {
+    if (!root.visible)
+      popupHeight = preferredHeight;
+  }
+
+  implicitHeight: popupHeight
 
   function showToast(msg: string): void {
     toast.show(msg);

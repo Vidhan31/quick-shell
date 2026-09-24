@@ -18,8 +18,6 @@ Item {
 
   implicitHeight: Theme.btnHeightSm
   implicitWidth: innerContainer.implicitWidth + (horizontalPadding * 2)
-  height: implicitHeight
-  width: implicitWidth
 
   Rectangle {
     id: bgRect
@@ -36,8 +34,8 @@ Item {
   Item {
     id: innerContainer
     anchors.centerIn: parent
-    implicitWidth: childrenRect.width
-    implicitHeight: childrenRect.height
+    implicitWidth: children.length === 1 ? children[0].implicitWidth : (children.length > 1 ? childrenRect.width : 0)
+    implicitHeight: children.length === 1 ? children[0].implicitHeight : (children.length > 1 ? childrenRect.height : 0)
     width: implicitWidth
     height: implicitHeight
   }
