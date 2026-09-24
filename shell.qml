@@ -83,6 +83,7 @@ ShellRoot {
         calPopup.visible = false;
         tsPopup.visible = false;
         ethPopup.visible = false;
+        bluetoothPopup.visible = false;
         privacyPopup.visible = false;
         notifPopup.visible = false;
       }
@@ -205,6 +206,16 @@ ShellRoot {
           }
         }
 
+        BarChip {
+          id: bluetoothHit
+          active: bluetoothPopup.visible
+          onClicked: bar.togglePopup(bluetoothPopup)
+
+          BluetoothWidget {
+            id: bluetoothBarWidget
+          }
+        }
+
         Item {
           id: privacyHit
           visible: privacyWidget.hasActive || implicitWidth > 0
@@ -311,6 +322,27 @@ ShellRoot {
           monitor: tsBarWidget.monitor
           tsData: tsBarWidget.tsData
           onTriggerRefresh: tsBarWidget.refresh()
+        }
+      }
+
+      PopupWindow {
+        id: bluetoothPopup
+        anchor.item: bluetoothHit
+        anchor.edges: Edges.Bottom
+        anchor.gravity: Edges.Bottom
+        anchor.margins.top: 6
+        anchor.adjustment: PopupAdjustment.SlideX
+        visible: false
+        grabFocus: true
+        implicitWidth: bluetoothControlCenter.implicitWidth
+        implicitHeight: bluetoothControlCenter.implicitHeight
+        color: "transparent"
+
+        onVisibleChanged: bluetoothControlCenter.syncHeight()
+
+        BluetoothControlCenter {
+          id: bluetoothControlCenter
+          anchors.fill: parent
         }
       }
 
