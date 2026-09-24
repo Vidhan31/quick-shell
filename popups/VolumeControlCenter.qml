@@ -8,7 +8,6 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
-import Quickshell.Services.Pipewire
 import qs.services
 import "../theme"
 import "../components"
@@ -28,13 +27,6 @@ Item {
 
   readonly property var t: Theme
   readonly property string monoFont: Theme.mono
-
-  // Real-time audio peak monitor on active output node
-  PwNodePeakMonitor {
-    id: outputPeak
-    node: (root.activeAudio && root.activeAudio.sink) ? root.activeAudio.sink : null
-    enabled: root.visible
-  }
 
   // System settings launcher for audio
   Process {
@@ -227,29 +219,6 @@ Item {
                 }
               }
 
-              // Real-time Peak Visualizer Bar
-              Item {
-                width: parent.width
-                height: 3
-                visible: root.visible
-
-                Rectangle {
-                  anchors.fill: parent
-                  radius: 1.5
-                  color: t.inset
-
-                  Rectangle {
-                    height: parent.height
-                    radius: parent.radius
-                    width: Math.min(parent.width, parent.width * (outputPeak.peak || 0.0))
-                    color: outputPeak.peak > 0.85 ? t.err : (outputPeak.peak > 0.65 ? t.warn : t.accent)
-
-                    Behavior on width {
-                      NumberAnimation { duration: 60; easing.type: Easing.OutQuad }
-                    }
-                  }
-                }
-              }
             }
           }
         }
