@@ -249,14 +249,14 @@ struct AgScoredTurn {
     AgTurn turn;
 };
 
-int clampAgLastN(int n) {
-    if (n < 1) {
-        return 20;
+int clampAgLastDays(int days) {
+    if (days < 1) {
+        return 10;
     }
-    if (n > 500) {
-        return 500;
+    if (days > 30) {
+        return 30;
     }
-    return n;
+    return days;
 }
 
 bool collectFileTurns(QSqlDatabase &db,
@@ -302,12 +302,12 @@ bool collectFromAgDb(const QString &path,
                      QMap<QString, AgTokenWindow> *monthModels,
                      QMap<QString, AgTokenWindow> *monthSources,
                      QSet<QString> *seen,
-                     std::vector<AgScoredTurn> *lastNAll,
                      QString *error) {
     const QString connectionName =
         QStringLiteral("agusage-%1").arg(g_agConnectionCounter.fetchAndAddOrdered(1));
     const bool inToday = fileTimeMs >= bounds.todayStart && fileTimeMs < bounds.end;
     const bool inWeek = fileTimeMs >= bounds.weekStart && fileTimeMs < bounds.end;
+    const bool inLastDays = fileTimeMs >= bounds.lastDaysStart && fileTimeMs < bounds.end;
     const bool inMonth = fileTimeMs >= bounds.monthStart && fileTimeMs < bounds.end;
     {
         QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
@@ -347,20 +347,15 @@ bool collectFromAgDb(const QString &path,
                 window.output += turn.output;
                 window.cacheRead += turn.cacheRead;
                 window.reasoning += turn.reasoning;
-                window.messages += 1;
             };
-            if (lastNAll) {
-                AgScoredTurn scored;
-                scored.fileTimeMs = fileTimeMs;
-                scored.idx = rows.idxs.at(i);
-                scored.turn = turn;
-                lastNAll->push_back(std::move(scored));
-            }
             if (inToday) {
                 addTo(result->today);
             }
             if (inWeek) {
                 addTo(result->week);
+            }
+            if (inLastDays) {
+                addTo(result->lastDays);
             }
             if (inMonth) {
                 addTo(result->month);
@@ -368,12 +363,10 @@ bool collectFromAgDb(const QString &path,
                 (*monthModels)[turn.model].output += turn.output;
                 (*monthModels)[turn.model].cacheRead += turn.cacheRead;
                 (*monthModels)[turn.model].reasoning += turn.reasoning;
-                (*monthModels)[turn.model].messages += 1;
                 (*monthSources)[sourceId].input += turn.input;
                 (*monthSources)[sourceId].output += turn.output;
                 (*monthSources)[sourceId].cacheRead += turn.cacheRead;
                 (*monthSources)[sourceId].reasoning += turn.reasoning;
-                (*monthSources)[sourceId].messages += 1;
             }
         }
     }
@@ -400,6 +393,7 @@ AgWindowBounds computeAgWindowBounds() {
     bounds.weekStart = dayStartMs(today.addDays(-(today.dayOfWeek() - 1)));
     bounds.monthStart = dayStartMs(QDate(today.year(), today.month(), 1));
     bounds.end = QDateTime::currentMSecsSinceEpoch();
+    bounds.lastDaysStart = bounds.end - qint64(10) * 24 * 60 * 60 * 1000;
     return bounds;
 }
 
@@ -453,9 +447,12 @@ QStringList discoverAgRoots() {
     return roots;
 }
 
-AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastN) {
+AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastDays) {
     AgRefreshResult result;
-    result.lastNRequested = clampAgLastN(lastN);
+    result.lastDaysRequested = clampAgLastDays(lastDays);
+    AgWindowBounds rollingBounds = bounds;
+    rollingBounds.lastDaysStart =
+        bounds.end - qint64(result.lastDaysRequested) * 24 * 60 * 60 * 1000;
     const QStringList roots = discoverAgRoots();
     for (const QString &root : roots) {
         if (QDir(root).exists()) {
@@ -471,7 +468,6 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastN) {
     QMap<QString, AgTokenWindow> monthModels;
     QMap<QString, AgTokenWindow> monthSources;
     QSet<QString> seen;
-    std::vector<AgScoredTurn> lastNAll;
     // Canonical paths guard against the same file reached through a symlink
     // (the T3 skills symlink is one such case) being counted twice.
     QSet<QString> visitedFiles;
@@ -516,12 +512,11 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastN) {
                                 sourceId,
                                 info.completeBaseName(),
                                 mtime,
-                                bounds,
+                                rollingBounds,
                                 &result,
                                 &monthModels,
                                 &monthSources,
                                 &seen,
-                                &lastNAll,
                                 &error)) {
                 ++readable;
                 ++result.filesScanned;
@@ -557,7 +552,6 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastN) {
         QVariantMap item;
         item.insert(QStringLiteral("name"), entry.first);
         item.insert(QStringLiteral("tokens"), entry.second.total());
-        item.insert(QStringLiteral("messages"), entry.second.messages);
         modelItems.append(item);
     }
     result.monthModels = modelItems;
@@ -566,27 +560,10 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastN) {
         QVariantMap item;
         item.insert(QStringLiteral("name"), entry.first);
         item.insert(QStringLiteral("tokens"), entry.second.total());
-        item.insert(QStringLiteral("messages"), entry.second.messages);
         sourceItems.append(item);
     }
     result.monthSources = sourceItems;
-    // Most-recent deduped turns: file mtime desc, then idx desc.
-    std::sort(lastNAll.begin(), lastNAll.end(), [](const AgScoredTurn &a, const AgScoredTurn &b) {
-        if (a.fileTimeMs != b.fileTimeMs) {
-            return a.fileTimeMs > b.fileTimeMs;
-        }
-        return a.idx > b.idx;
-    });
-    if (static_cast<int>(lastNAll.size()) > result.lastNRequested) {
-        lastNAll.resize(result.lastNRequested);
-    }
-    for (const AgScoredTurn &scored : lastNAll) {
-        result.lastN.input += scored.turn.input;
-        result.lastN.output += scored.turn.output;
-        result.lastN.cacheRead += scored.turn.cacheRead;
-        result.lastN.reasoning += scored.turn.reasoning;
-        result.lastN.messages += 1;
-    }
+    // Most-recent deduped turns are no longer used for a record-count window.
     result.ok = true;
     result.refreshedAt = agRefreshedAtIst();
     return result;
@@ -595,8 +572,8 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastN) {
 AgUsageWorker::AgUsageWorker(QObject *parent)
     : QObject(parent) {}
 
-void AgUsageWorker::refresh(const AgWindowBounds &bounds, int lastN) {
-    emit refreshed(collectAgUsage(bounds, lastN));
+void AgUsageWorker::refresh(const AgWindowBounds &bounds, int lastDays) {
+    emit refreshed(collectAgUsage(bounds, lastDays));
 }
 
 QString agUsageCachePath() {
@@ -613,7 +590,6 @@ QJsonObject agWindowToCache(const AgTokenWindow &window) {
     object[QStringLiteral("output")] = window.output;
     object[QStringLiteral("cacheRead")] = window.cacheRead;
     object[QStringLiteral("reasoning")] = window.reasoning;
-    object[QStringLiteral("messages")] = window.messages;
     return object;
 }
 
@@ -623,7 +599,6 @@ AgTokenWindow agWindowFromCache(const QJsonObject &object) {
     window.output = qlonglong(object.value(QStringLiteral("output")).toDouble());
     window.cacheRead = qlonglong(object.value(QStringLiteral("cacheRead")).toDouble());
     window.reasoning = qlonglong(object.value(QStringLiteral("reasoning")).toDouble());
-    window.messages = qlonglong(object.value(QStringLiteral("messages")).toDouble());
     return window;
 }
 
@@ -639,23 +614,23 @@ void AntigravityUsage::loadCachedResult() {
         return;
     }
     const QJsonObject root = document.object();
-    if (root.value(QStringLiteral("version")).toInt() != 1) {
+    if (root.value(QStringLiteral("version")).toInt() != 2) {
         return;
     }
     m_today = agWindowFromCache(root.value(QStringLiteral("today")).toObject());
     m_week = agWindowFromCache(root.value(QStringLiteral("week")).toObject());
     m_month = agWindowFromCache(root.value(QStringLiteral("month")).toObject());
-    m_lastNWindow = agWindowFromCache(root.value(QStringLiteral("lastN")).toObject());
-    m_lastN = root.value(QStringLiteral("lastNRequested")).toInt(20);
-    if (m_lastN < 1 || m_lastN > 500) {
-        m_lastN = 20;
+    m_lastDaysWindow = agWindowFromCache(root.value(QStringLiteral("lastDays")).toObject());
+    m_lastDays = root.value(QStringLiteral("lastDaysRequested")).toInt(10);
+    if (m_lastDays < 1 || m_lastDays > 30) {
+        m_lastDays = 10;
     }
     m_monthModels = root.value(QStringLiteral("monthModels")).toArray().toVariantList();
     m_monthSources = root.value(QStringLiteral("monthSources")).toArray().toVariantList();
     m_todaySplit = agSplitMap(m_today);
     m_weekSplit = agSplitMap(m_week);
     m_monthSplit = agSplitMap(m_month);
-    m_lastNSplit = agSplitMap(m_lastNWindow);
+    m_lastDaysSplit = agSplitMap(m_lastDaysWindow);
     m_lastRefresh = root.value(QStringLiteral("refreshedAt")).toString();
     m_configured = !m_lastRefresh.isEmpty();
 }
@@ -666,12 +641,12 @@ void AntigravityUsage::saveCachedResult(const AgRefreshResult &result) {
         return;
     }
     QJsonObject root;
-    root[QStringLiteral("version")] = 1;
+    root[QStringLiteral("version")] = 2;
     root[QStringLiteral("today")] = agWindowToCache(result.today);
     root[QStringLiteral("week")] = agWindowToCache(result.week);
     root[QStringLiteral("month")] = agWindowToCache(result.month);
-    root[QStringLiteral("lastN")] = agWindowToCache(result.lastN);
-    root[QStringLiteral("lastNRequested")] = result.lastNRequested;
+    root[QStringLiteral("lastDays")] = agWindowToCache(result.lastDays);
+    root[QStringLiteral("lastDaysRequested")] = result.lastDaysRequested;
     root[QStringLiteral("monthModels")] = QJsonArray::fromVariantList(result.monthModels);
     root[QStringLiteral("monthSources")] = QJsonArray::fromVariantList(result.monthSources);
     root[QStringLiteral("refreshedAt")] = result.refreshedAt;
@@ -716,20 +691,20 @@ void AntigravityUsage::refresh() {
     }
     m_busy = true;
     emit busyChanged();
-    emit requestRefresh(computeAgWindowBounds(), m_lastN);
+    emit requestRefresh(computeAgWindowBounds(), m_lastDays);
 }
 
-void AntigravityUsage::setLastN(int n) {
-    if (n < 1) {
-        n = 1;
-    } else if (n > 500) {
-        n = 500;
+void AntigravityUsage::setLastDays(int days) {
+    if (days < 1) {
+        days = 1;
+    } else if (days > 30) {
+        days = 30;
     }
-    if (m_lastN == n) {
+    if (m_lastDays == days) {
         return;
     }
-    m_lastN = n;
-    emit lastNChanged();
+    m_lastDays = days;
+    emit lastDaysChanged();
     refresh();
 }
 
@@ -765,17 +740,17 @@ void AntigravityUsage::onRefreshed(const AgRefreshResult &result) {
         m_today = result.today;
         m_week = result.week;
         m_month = result.month;
-        m_lastNWindow = result.lastN;
+        m_lastDaysWindow = result.lastDays;
         m_monthModels = result.monthModels;
         m_monthSources = result.monthSources;
         m_todaySplit = agSplitMap(result.today);
         m_weekSplit = agSplitMap(result.week);
         m_monthSplit = agSplitMap(result.month);
-        m_lastNSplit = agSplitMap(result.lastN);
+        m_lastDaysSplit = agSplitMap(result.lastDays);
         m_lastRefresh = result.refreshedAt;
         saveCachedResult(result);
-        if (m_lastN != result.lastNRequested) {
-            // N changed mid-flight: keep desired N and re-request.
+        if (m_lastDays != result.lastDaysRequested) {
+            // Days changed mid-flight: keep desired days and re-request.
             emit busyChanged();
             emit dataChanged();
             refresh();

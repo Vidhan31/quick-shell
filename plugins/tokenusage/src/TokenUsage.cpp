@@ -82,12 +82,11 @@ bool queryModels(QSqlDatabase &db,
         " COALESCE(SUM(CAST(json_extract(data,'$.tokens.output') AS INTEGER)),0),"
         " COALESCE(SUM(CAST(json_extract(data,'$.tokens.cache.read') AS INTEGER)),0),"
         " COALESCE(SUM(CAST(json_extract(data,'$.tokens.cache.write') AS INTEGER)),0),"
-        " COALESCE(SUM(CAST(json_extract(data,'$.tokens.reasoning') AS INTEGER)),0),"
-        " COALESCE(SUM(CAST(json_extract(data,'$.cost') AS REAL)),0),"
-        " COUNT(*)"
-        " FROM message"
-        " WHERE json_valid(data) AND time_created >= ? AND time_created < ?"
-        " GROUP BY json_extract(data,'$.modelID')"));
+         " COALESCE(SUM(CAST(json_extract(data,'$.tokens.reasoning') AS INTEGER)),0),"
+         " COALESCE(SUM(CAST(json_extract(data,'$.cost') AS REAL)),0)"
+         " FROM message"
+         " WHERE json_valid(data) AND time_created >= ? AND time_created < ?"
+         " GROUP BY json_extract(data,'$.modelID')"));
     query.addBindValue(startMs);
     query.addBindValue(endMs);
     if (!query.exec()) {
@@ -106,12 +105,10 @@ bool queryModels(QSqlDatabase &db,
         window.cacheWrite += query.value(4).toLongLong();
         window.reasoning += query.value(5).toLongLong();
         window.cost += query.value(6).toDouble();
-        window.messages += query.value(7).toLongLong();
     }
     return true;
 }
-// One aggregate row per window. User rows carry no tokens or cost, so NULLs
-// simply drop out of the sums and no role filter is needed.
+// One aggregate row per window.
 bool queryWindow(QSqlDatabase &db, qint64 startMs, qint64 endMs, TokenWindow *out, QString *error) {
     QSqlQuery query(db);
     query.setForwardOnly(true);
@@ -121,11 +118,10 @@ bool queryWindow(QSqlDatabase &db, qint64 startMs, qint64 endMs, TokenWindow *ou
         " COALESCE(SUM(CAST(json_extract(data,'$.tokens.output') AS INTEGER)),0),"
         " COALESCE(SUM(CAST(json_extract(data,'$.tokens.cache.read') AS INTEGER)),0),"
         " COALESCE(SUM(CAST(json_extract(data,'$.tokens.cache.write') AS INTEGER)),0),"
-        " COALESCE(SUM(CAST(json_extract(data,'$.tokens.reasoning') AS INTEGER)),0),"
-        " COALESCE(SUM(CAST(json_extract(data,'$.cost') AS REAL)),0),"
-        " COUNT(*)"
-        " FROM message"
-        " WHERE json_valid(data) AND time_created >= ? AND time_created < ?"));
+         " COALESCE(SUM(CAST(json_extract(data,'$.tokens.reasoning') AS INTEGER)),0),"
+         " COALESCE(SUM(CAST(json_extract(data,'$.cost') AS REAL)),0)"
+         " FROM message"
+         " WHERE json_valid(data) AND time_created >= ? AND time_created < ?"));
     query.addBindValue(startMs);
     query.addBindValue(endMs);
     if (!query.exec()) {
@@ -142,76 +138,6 @@ bool queryWindow(QSqlDatabase &db, qint64 startMs, qint64 endMs, TokenWindow *ou
     out->cacheWrite += query.value(3).toLongLong();
     out->reasoning += query.value(4).toLongLong();
     out->cost += query.value(5).toDouble();
-    out->messages += query.value(6).toLongLong();
-    return true;
-}
-
-struct LastNRow {
-    qint64 time = 0;
-    TokenWindow window;
-};
-
-// Most-recent rows regardless of role: user rows contribute zero tokens but
-// still count toward messages, matching queryWindow's COUNT(*) semantics.
-bool queryLastNRows(QSqlDatabase &db, int n, std::vector<LastNRow> *out, QString *error) {
-    QSqlQuery query(db);
-    query.setForwardOnly(true);
-    query.prepare(QStringLiteral(
-        "SELECT time_created,"
-        " COALESCE(CAST(json_extract(data,'$.tokens.input') AS INTEGER),0),"
-        " COALESCE(CAST(json_extract(data,'$.tokens.output') AS INTEGER),0),"
-        " COALESCE(CAST(json_extract(data,'$.tokens.cache.read') AS INTEGER),0),"
-        " COALESCE(CAST(json_extract(data,'$.tokens.cache.write') AS INTEGER),0),"
-        " COALESCE(CAST(json_extract(data,'$.tokens.reasoning') AS INTEGER),0),"
-        " COALESCE(CAST(json_extract(data,'$.cost') AS REAL),0)"
-        " FROM message"
-        " WHERE json_valid(data) ORDER BY time_created DESC LIMIT ?"));
-    query.addBindValue(n);
-    if (!query.exec()) {
-        *error = query.lastError().text();
-        return false;
-    }
-    while (query.next()) {
-        LastNRow row;
-        row.time = query.value(0).toLongLong();
-        row.window.input = query.value(1).toLongLong();
-        row.window.output = query.value(2).toLongLong();
-        row.window.cacheRead = query.value(3).toLongLong();
-        row.window.cacheWrite = query.value(4).toLongLong();
-        row.window.reasoning = query.value(5).toLongLong();
-        row.window.cost = query.value(6).toDouble();
-        row.window.messages = 1;
-        out->push_back(row);
-    }
-    return true;
-}
-
-bool collectLastNFromDb(const QString &path,
-                        int n,
-                        std::vector<LastNRow> *out,
-                        QString *error) {
-    const QString connectionName = QStringLiteral("tokenusage-lastn-%1").arg(g_connectionCounter.fetchAndAddOrdered(1));
-    {
-        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
-        db.setDatabaseName(path);
-        db.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY;QSQLITE_BUSY_TIMEOUT=250"));
-        if (!db.open()) {
-            *error = db.lastError().text();
-            QSqlDatabase::removeDatabase(connectionName);
-            return false;
-        }
-        const bool ok = checkMessageSchema(db) && checkJsonSupport(db)
-            && queryLastNRows(db, n, out, error);
-        db.close();
-        if (!ok) {
-            if (error->isEmpty()) {
-                *error = QStringLiteral("Could not read recent messages in %1").arg(path);
-            }
-            QSqlDatabase::removeDatabase(connectionName);
-            return false;
-        }
-    }
-    QSqlDatabase::removeDatabase(connectionName);
     return true;
 }
 
@@ -247,8 +173,10 @@ bool collectFromDb(const QString &path,
         const bool todayOk = queryWindow(db, bounds.todayStart, bounds.end, &result->today, error);
         const bool weekOk = todayOk && queryWindow(db, bounds.weekStart, bounds.end, &result->week, error);
         const bool monthOk = weekOk && queryWindow(db, bounds.monthStart, bounds.end, &result->month, error);
+        const bool lastDaysOk = monthOk && queryWindow(db, bounds.lastDaysStart, bounds.end, &result->lastDays, error);
         const bool modelsOk =
-            monthOk && queryModels(db, bounds.monthStart, bounds.end, monthModels, error);
+            lastDaysOk && queryModels(db, bounds.monthStart, bounds.end, monthModels, error);
+
         db.close();
         if (!modelsOk) {
             QSqlDatabase::removeDatabase(connectionName);
@@ -274,6 +202,7 @@ TokenWindowBounds computeWindowBounds() {
     bounds.weekStart = dayStartMs(today.addDays(-(today.dayOfWeek() - 1)));
     bounds.monthStart = dayStartMs(QDate(today.year(), today.month(), 1));
     bounds.end = QDateTime::currentMSecsSinceEpoch();
+    bounds.lastDaysStart = bounds.end - qint64(10) * 24 * 60 * 60 * 1000;
     return bounds;
 }
 
@@ -309,19 +238,22 @@ QStringList discoverOpenCodeDbPaths() {
     return paths;
 }
 
-int clampLastN(int n) {
-    if (n < 1) {
-        return 20;
+int clampLastDays(int days) {
+    if (days < 1) {
+        return 10;
     }
-    if (n > 500) {
-        return 500;
+    if (days > 30) {
+        return 30;
     }
-    return n;
+    return days;
 }
 
-TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastN) {
+TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastDays) {
     TokenRefreshResult result;
-    result.lastNRequested = clampLastN(lastN);
+    result.lastDaysRequested = clampLastDays(lastDays);
+    TokenWindowBounds rollingBounds = bounds;
+    rollingBounds.lastDaysStart =
+        bounds.end - qint64(result.lastDaysRequested) * 24 * 60 * 60 * 1000;
     result.dbPaths = discoverOpenCodeDbPaths();
     if (result.dbPaths.isEmpty()) {
         result.error = QStringLiteral("No OpenCode database found");
@@ -334,7 +266,7 @@ TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastN)
     QMap<QString, TokenWindow> monthModels;
     for (const QString &path : result.dbPaths) {
         QString error;
-        if (collectFromDb(path, bounds, &result, &monthModels, &error)) {
+        if (collectFromDb(path, rollingBounds, &result, &monthModels, &error)) {
             ++readable;
         } else if (firstError.isEmpty()) {
             firstError = error;
@@ -343,32 +275,6 @@ TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastN)
     if (readable == 0) {
         result.error = firstError.isEmpty() ? QStringLiteral("Could not read OpenCode database") : firstError;
         return result;
-    }
-    // Global last-N: up to N rows per DB, then merge by timestamp.
-    {
-        std::vector<LastNRow> all;
-        for (const QString &path : result.dbPaths) {
-            QString error;
-            std::vector<LastNRow> rows;
-            if (collectLastNFromDb(path, result.lastNRequested, &rows, &error)) {
-                all.insert(all.end(), rows.begin(), rows.end());
-            }
-        }
-        std::sort(all.begin(), all.end(), [](const LastNRow &a, const LastNRow &b) {
-            return a.time > b.time;
-        });
-        if (static_cast<int>(all.size()) > result.lastNRequested) {
-            all.resize(result.lastNRequested);
-        }
-        for (const LastNRow &row : all) {
-            result.lastN.input += row.window.input;
-            result.lastN.output += row.window.output;
-            result.lastN.cacheRead += row.window.cacheRead;
-            result.lastN.cacheWrite += row.window.cacheWrite;
-            result.lastN.reasoning += row.window.reasoning;
-            result.lastN.cost += row.window.cost;
-            result.lastN.messages += 1;
-        }
     }
     // Month models for the UI, largest first, capped.
     std::vector<std::pair<QString, TokenWindow>> ranked(monthModels.keyValueBegin(), monthModels.keyValueEnd());
@@ -387,7 +293,6 @@ TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastN)
         QVariantMap item;
         item.insert(QStringLiteral("name"), entry.first);
         item.insert(QStringLiteral("tokens"), entry.second.total());
-        item.insert(QStringLiteral("messages"), entry.second.messages);
         models.append(item);
     }
     result.monthModels = models;
@@ -399,8 +304,8 @@ TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastN)
 TokenUsageWorker::TokenUsageWorker(QObject *parent)
     : QObject(parent) {}
 
-void TokenUsageWorker::refresh(const TokenWindowBounds &bounds, int lastN) {
-    emit refreshed(collectTokenUsage(bounds, lastN));
+void TokenUsageWorker::refresh(const TokenWindowBounds &bounds, int lastDays) {
+    emit refreshed(collectTokenUsage(bounds, lastDays));
 }
 
 QString usageCachePath() {
@@ -419,7 +324,6 @@ QJsonObject windowToCache(const TokenWindow &window) {
     object[QStringLiteral("cacheWrite")] = window.cacheWrite;
     object[QStringLiteral("reasoning")] = window.reasoning;
     object[QStringLiteral("cost")] = window.cost;
-    object[QStringLiteral("messages")] = window.messages;
     return object;
 }
 
@@ -431,7 +335,6 @@ TokenWindow windowFromCache(const QJsonObject &object) {
     window.cacheWrite = qlonglong(object.value(QStringLiteral("cacheWrite")).toDouble());
     window.reasoning = qlonglong(object.value(QStringLiteral("reasoning")).toDouble());
     window.cost = object.value(QStringLiteral("cost")).toDouble();
-    window.messages = qlonglong(object.value(QStringLiteral("messages")).toDouble());
     return window;
 }
 
@@ -447,22 +350,22 @@ void TokenUsage::loadCachedResult() {
         return;
     }
     const QJsonObject root = document.object();
-    if (root.value(QStringLiteral("version")).toInt() != 1) {
+    if (root.value(QStringLiteral("version")).toInt() != 2) {
         return;
     }
     m_today = windowFromCache(root.value(QStringLiteral("today")).toObject());
     m_week = windowFromCache(root.value(QStringLiteral("week")).toObject());
     m_month = windowFromCache(root.value(QStringLiteral("month")).toObject());
-    m_lastNWindow = windowFromCache(root.value(QStringLiteral("lastN")).toObject());
-    m_lastN = root.value(QStringLiteral("lastNRequested")).toInt(20);
-    if (m_lastN < 1 || m_lastN > 500) {
-        m_lastN = 20;
+    m_lastDaysWindow = windowFromCache(root.value(QStringLiteral("lastDays")).toObject());
+    m_lastDays = root.value(QStringLiteral("lastDaysRequested")).toInt(10);
+    if (m_lastDays < 1 || m_lastDays > 30) {
+        m_lastDays = 10;
     }
     m_monthModels = root.value(QStringLiteral("monthModels")).toArray().toVariantList();
     m_todaySplit = splitMap(m_today);
     m_weekSplit = splitMap(m_week);
     m_monthSplit = splitMap(m_month);
-    m_lastNSplit = splitMap(m_lastNWindow);
+    m_lastDaysSplit = splitMap(m_lastDaysWindow);
     m_lastRefresh = root.value(QStringLiteral("refreshedAt")).toString();
     m_configured = !m_lastRefresh.isEmpty();
 }
@@ -473,12 +376,12 @@ void TokenUsage::saveCachedResult(const TokenRefreshResult &result) {
         return;
     }
     QJsonObject root;
-    root[QStringLiteral("version")] = 1;
+    root[QStringLiteral("version")] = 2;
     root[QStringLiteral("today")] = windowToCache(result.today);
     root[QStringLiteral("week")] = windowToCache(result.week);
     root[QStringLiteral("month")] = windowToCache(result.month);
-    root[QStringLiteral("lastN")] = windowToCache(result.lastN);
-    root[QStringLiteral("lastNRequested")] = result.lastNRequested;
+    root[QStringLiteral("lastDays")] = windowToCache(result.lastDays);
+    root[QStringLiteral("lastDaysRequested")] = result.lastDaysRequested;
     root[QStringLiteral("monthModels")] = QJsonArray::fromVariantList(result.monthModels);
     root[QStringLiteral("refreshedAt")] = result.refreshedAt;
     QSaveFile file(usageCachePath());
@@ -523,20 +426,20 @@ void TokenUsage::refresh() {
     }
     m_busy = true;
     emit busyChanged();
-    emit requestRefresh(computeWindowBounds(), m_lastN);
+    emit requestRefresh(computeWindowBounds(), m_lastDays);
 }
 
-void TokenUsage::setLastN(int n) {
-    if (n < 1) {
-        n = 1;
-    } else if (n > 500) {
-        n = 500;
+void TokenUsage::setLastDays(int days) {
+    if (days < 1) {
+        days = 1;
+    } else if (days > 30) {
+        days = 30;
     }
-    if (m_lastN == n) {
+    if (m_lastDays == days) {
         return;
     }
-    m_lastN = n;
-    emit lastNChanged();
+    m_lastDays = days;
+    emit lastDaysChanged();
     refresh();
 }
 
@@ -574,17 +477,16 @@ void TokenUsage::onRefreshed(const TokenRefreshResult &result) {
         m_today = result.today;
         m_week = result.week;
         m_month = result.month;
-        m_lastNWindow = result.lastN;
+        m_lastDaysWindow = result.lastDays;
         m_monthModels = result.monthModels;
         m_todaySplit = splitMap(result.today);
         m_weekSplit = splitMap(result.week);
         m_monthSplit = splitMap(result.month);
-        m_lastNSplit = splitMap(result.lastN);
+        m_lastDaysSplit = splitMap(result.lastDays);
         m_lastRefresh = result.refreshedAt;
         saveCachedResult(result);
-        if (m_lastN != result.lastNRequested) {
-            // N changed mid-flight (setLastN while busy dropped its
-            // refresh): keep desired N and re-request.
+        if (m_lastDays != result.lastDaysRequested) {
+            // Days changed mid-flight: keep desired days and re-request.
             emit busyChanged();
             emit dataChanged();
             refresh();

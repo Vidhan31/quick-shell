@@ -1,5 +1,5 @@
 // antigravity-probe — standalone diagnostic printing one JSON object:
-// {"ok":..,"configured":..,"error":..,"today":{"tokens":..,"messages":..},...}
+// {"ok":..,"configured":..,"error":..,"today":{"tokens":..},...}
 #include "AntigravityUsage.hpp"
 
 #include <QCoreApplication>
@@ -17,7 +17,6 @@ QJsonObject windowToJson(const qs::plugins::AgTokenWindow &window) {
     object[QStringLiteral("output")] = window.output;
     object[QStringLiteral("cacheRead")] = window.cacheRead;
     object[QStringLiteral("reasoning")] = window.reasoning;
-    object[QStringLiteral("messages")] = window.messages;
     return object;
 }
 
@@ -25,7 +24,6 @@ QJsonObject namedToJson(const QVariantMap &item) {
     QJsonObject object;
     object[QStringLiteral("name")] = item.value(QStringLiteral("name")).toString();
     object[QStringLiteral("tokens")] = item.value(QStringLiteral("tokens")).toLongLong();
-    object[QStringLiteral("messages")] = item.value(QStringLiteral("messages")).toLongLong();
     return object;
 }
 
@@ -34,17 +32,17 @@ QJsonObject namedToJson(const QVariantMap &item) {
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
 
-    int lastN = 20;
+    int lastDays = 10;
     if (argc > 1) {
         bool ok = false;
         const int parsed = QString::fromLocal8Bit(argv[1]).toInt(&ok);
         if (ok) {
-            lastN = parsed;
+            lastDays = parsed;
         }
     }
 
     const qs::plugins::AgWindowBounds bounds = qs::plugins::computeAgWindowBounds();
-    const qs::plugins::AgRefreshResult result = qs::plugins::collectAgUsage(bounds, lastN);
+    const qs::plugins::AgRefreshResult result = qs::plugins::collectAgUsage(bounds, lastDays);
 
     QJsonArray models;
     for (const QVariant &value : result.monthModels) {
@@ -64,8 +62,8 @@ int main(int argc, char *argv[]) {
     root[QStringLiteral("today")] = windowToJson(result.today);
     root[QStringLiteral("week")] = windowToJson(result.week);
     root[QStringLiteral("month")] = windowToJson(result.month);
-    root[QStringLiteral("lastN")] = windowToJson(result.lastN);
-    root[QStringLiteral("lastNRequested")] = result.lastNRequested;
+    root[QStringLiteral("lastDays")] = windowToJson(result.lastDays);
+    root[QStringLiteral("lastDaysRequested")] = result.lastDaysRequested;
     root[QStringLiteral("monthModels")] = models;
     root[QStringLiteral("monthSources")] = sources;
     root[QStringLiteral("refreshedAt")] = result.refreshedAt;

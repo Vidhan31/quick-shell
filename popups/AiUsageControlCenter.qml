@@ -23,22 +23,20 @@ Item {
 
   property int currentTab: 0 // 0: Overview, 1: OpenCode, 2: Antigravity
 
-  // Last-N filter: number of most-recent messages to aggregate. Synced to
-  // both monitors (each clamps to [1,500] and refreshes on change).
-  property int lastN: 20
-  readonly property var lastNOptions: [10, 20, 50, 100]
+  property int lastDays: 10
+  readonly property var lastDaysOptions: [5, 10, 15, 30]
 
-  function syncLastN(): void {
-    if (root.ocMonitor && root.ocMonitor.lastN !== undefined && root.ocMonitor.lastN !== root.lastN)
-      root.ocMonitor.setLastN(root.lastN);
-    if (root.agyMonitor && root.agyMonitor.lastN !== undefined && root.agyMonitor.lastN !== root.lastN)
-      root.agyMonitor.setLastN(root.lastN);
+  function syncLastDays(): void {
+    if (root.ocMonitor && root.ocMonitor.lastDays !== undefined && root.ocMonitor.lastDays !== root.lastDays)
+      root.ocMonitor.setLastDays(root.lastDays);
+    if (root.agyMonitor && root.agyMonitor.lastDays !== undefined && root.agyMonitor.lastDays !== root.lastDays)
+      root.agyMonitor.setLastDays(root.lastDays);
   }
 
-  onLastNChanged: root.syncLastN()
-  onOcMonitorChanged: root.syncLastN()
-  onAgyMonitorChanged: root.syncLastN()
-  Component.onCompleted: root.syncLastN()
+  onLastDaysChanged: root.syncLastDays()
+  onOcMonitorChanged: root.syncLastDays()
+  onAgyMonitorChanged: root.syncLastDays()
+  Component.onCompleted: root.syncLastDays()
 
   implicitWidth: 440
   implicitHeight: 620
@@ -94,38 +92,36 @@ Item {
   }
 
   // ---- Per-source detail rows (same semantics as the old separate cards) ----
-  function ocSplitDetails(split: var, cost: double, messages: double): var {
+  function ocSplitDetails(split: var, cost: double): var {
     return [
       { k: "Input", v: root.ocMonitor.compact(split.input) },
       { k: "Output", v: root.ocMonitor.compact(split.output) },
       { k: "Cache read", v: root.ocMonitor.compact(split.cacheRead) },
       { k: "Cache write", v: root.ocMonitor.compact(split.cacheWrite) },
       { k: "Reasoning", v: root.ocMonitor.compact(split.reasoning) },
-      { k: "Messages", v: root.ocMonitor.compact(messages) },
       { k: "Cost", v: root.money(cost) }
     ];
   }
 
-  function agySplitDetails(split: var, messages: double): var {
+  function agySplitDetails(split: var): var {
     return [
       { k: "Input", v: root.agyMonitor.compact(split.input) },
       { k: "Output", v: root.agyMonitor.compact(split.output) },
       { k: "Cache read", v: root.agyMonitor.compact(split.cacheRead) },
-      { k: "Reasoning", v: root.agyMonitor.compact(split.reasoning) },
-      { k: "Messages", v: root.agyMonitor.compact(messages) }
+      { k: "Reasoning", v: root.agyMonitor.compact(split.reasoning) }
     ];
   }
 
   readonly property var ocRows: root.ocMonitor === null ? [] : [
-    { label: "Today", tokens: root.ocMonitor.compact(root.ocMonitor.todayTokens), rawTokens: root.ocMonitor.todayTokens, split: root.ocMonitor.todaySplit, cost: root.ocMonitor.todayCost, details: root.ocSplitDetails(root.ocMonitor.todaySplit, root.ocMonitor.todayCost, root.ocMonitor.todayMessages) },
-    { label: "This week", tokens: root.ocMonitor.compact(root.ocMonitor.weekTokens), rawTokens: root.ocMonitor.weekTokens, split: root.ocMonitor.weekSplit, cost: root.ocMonitor.weekCost, details: root.ocSplitDetails(root.ocMonitor.weekSplit, root.ocMonitor.weekCost, root.ocMonitor.weekMessages) },
-    { label: "This month", tokens: root.ocMonitor.compact(root.ocMonitor.monthTokens), rawTokens: root.ocMonitor.monthTokens, split: root.ocMonitor.monthSplit, cost: root.ocMonitor.monthCost, details: root.ocSplitDetails(root.ocMonitor.monthSplit, root.ocMonitor.monthCost, root.ocMonitor.monthMessages) }
+    { label: "Today", tokens: root.ocMonitor.compact(root.ocMonitor.todayTokens), rawTokens: root.ocMonitor.todayTokens, split: root.ocMonitor.todaySplit, cost: root.ocMonitor.todayCost, details: root.ocSplitDetails(root.ocMonitor.todaySplit, root.ocMonitor.todayCost) },
+    { label: "This week", tokens: root.ocMonitor.compact(root.ocMonitor.weekTokens), rawTokens: root.ocMonitor.weekTokens, split: root.ocMonitor.weekSplit, cost: root.ocMonitor.weekCost, details: root.ocSplitDetails(root.ocMonitor.weekSplit, root.ocMonitor.weekCost) },
+    { label: "This month", tokens: root.ocMonitor.compact(root.ocMonitor.monthTokens), rawTokens: root.ocMonitor.monthTokens, split: root.ocMonitor.monthSplit, cost: root.ocMonitor.monthCost, details: root.ocSplitDetails(root.ocMonitor.monthSplit, root.ocMonitor.monthCost) }
   ]
 
   readonly property var agyRows: root.agyMonitor === null ? [] : [
-    { label: "Today", tokens: root.agyMonitor.compact(root.agyMonitor.todayTokens), rawTokens: root.agyMonitor.todayTokens, split: root.agyMonitor.todaySplit, details: root.agySplitDetails(root.agyMonitor.todaySplit, root.agyMonitor.todayMessages) },
-    { label: "This week", tokens: root.agyMonitor.compact(root.agyMonitor.weekTokens), rawTokens: root.agyMonitor.weekTokens, split: root.agyMonitor.weekSplit, details: root.agySplitDetails(root.agyMonitor.weekSplit, root.agyMonitor.weekMessages) },
-    { label: "This month", tokens: root.agyMonitor.compact(root.agyMonitor.monthTokens), rawTokens: root.agyMonitor.monthTokens, split: root.agyMonitor.monthSplit, details: root.agySplitDetails(root.agyMonitor.monthSplit, root.agyMonitor.monthMessages) }
+    { label: "Today", tokens: root.agyMonitor.compact(root.agyMonitor.todayTokens), rawTokens: root.agyMonitor.todayTokens, split: root.agyMonitor.todaySplit, details: root.agySplitDetails(root.agyMonitor.todaySplit) },
+    { label: "This week", tokens: root.agyMonitor.compact(root.agyMonitor.weekTokens), rawTokens: root.agyMonitor.weekTokens, split: root.agyMonitor.weekSplit, details: root.agySplitDetails(root.agyMonitor.weekSplit) },
+    { label: "This month", tokens: root.agyMonitor.compact(root.agyMonitor.monthTokens), rawTokens: root.agyMonitor.monthTokens, split: root.agyMonitor.monthSplit, details: root.agySplitDetails(root.agyMonitor.monthSplit) }
   ]
 
   // ---- Overview: combined period cards ----
@@ -141,7 +137,6 @@ Item {
       ocSub: root.money(root.ocMonitor.todayCost),
       ocRaw: root.ocMonitor.todayTokens,
       agy: root.agyMonitor.compact(root.agyMonitor.todayTokens),
-      agySub: root.agyMonitor.compact(root.agyMonitor.todayMessages) + " msgs",
       agyRaw: root.agyMonitor.todayTokens,
       totalRaw: root.ocMonitor.todayTokens + root.agyMonitor.todayTokens,
       total: root.periodTotal(root.ocMonitor.todayTokens, root.agyMonitor.todayTokens)
@@ -152,7 +147,6 @@ Item {
       ocSub: root.money(root.ocMonitor.weekCost),
       ocRaw: root.ocMonitor.weekTokens,
       agy: root.agyMonitor.compact(root.agyMonitor.weekTokens),
-      agySub: root.agyMonitor.compact(root.agyMonitor.weekMessages) + " msgs",
       agyRaw: root.agyMonitor.weekTokens,
       totalRaw: root.ocMonitor.weekTokens + root.agyMonitor.weekTokens,
       total: root.periodTotal(root.ocMonitor.weekTokens, root.agyMonitor.weekTokens)
@@ -163,47 +157,40 @@ Item {
       ocSub: root.money(root.ocMonitor.monthCost),
       ocRaw: root.ocMonitor.monthTokens,
       agy: root.agyMonitor.compact(root.agyMonitor.monthTokens),
-      agySub: root.agyMonitor.compact(root.agyMonitor.monthMessages) + " msgs",
       agyRaw: root.agyMonitor.monthTokens,
       totalRaw: root.ocMonitor.monthTokens + root.agyMonitor.monthTokens,
       total: root.periodTotal(root.ocMonitor.monthTokens, root.agyMonitor.monthTokens)
     }
   ]
 
-  // Last-N card: most-recent message rows, not a calendar window.
-  readonly property var lastNCard: (root.ocMonitor === null || root.agyMonitor === null) ? null : ({
-    oc: root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.compact(root.ocMonitor.lastNTokens) : "--",
-    ocSub: (root.ocMonitor.lastNCost !== undefined ? root.money(root.ocMonitor.lastNCost) : "--") + " · " + (root.ocMonitor.lastNMessages !== undefined ? root.ocMonitor.compact(root.ocMonitor.lastNMessages) : "?") + " msgs",
-    ocRaw: root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.lastNTokens : 0,
-    ocDetails: root.ocMonitor.lastNSplit !== undefined ? root.ocSplitDetails(root.ocMonitor.lastNSplit, root.ocMonitor.lastNCost, root.ocMonitor.lastNMessages) : [],
-    agy: root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.compact(root.agyMonitor.lastNTokens) : "--",
-    agySub: (root.agyMonitor.lastNMessages !== undefined ? root.agyMonitor.compact(root.agyMonitor.lastNMessages) : "?") + " msgs",
-    agyRaw: root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.lastNTokens : 0,
-    agyDetails: root.agyMonitor.lastNSplit !== undefined ? root.agySplitDetails(root.agyMonitor.lastNSplit, root.agyMonitor.lastNMessages) : [],
-    totalRaw: (root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.lastNTokens : 0) + (root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.lastNTokens : 0),
+  readonly property var lastDaysCard: (root.ocMonitor === null || root.agyMonitor === null) ? null : ({
+    oc: root.ocMonitor.lastDaysTokens !== undefined ? root.ocMonitor.compact(root.ocMonitor.lastDaysTokens) : "--",
+    ocSub: root.ocMonitor.lastDaysCost !== undefined ? root.money(root.ocMonitor.lastDaysCost) : "--",
+    ocRaw: root.ocMonitor.lastDaysTokens !== undefined ? root.ocMonitor.lastDaysTokens : 0,
+    ocDetails: root.ocMonitor.lastDaysSplit !== undefined ? root.ocSplitDetails(root.ocMonitor.lastDaysSplit, root.ocMonitor.lastDaysCost) : [],
+    agy: root.agyMonitor.lastDaysTokens !== undefined ? root.agyMonitor.compact(root.agyMonitor.lastDaysTokens) : "--",
+    agyRaw: root.agyMonitor.lastDaysTokens !== undefined ? root.agyMonitor.lastDaysTokens : 0,
+    agyDetails: root.agyMonitor.lastDaysSplit !== undefined ? root.agySplitDetails(root.agyMonitor.lastDaysSplit) : [],
+    totalRaw: (root.ocMonitor.lastDaysTokens !== undefined ? root.ocMonitor.lastDaysTokens : 0) + (root.agyMonitor.lastDaysTokens !== undefined ? root.agyMonitor.lastDaysTokens : 0),
     total: root.periodTotal(
-      root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.lastNTokens : 0,
-      root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.lastNTokens : 0)
+      root.ocMonitor.lastDaysTokens !== undefined ? root.ocMonitor.lastDaysTokens : 0,
+      root.agyMonitor.lastDaysTokens !== undefined ? root.agyMonitor.lastDaysTokens : 0)
   })
 
   // ---- Models, tagged by source and merged for the Overview tab ----
   readonly property var ocModelRows: root.ocMonitor === null ? [] : root.ocMonitor.monthModels.map(function (m) {
-    const avg = m.messages > 0 ? Math.round(m.tokens / m.messages) : 0;
     return {
       name: m.name,
       tokens: root.ocMonitor.compact(m.tokens),
-      sub: root.ocMonitor.compact(m.messages) + " msgs · ~" + root.ocMonitor.compact(avg) + "/msg",
       raw: m.tokens,
       src: "oc"
     };
   })
 
   readonly property var agyModelRows: root.agyMonitor === null ? [] : root.agyMonitor.monthModels.map(function (m) {
-    const avg = m.messages > 0 ? Math.round(m.tokens / m.messages) : 0;
     return {
       name: m.name,
       tokens: root.agyMonitor.compact(m.tokens),
-      sub: root.agyMonitor.compact(m.messages) + " msgs · ~" + root.agyMonitor.compact(avg) + "/msg",
       raw: m.tokens,
       src: "agy"
     };
@@ -213,13 +200,13 @@ Item {
   readonly property var combinedModels: root.ocModelRows.concat(root.agyModelRows).slice().sort(function (a, b) { return b.raw - a.raw; }).slice(0, 12)
 
   readonly property var agySourceRows: root.agyMonitor === null ? [] : root.agyMonitor.monthSources.map(function (s) {
-    return { name: s.name, tokens: root.agyMonitor.compact(s.tokens), sub: root.agyMonitor.compact(s.messages) + " msgs", raw: s.tokens };
+    return { name: s.name, tokens: root.agyMonitor.compact(s.tokens), raw: s.tokens };
   })
   readonly property double maxAgySourceTokens: (root.agySourceRows.length > 0 && root.agySourceRows[0].raw > 0) ? root.agySourceRows[0].raw : 1
 
 
   // ---- Chart data and period selection ----
-  property int overviewChartPeriod: 0 // 0: Today, 1: Last N, 2: Month
+  property int overviewChartPeriod: 0 // 0: Today, 1: Last days, 2: Month
   property int ocChartPeriod: 0 // 0: Today, 1: Week, 2: Month
   property int agyChartPeriod: 0 // 0: Today, 1: Week, 2: Month
 
@@ -228,14 +215,14 @@ Item {
       return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, totalText: "--", totalSub: "tokens", ocTokens: 0, agyTokens: 0 };
     }
     const ocS = root.overviewChartPeriod === 0 ? root.ocMonitor.todaySplit
-              : (root.overviewChartPeriod === 1 ? root.ocMonitor.lastNSplit : root.ocMonitor.monthSplit);
+              : (root.overviewChartPeriod === 1 ? root.ocMonitor.lastDaysSplit : root.ocMonitor.monthSplit);
     const agyS = root.overviewChartPeriod === 0 ? root.agyMonitor.todaySplit
-               : (root.overviewChartPeriod === 1 ? root.agyMonitor.lastNSplit : root.agyMonitor.monthSplit);
+               : (root.overviewChartPeriod === 1 ? root.agyMonitor.lastDaysSplit : root.agyMonitor.monthSplit);
 
     const ocT = root.overviewChartPeriod === 0 ? root.ocMonitor.todayTokens
-              : (root.overviewChartPeriod === 1 ? (root.ocMonitor.lastNTokens !== undefined ? root.ocMonitor.lastNTokens : 0) : root.ocMonitor.monthTokens);
+              : (root.overviewChartPeriod === 1 ? (root.ocMonitor.lastDaysTokens !== undefined ? root.ocMonitor.lastDaysTokens : 0) : root.ocMonitor.monthTokens);
     const agyT = root.overviewChartPeriod === 0 ? root.agyMonitor.todayTokens
-               : (root.overviewChartPeriod === 1 ? (root.agyMonitor.lastNTokens !== undefined ? root.agyMonitor.lastNTokens : 0) : root.agyMonitor.monthTokens);
+               : (root.overviewChartPeriod === 1 ? (root.agyMonitor.lastDaysTokens !== undefined ? root.agyMonitor.lastDaysTokens : 0) : root.agyMonitor.monthTokens);
 
     const inp = (ocS ? (ocS.input || 0) : 0) + (agyS ? (agyS.input || 0) : 0);
     const out = (ocS ? (ocS.output || 0) : 0) + (agyS ? (agyS.output || 0) : 0);
@@ -251,7 +238,7 @@ Item {
       cacheWrite: cw,
       reasoning: rz,
       totalText: root.ocMonitor.compact(total),
-      totalSub: root.overviewChartPeriod === 0 ? "today" : (root.overviewChartPeriod === 1 ? ("last " + root.lastN) : "month"),
+      totalSub: root.overviewChartPeriod === 0 ? "today" : (root.overviewChartPeriod === 1 ? ("last " + root.lastDays + " days") : "month"),
       ocTokens: ocT,
       agyTokens: agyT
     };
@@ -512,7 +499,8 @@ Item {
             TokenDonutCard {
               width: parent.width
               title: "Composition"
-              periods: ["Today", "Last " + root.lastN, "Month"]
+               periods: ["Today", "Last " + root.lastDays + " days", "Month"]
+
               selectedPeriod: root.overviewChartPeriod
               onPeriodSelected: idx => root.overviewChartPeriod = idx
 
@@ -534,7 +522,8 @@ Item {
 
             SectionHead {
               width: parent.width
-              label: "Last " + root.lastN + " messages"
+               label: "Last " + root.lastDays + " days"
+
             }
 
 
@@ -542,15 +531,18 @@ Item {
               width: parent.width
               spacing: 6
               Repeater {
-                model: root.lastNOptions
+                 model: root.lastDaysOptions
+
                 TextBtn {
                   required property var modelData
                   required property int index
                   text: modelData
-                  fg: modelData === root.lastN ? t.ink1 : t.ink3
+                   fg: modelData === root.lastDays ? t.ink1 : t.ink3
+
                   fs: 11
-                  bold: modelData === root.lastN
-                  onClicked: root.lastN = modelData
+                   bold: modelData === root.lastDays
+                   onClicked: root.lastDays = modelData
+
                 }
               }
               Text {
@@ -563,14 +555,17 @@ Item {
             }
 
             Rectangle {
-              visible: root.lastNCard !== null
+               visible: root.lastDaysCard !== null
+
               width: parent.width
-              height: lastNInner.height + 8
+               height: lastDaysInner.height + 8
+
               radius: 12
               color: t.surface
 
               Column {
-                id: lastNInner
+                 id: lastDaysInner
+
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
@@ -590,13 +585,14 @@ Item {
                   }
                   InfoDot {
                     Layout.alignment: Qt.AlignVCenter
-                    details: root.lastNCard ? root.lastNCard.ocDetails : []
+                    details: root.lastDaysCard ? root.lastDaysCard.ocDetails : []
                   }
                   ColumnLayout {
                     spacing: 0
                     Text {
                       Layout.alignment: Qt.AlignRight
-                      text: root.lastNCard ? root.lastNCard.oc : "--"
+                       text: root.lastDaysCard ? root.lastDaysCard.oc : "--"
+
                       font.pixelSize: 13
                       font.weight: Font.Medium
                       font.family: t.mono
@@ -604,7 +600,8 @@ Item {
                     }
                     Text {
                       Layout.alignment: Qt.AlignRight
-                      text: root.lastNCard ? root.lastNCard.ocSub : ""
+                       text: root.lastDaysCard ? root.lastDaysCard.ocSub : ""
+
                       font.pixelSize: 10
                       font.family: t.mono
                       color: t.ink3
@@ -626,25 +623,21 @@ Item {
                   }
                   InfoDot {
                     Layout.alignment: Qt.AlignVCenter
-                    details: root.lastNCard ? root.lastNCard.agyDetails : []
+                     details: root.lastDaysCard ? root.lastDaysCard.agyDetails : []
+
                   }
                   ColumnLayout {
                     spacing: 0
-                    Text {
-                      Layout.alignment: Qt.AlignRight
-                      text: root.lastNCard ? root.lastNCard.agy : "--"
-                      font.pixelSize: 13
-                      font.weight: Font.Medium
-                      font.family: t.mono
-                      color: t.ink1
-                    }
-                    Text {
-                      Layout.alignment: Qt.AlignRight
-                      text: root.lastNCard ? root.lastNCard.agySub : ""
-                      font.pixelSize: 10
-                      font.family: t.mono
-                      color: t.ink3
-                    }
+                     Text {
+                       Layout.alignment: Qt.AlignRight
+                        text: root.lastDaysCard ? root.lastDaysCard.agy : "--"
+
+                       font.pixelSize: 13
+                       font.weight: Font.Medium
+                       font.family: t.mono
+                       color: t.ink1
+                     }
+
                   }
                 }
 
@@ -654,19 +647,22 @@ Item {
                 Item {
                   width: parent.width
                   height: 4
-                  visible: root.lastNCard && root.lastNCard.totalRaw > 0
+                    visible: root.lastDaysCard && root.lastDaysCard.totalRaw > 0
+
 
                   Row {
                     anchors.fill: parent
                     spacing: 2
                     Rectangle {
-                      width: Math.max(2, Math.round((parent.width - 2) * (root.lastNCard.ocRaw / root.lastNCard.totalRaw)))
+                       width: Math.max(2, Math.round((parent.width - 2) * (root.lastDaysCard.ocRaw / root.lastDaysCard.totalRaw)))
+
                       height: parent.height
                       radius: 2
                       color: t.teal
                     }
                     Rectangle {
-                      width: Math.max(2, (parent.width - 2) - Math.max(2, Math.round((parent.width - 2) * (root.lastNCard.ocRaw / root.lastNCard.totalRaw))))
+                       width: Math.max(2, (parent.width - 2) - Math.max(2, Math.round((parent.width - 2) * (root.lastDaysCard.ocRaw / root.lastDaysCard.totalRaw))))
+
                       height: parent.height
                       radius: 2
                       color: t.violet
@@ -685,7 +681,8 @@ Item {
                     color: t.ink2
                   }
                   Text {
-                    text: root.lastNCard ? root.lastNCard.total : "--"
+                     text: root.lastDaysCard ? root.lastDaysCard.total : "--"
+
                     font.pixelSize: 14
                     font.weight: Font.DemiBold
                     font.family: t.mono
@@ -737,21 +734,15 @@ Item {
                       }
                       ColumnLayout {
                         spacing: 0
-                        Text {
-                          Layout.alignment: Qt.AlignRight
-                          text: modelData.oc
-                          font.pixelSize: 13
-                          font.weight: Font.Medium
-                          font.family: t.mono
-                          color: t.ink1
-                        }
-                        Text {
-                          Layout.alignment: Qt.AlignRight
-                          text: modelData.ocSub
-                          font.pixelSize: 10
-                          font.family: t.mono
-                          color: t.ink3
-                        }
+                         Text {
+                           Layout.alignment: Qt.AlignRight
+                           text: modelData.oc
+                           font.pixelSize: 13
+                           font.weight: Font.Medium
+                           font.family: t.mono
+                           color: t.ink1
+                         }
+
                       }
                     }
 
@@ -776,13 +767,6 @@ Item {
                           font.weight: Font.Medium
                           font.family: t.mono
                           color: t.ink1
-                        }
-                        Text {
-                          Layout.alignment: Qt.AlignRight
-                          text: modelData.agySub
-                          font.pixelSize: 10
-                          font.family: t.mono
-                          color: t.ink3
                         }
                       }
                     }
@@ -908,28 +892,22 @@ Item {
                         }
                       }
 
-                      ColumnLayout {
-                        spacing: 0
-                        Text {
-                          Layout.alignment: Qt.AlignRight
-                          text: modelData.tokens
-                          font.pixelSize: 12
-                          font.family: t.mono
-                          color: t.ink1
-                        }
-                        Text {
-                          Layout.alignment: Qt.AlignRight
-                          text: modelData.sub
-                          font.pixelSize: 10
-                          font.family: t.mono
-                          color: t.ink3
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
+                       ColumnLayout {
+                         spacing: 0
+                         Text {
+                           Layout.alignment: Qt.AlignRight
+                           text: modelData.tokens
+                           font.pixelSize: 12
+                           font.family: t.mono
+                           color: t.ink1
+                         }
+                       }
+                     }
+                   }
+                 }
+               }
+             }
+
 
             Text {
               width: overviewCol.width
@@ -1100,23 +1078,17 @@ Item {
                           }
                         }
 
-                        ColumnLayout {
-                          spacing: 2
-                          Text {
-                            Layout.alignment: Qt.AlignRight
-                            text: modelData.tokens
-                            font.pixelSize: 13
-                            font.family: t.mono
-                            color: t.ink1
-                          }
-                          Text {
-                            Layout.alignment: Qt.AlignRight
-                            text: modelData.sub
-                            font.pixelSize: 11
-                            font.family: t.mono
-                            color: t.ink3
-                          }
-                        }
+                         ColumnLayout {
+                           spacing: 2
+                           Text {
+                             Layout.alignment: Qt.AlignRight
+                             text: modelData.tokens
+                             font.pixelSize: 13
+                             font.family: t.mono
+                             color: t.ink1
+                           }
+                         }
+
                       }
                     }
                   }
@@ -1280,23 +1252,17 @@ Item {
                           }
                         }
 
-                        ColumnLayout {
-                          spacing: 2
-                          Text {
-                            Layout.alignment: Qt.AlignRight
-                            text: modelData.tokens
-                            font.pixelSize: 13
-                            font.family: t.mono
-                            color: t.ink1
-                          }
-                          Text {
-                            Layout.alignment: Qt.AlignRight
-                            text: modelData.sub
-                            font.pixelSize: 11
-                            font.family: t.mono
-                            color: t.ink3
-                          }
-                        }
+                         ColumnLayout {
+                           spacing: 2
+                           Text {
+                             Layout.alignment: Qt.AlignRight
+                             text: modelData.tokens
+                             font.pixelSize: 13
+                             font.family: t.mono
+                             color: t.ink1
+                           }
+                         }
+
                       }
                     }
                   }
@@ -1366,23 +1332,17 @@ Item {
                           }
                         }
 
-                        ColumnLayout {
-                          spacing: 2
-                          Text {
-                            Layout.alignment: Qt.AlignRight
-                            text: modelData.tokens
-                            font.pixelSize: 13
-                            font.family: t.mono
-                            color: t.ink1
-                          }
-                          Text {
-                            Layout.alignment: Qt.AlignRight
-                            text: modelData.sub
-                            font.pixelSize: 11
-                            font.family: t.mono
-                            color: t.ink3
-                          }
-                        }
+                         ColumnLayout {
+                           spacing: 2
+                           Text {
+                             Layout.alignment: Qt.AlignRight
+                             text: modelData.tokens
+                             font.pixelSize: 13
+                             font.family: t.mono
+                             color: t.ink1
+                           }
+                         }
+
                       }
                     }
                   }

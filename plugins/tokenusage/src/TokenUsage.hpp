@@ -18,7 +18,6 @@ struct TokenWindow {
     qlonglong cacheWrite = 0;
     qlonglong reasoning = 0;
     double cost = 0.0;
-    qlonglong messages = 0;
 
     [[nodiscard]] qlonglong total() const { return input + output + cacheRead + cacheWrite; }
 };
@@ -31,8 +30,8 @@ struct TokenRefreshResult {
     TokenWindow today;
     TokenWindow week;
     TokenWindow month;
-    TokenWindow lastN;
-    int lastNRequested = 20;
+    TokenWindow lastDays;
+    int lastDaysRequested = 10;
     QString refreshedAt;
     QVariantList monthModels;
 };
@@ -43,16 +42,16 @@ struct TokenWindowBounds {
     qint64 weekStart = 0; // Monday 00:00 local
     qint64 monthStart = 0; // first of month 00:00 local
     qint64 end = 0;
+    qint64 lastDaysStart = 0;
 };
 
 TokenWindowBounds computeWindowBounds();
 QStringList discoverOpenCodeDbPaths();
 
 // Synchronous collection used by both the worker thread and the probe tool.
-// lastN is the number of most-recent message rows (user+assistant, valid
-// JSON) to aggregate into result.lastN, across all DB files. Clamped to
-// [1,500]; 20 when out of range.
-TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastN = 20);
+// lastDays selects a rolling window ending at the current time. Clamped to
+// [1,30]; 10 when out of range.
+TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastDays = 10);
 
 class TokenUsageWorker : public QObject {
     Q_OBJECT
@@ -61,7 +60,7 @@ public:
     explicit TokenUsageWorker(QObject *parent = nullptr);
 
 public slots:
-    void refresh(const TokenWindowBounds &bounds, int lastN);
+    void refresh(const TokenWindowBounds &bounds, int lastDays);
 
 signals:
     void refreshed(const TokenRefreshResult &result);
@@ -77,18 +76,14 @@ class TokenUsage : public QObject {
     Q_PROPERTY(double todayCost READ todayCost NOTIFY dataChanged)
     Q_PROPERTY(double weekCost READ weekCost NOTIFY dataChanged)
     Q_PROPERTY(double monthCost READ monthCost NOTIFY dataChanged)
-    Q_PROPERTY(qlonglong todayMessages READ todayMessages NOTIFY dataChanged)
-    Q_PROPERTY(qlonglong weekMessages READ weekMessages NOTIFY dataChanged)
-    Q_PROPERTY(qlonglong monthMessages READ monthMessages NOTIFY dataChanged)
     Q_PROPERTY(QVariantList monthModels READ monthModels NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap todaySplit READ todaySplit NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap weekSplit READ weekSplit NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap monthSplit READ monthSplit NOTIFY dataChanged)
-    Q_PROPERTY(int lastN READ lastN WRITE setLastN NOTIFY lastNChanged)
-    Q_PROPERTY(qlonglong lastNTokens READ lastNTokens NOTIFY dataChanged)
-    Q_PROPERTY(qlonglong lastNMessages READ lastNMessages NOTIFY dataChanged)
-    Q_PROPERTY(double lastNCost READ lastNCost NOTIFY dataChanged)
-    Q_PROPERTY(QVariantMap lastNSplit READ lastNSplit NOTIFY dataChanged)
+    Q_PROPERTY(int lastDays READ lastDays WRITE setLastDays NOTIFY lastDaysChanged)
+    Q_PROPERTY(qlonglong lastDaysTokens READ lastDaysTokens NOTIFY dataChanged)
+    Q_PROPERTY(double lastDaysCost READ lastDaysCost NOTIFY dataChanged)
+    Q_PROPERTY(QVariantMap lastDaysSplit READ lastDaysSplit NOTIFY dataChanged)
     Q_PROPERTY(QString lastRefresh READ lastRefresh NOTIFY dataChanged)
     Q_PROPERTY(QString error READ error NOTIFY dataChanged)
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
@@ -104,32 +99,28 @@ public:
     [[nodiscard]] double todayCost() const { return m_today.cost; }
     [[nodiscard]] double weekCost() const { return m_week.cost; }
     [[nodiscard]] double monthCost() const { return m_month.cost; }
-    [[nodiscard]] qlonglong todayMessages() const { return m_today.messages; }
-    [[nodiscard]] qlonglong weekMessages() const { return m_week.messages; }
-    [[nodiscard]] qlonglong monthMessages() const { return m_month.messages; }
     [[nodiscard]] QVariantList monthModels() const { return m_monthModels; }
     [[nodiscard]] QVariantMap todaySplit() const { return m_todaySplit; }
     [[nodiscard]] QVariantMap weekSplit() const { return m_weekSplit; }
     [[nodiscard]] QVariantMap monthSplit() const { return m_monthSplit; }
-    [[nodiscard]] int lastN() const { return m_lastN; }
-    [[nodiscard]] qlonglong lastNTokens() const { return m_lastNWindow.total(); }
-    [[nodiscard]] qlonglong lastNMessages() const { return m_lastNWindow.messages; }
-    [[nodiscard]] double lastNCost() const { return m_lastNWindow.cost; }
-    [[nodiscard]] QVariantMap lastNSplit() const { return m_lastNSplit; }
+    [[nodiscard]] int lastDays() const { return m_lastDays; }
+    [[nodiscard]] qlonglong lastDaysTokens() const { return m_lastDaysWindow.total(); }
+    [[nodiscard]] double lastDaysCost() const { return m_lastDaysWindow.cost; }
+    [[nodiscard]] QVariantMap lastDaysSplit() const { return m_lastDaysSplit; }
     [[nodiscard]] QString lastRefresh() const { return m_lastRefresh; }
     [[nodiscard]] QString error() const { return m_error; }
     [[nodiscard]] bool isBusy() const { return m_busy; }
     [[nodiscard]] bool isConfigured() const { return m_configured; }
 
     Q_INVOKABLE void refresh();
-    Q_INVOKABLE void setLastN(int n);
+    Q_INVOKABLE void setLastDays(int days);
     Q_INVOKABLE QString compact(qlonglong value) const;
 
 signals:
     void dataChanged();
     void busyChanged();
-    void lastNChanged();
-    void requestRefresh(const TokenWindowBounds &bounds, int lastN);
+    void lastDaysChanged();
+    void requestRefresh(const TokenWindowBounds &bounds, int lastDays);
 
 private slots:
     void onRefreshed(const TokenRefreshResult &result);
@@ -144,13 +135,13 @@ private:
     TokenWindow m_today;
     TokenWindow m_week;
     TokenWindow m_month;
-    TokenWindow m_lastNWindow;
-    int m_lastN{20};
+    TokenWindow m_lastDaysWindow;
+    int m_lastDays{10};
     QVariantList m_monthModels;
     QVariantMap m_todaySplit;
     QVariantMap m_weekSplit;
     QVariantMap m_monthSplit;
-    QVariantMap m_lastNSplit;
+    QVariantMap m_lastDaysSplit;
     QString m_lastRefresh;
     QString m_error;
     bool m_busy{false};
