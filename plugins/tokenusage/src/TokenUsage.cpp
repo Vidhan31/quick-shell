@@ -221,7 +221,7 @@ bool collectFromDb(const QString &path,
         const bool monthOk = weekOk && queryWindow(db, bounds.monthStart, bounds.end, &result->month, error);
         const bool lastDaysOk = monthOk && queryWindow(db, bounds.lastDaysStart, bounds.end, &result->lastDays, error);
         const bool modelsOk =
-            lastDaysOk && queryModels(db, bounds.monthStart, bounds.end, monthModels, error);
+            lastDaysOk && queryModels(db, bounds.lastDaysStart, bounds.end, monthModels, error);
         const bool dailyOk =
             modelsOk && queryDaily(db, dailyStartMs, bounds.end, tzModifier, dailyMap, error);
 

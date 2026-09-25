@@ -365,6 +365,14 @@ bool collectFromAgDb(const QString &path,
             }
             if (inLastDays) {
                 addTo(result->lastDays);
+                (*monthModels)[turn.model].input += turn.input;
+                (*monthModels)[turn.model].output += turn.output;
+                (*monthModels)[turn.model].cacheRead += turn.cacheRead;
+                (*monthModels)[turn.model].reasoning += turn.reasoning;
+                (*monthSources)[sourceId].input += turn.input;
+                (*monthSources)[sourceId].output += turn.output;
+                (*monthSources)[sourceId].cacheRead += turn.cacheRead;
+                (*monthSources)[sourceId].reasoning += turn.reasoning;
             }
             if (inDaily) {
                 AgTokenWindow &dw = (*dailyMap)[fileDay];
@@ -375,14 +383,6 @@ bool collectFromAgDb(const QString &path,
             }
             if (inMonth) {
                 addTo(result->month);
-                (*monthModels)[turn.model].input += turn.input;
-                (*monthModels)[turn.model].output += turn.output;
-                (*monthModels)[turn.model].cacheRead += turn.cacheRead;
-                (*monthModels)[turn.model].reasoning += turn.reasoning;
-                (*monthSources)[sourceId].input += turn.input;
-                (*monthSources)[sourceId].output += turn.output;
-                (*monthSources)[sourceId].cacheRead += turn.cacheRead;
-                (*monthSources)[sourceId].reasoning += turn.reasoning;
             }
         }
     }
@@ -569,9 +569,6 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastDays) {
         return list;
     };
     auto models = ranked(monthModels);
-    if (models.size() > 8) {
-        models.resize(8);
-    }
     QVariantList modelItems;
     for (const auto &entry : models) {
         QVariantMap item;

@@ -73,6 +73,12 @@ Item {
       name: m.name,
       tokens: root.ocMonitor.compact(m.tokens),
       raw: m.tokens,
+      input: m.input || 0,
+      output: m.output || 0,
+      cacheRead: m.cacheRead || 0,
+      cacheWrite: m.cacheWrite || 0,
+      reasoning: m.reasoning || 0,
+      cost: m.cost || 0,
       src: "oc"
     };
   })
@@ -82,12 +88,17 @@ Item {
       name: m.name,
       tokens: root.agyMonitor.compact(m.tokens),
       raw: m.tokens,
+      input: m.input || 0,
+      output: m.output || 0,
+      cacheRead: m.cacheRead || 0,
+      cacheWrite: 0,
+      reasoning: m.reasoning || 0,
+      cost: 0,
       src: "agy"
     };
   })
 
-
-  readonly property var combinedModels: root.ocModelRows.concat(root.agyModelRows).slice().sort(function (a, b) { return b.raw - a.raw; }).slice(0, 12)
+  readonly property var combinedModels: root.ocModelRows.concat(root.agyModelRows).slice().sort(function (a, b) { return b.raw - a.raw; })
 
   readonly property var agySourceRows: root.agyMonitor === null ? [] : root.agyMonitor.monthSources.map(function (s) {
     return { name: s.name, tokens: root.agyMonitor.compact(s.tokens), raw: s.tokens };
@@ -296,89 +307,19 @@ Item {
             SectionHead {
               width: overviewCol.width
               visible: root.combinedModels.length > 0
-              label: "Top models · this month"
+              label: "Top models"
             }
 
-            Rectangle {
-              visible: root.combinedModels.length > 0
+            TopModelsChart {
               width: overviewCol.width
-              height: modelsCol.height + 8
-              radius: 12
-              color: t.surface
-
-              Column {
-                id: modelsCol
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.topMargin: 4
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-
-                Repeater {
-                  model: root.combinedModels
-                  Column {
-                    required property var modelData
-                    required property int index
-                    width: modelsCol.width
-
-                    Hairline {
-                      visible: index > 0
-                      width: parent.width
-                      anchors.horizontalCenter: parent.horizontalCenter
-                    }
-
-                    RowLayout {
-                      width: parent.width
-                      height: 44
-                      spacing: 8
-                      Rectangle {
-                        Layout.alignment: Qt.AlignVCenter
-                        Layout.preferredWidth: 8
-                        Layout.preferredHeight: 8
-                        radius: 4
-                        color: modelData.src === "oc" ? t.teal : t.violet
-                      }
-                      Column {
-                        Layout.fillWidth: true
-                        spacing: 3
-                        Text {
-                          width: parent.width
-                          text: modelData.name
-                          font.pixelSize: 12
-                          font.family: t.mono
-                          color: t.ink2
-                          elide: Text.ElideMiddle
-                        }
-                        Rectangle {
-                          width: parent.width
-                          height: 3
-                          radius: 1.5
-                          color: t.cardBorder
-                          Rectangle {
-                            height: parent.height
-                            radius: parent.radius
-                            width: Math.max(3, Math.round(parent.width * Math.min(1.0, modelData.raw / root.maxCombinedModelTokens)))
-                            color: modelData.src === "oc" ? t.teal : t.violet
-                          }
-                        }
-                      }
-
-                       ColumnLayout {
-                         spacing: 0
-                         Text {
-                           Layout.alignment: Qt.AlignRight
-                           text: modelData.tokens
-                           font.pixelSize: 12
-                           font.family: t.mono
-                           color: t.ink1
-                         }
-                       }
-                     }
-                   }
-                 }
-               }
-             }
+              visible: root.combinedModels.length > 0
+              title: "Combined models"
+              mode: "overview"
+              models: root.combinedModels
+              selectedMonths: root.selectedMonths
+              compactFn: v => root.ocMonitor ? root.ocMonitor.compact(v) : (v >= 1e6 ? (v/1e6).toFixed(1) + "M" : v.toString())
+              moneyFn: v => root.money(v)
+            }
 
 
             Text {
@@ -474,82 +415,18 @@ Item {
               SectionHead {
                 width: parent.width
                 visible: root.ocModelRows.length > 0
-                label: "Models · this month"
+                label: "Top models"
               }
 
-
-              Rectangle {
-                visible: root.ocModelRows.length > 0
+              TopModelsChart {
                 width: parent.width
-                height: ocModelsCol.height + 8
-                radius: 12
-                color: t.surface
-
-                Column {
-                  id: ocModelsCol
-                  anchors.left: parent.left
-                  anchors.right: parent.right
-                  anchors.top: parent.top
-                  anchors.topMargin: 4
-                  anchors.leftMargin: 12
-                  anchors.rightMargin: 12
-
-                  Repeater {
-                    model: root.ocModelRows
-                    Column {
-                      required property var modelData
-                      required property int index
-                      width: ocModelsCol.width
-
-                      Hairline {
-                        visible: index > 0
-                        width: parent.width
-                        anchors.horizontalCenter: parent.horizontalCenter
-                      }
-
-                      RowLayout {
-                        width: parent.width
-                        height: 46
-                        Column {
-                          Layout.fillWidth: true
-                          spacing: 3
-                          Text {
-                            width: parent.width
-                            text: modelData.name
-                            font.pixelSize: 12
-                            font.family: t.mono
-                            color: t.ink2
-                            elide: Text.ElideMiddle
-                          }
-                          Rectangle {
-                            width: parent.width
-                            height: 3
-                            radius: 1.5
-                            color: t.cardBorder
-                            Rectangle {
-                              height: parent.height
-                              radius: parent.radius
-                              width: Math.max(3, Math.round(parent.width * Math.min(1.0, modelData.raw / root.maxOcModelTokens)))
-                              color: t.teal
-                            }
-                          }
-                        }
-
-                         ColumnLayout {
-                           spacing: 2
-                           Text {
-                             Layout.alignment: Qt.AlignRight
-                             text: modelData.tokens
-                             font.pixelSize: 13
-                             font.family: t.mono
-                             color: t.ink1
-                           }
-                         }
-
-                      }
-                    }
-                  }
-                }
+                visible: root.ocModelRows.length > 0
+                title: "OpenCode models"
+                mode: "opencode"
+                models: root.ocModelRows
+                selectedMonths: root.selectedMonths
+                compactFn: v => root.ocMonitor ? root.ocMonitor.compact(v) : (v >= 1e6 ? (v/1e6).toFixed(1) + "M" : v.toString())
+                moneyFn: v => root.money(v)
               }
 
               Text {
@@ -632,7 +509,7 @@ Item {
               SectionHead {
                 width: parent.width
                 visible: root.agySourceRows.length > 0
-                label: "Sources · this month"
+                label: "Sources"
               }
 
               Rectangle {
@@ -712,81 +589,17 @@ Item {
               SectionHead {
                 width: parent.width
                 visible: root.agyModelRows.length > 0
-                label: "Models · this month"
+                label: "Top models"
               }
 
-              Rectangle {
-                visible: root.agyModelRows.length > 0
+              TopModelsChart {
                 width: parent.width
-                height: agyModelsCol.height + 8
-                radius: 12
-                color: t.surface
-
-                Column {
-                  id: agyModelsCol
-                  anchors.left: parent.left
-                  anchors.right: parent.right
-                  anchors.top: parent.top
-                  anchors.topMargin: 4
-                  anchors.leftMargin: 12
-                  anchors.rightMargin: 12
-
-                  Repeater {
-                    model: root.agyModelRows
-                    Column {
-                      required property var modelData
-                      required property int index
-                      width: agyModelsCol.width
-
-                      Hairline {
-                        visible: index > 0
-                        width: parent.width
-                        anchors.horizontalCenter: parent.horizontalCenter
-                      }
-
-                      RowLayout {
-                        width: parent.width
-                        height: 46
-                        Column {
-                          Layout.fillWidth: true
-                          spacing: 3
-                          Text {
-                            width: parent.width
-                            text: modelData.name
-                            font.pixelSize: 12
-                            font.family: t.mono
-                            color: t.ink2
-                            elide: Text.ElideMiddle
-                          }
-                          Rectangle {
-                            width: parent.width
-                            height: 3
-                            radius: 1.5
-                            color: t.cardBorder
-                            Rectangle {
-                              height: parent.height
-                              radius: parent.radius
-                              width: Math.max(3, Math.round(parent.width * Math.min(1.0, modelData.raw / root.maxAgyModelTokens)))
-                              color: t.violet
-                            }
-                          }
-                        }
-
-                         ColumnLayout {
-                           spacing: 2
-                           Text {
-                             Layout.alignment: Qt.AlignRight
-                             text: modelData.tokens
-                             font.pixelSize: 13
-                             font.family: t.mono
-                             color: t.ink1
-                           }
-                         }
-
-                      }
-                    }
-                  }
-                }
+                visible: root.agyModelRows.length > 0
+                title: "Antigravity models"
+                mode: "antigravity"
+                models: root.agyModelRows
+                selectedMonths: root.selectedMonths
+                compactFn: v => root.agyMonitor ? root.agyMonitor.compact(v) : (v >= 1e6 ? (v/1e6).toFixed(1) + "M" : v.toString())
               }
 
               Text {
