@@ -251,10 +251,10 @@ struct AgScoredTurn {
 
 int clampAgLastDays(int days) {
     if (days < 1) {
-        return 10;
-    }
-    if (days > 30) {
         return 30;
+    }
+    if (days > 400) {
+        return 400;
     }
     return days;
 }
@@ -298,9 +298,12 @@ bool collectFromAgDb(const QString &path,
                      const QString &fileStem,
                      qint64 fileTimeMs,
                      const AgWindowBounds &bounds,
+                     const QDate &rangeStartDay,
+                     const QDate &today,
                      AgRefreshResult *result,
                      QMap<QString, AgTokenWindow> *monthModels,
                      QMap<QString, AgTokenWindow> *monthSources,
+                     QMap<QDate, AgTokenWindow> *dailyMap,
                      QSet<QString> *seen,
                      QString *error) {
     const QString connectionName =
@@ -309,6 +312,12 @@ bool collectFromAgDb(const QString &path,
     const bool inWeek = fileTimeMs >= bounds.weekStart && fileTimeMs < bounds.end;
     const bool inLastDays = fileTimeMs >= bounds.lastDaysStart && fileTimeMs < bounds.end;
     const bool inMonth = fileTimeMs >= bounds.monthStart && fileTimeMs < bounds.end;
+
+    static const QTimeZone ist(QStringLiteral("Asia/Kolkata").toLatin1());
+    const QTimeZone zone = ist.isValid() ? ist : QTimeZone::systemTimeZone();
+    const QDate fileDay = QDateTime::fromMSecsSinceEpoch(fileTimeMs, zone).date();
+    const bool inDaily = fileDay >= rangeStartDay && fileDay <= today;
+
     {
         QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
         db.setDatabaseName(path);
@@ -356,6 +365,13 @@ bool collectFromAgDb(const QString &path,
             }
             if (inLastDays) {
                 addTo(result->lastDays);
+            }
+            if (inDaily) {
+                AgTokenWindow &dw = (*dailyMap)[fileDay];
+                dw.input += turn.input;
+                dw.output += turn.output;
+                dw.cacheRead += turn.cacheRead;
+                dw.reasoning += turn.reasoning;
             }
             if (inMonth) {
                 addTo(result->month);
@@ -465,8 +481,14 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastDays) {
     }
     result.configured = true;
 
+    static const QTimeZone ist(QStringLiteral("Asia/Kolkata").toLatin1());
+    const QTimeZone zone = ist.isValid() ? ist : QTimeZone::systemTimeZone();
+    const QDate today = QDateTime::currentDateTimeUtc().toTimeZone(zone).date();
+    const QDate rangeStartDay = today.addDays(-(result.lastDaysRequested - 1));
+
     QMap<QString, AgTokenWindow> monthModels;
     QMap<QString, AgTokenWindow> monthSources;
+    QMap<QDate, AgTokenWindow> dailyMap;
     QSet<QString> seen;
     // Canonical paths guard against the same file reached through a symlink
     // (the T3 skills symlink is one such case) being counted twice.
@@ -513,9 +535,12 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastDays) {
                                 info.completeBaseName(),
                                 mtime,
                                 rollingBounds,
+                                rangeStartDay,
+                                today,
                                 &result,
                                 &monthModels,
                                 &monthSources,
+                                &dailyMap,
                                 &seen,
                                 &error)) {
                 ++readable;
@@ -563,7 +588,26 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastDays) {
         sourceItems.append(item);
     }
     result.monthSources = sourceItems;
-    // Most-recent deduped turns are no longer used for a record-count window.
+
+    QVariantList dailyList;
+    for (int d = 0; d < result.lastDaysRequested; ++d) {
+        const QDate day = rangeStartDay.addDays(d);
+        const QString dayKey = day.toString(QStringLiteral("yyyy-MM-dd"));
+        const AgTokenWindow window = dailyMap.value(day);
+        QVariantMap point;
+        point.insert(QStringLiteral("date"), dayKey);
+        point.insert(QStringLiteral("label"), day.toString(QStringLiteral("d MMM")));
+        point.insert(QStringLiteral("weekday"), day.toString(QStringLiteral("ddd")));
+        point.insert(QStringLiteral("dayNumber"), day.day());
+        point.insert(QStringLiteral("tokens"), window.total());
+        point.insert(QStringLiteral("input"), window.input);
+        point.insert(QStringLiteral("output"), window.output);
+        point.insert(QStringLiteral("cacheRead"), window.cacheRead);
+        point.insert(QStringLiteral("reasoning"), window.reasoning);
+        dailyList.append(point);
+    }
+    result.dailyUsage = dailyList;
+
     result.ok = true;
     result.refreshedAt = agRefreshedAtIst();
     return result;
@@ -621,12 +665,13 @@ void AntigravityUsage::loadCachedResult() {
     m_week = agWindowFromCache(root.value(QStringLiteral("week")).toObject());
     m_month = agWindowFromCache(root.value(QStringLiteral("month")).toObject());
     m_lastDaysWindow = agWindowFromCache(root.value(QStringLiteral("lastDays")).toObject());
-    m_lastDays = root.value(QStringLiteral("lastDaysRequested")).toInt(10);
-    if (m_lastDays < 1 || m_lastDays > 30) {
-        m_lastDays = 10;
+    m_lastDays = root.value(QStringLiteral("lastDaysRequested")).toInt(30);
+    if (m_lastDays < 1 || m_lastDays > 400) {
+        m_lastDays = 30;
     }
     m_monthModels = root.value(QStringLiteral("monthModels")).toArray().toVariantList();
     m_monthSources = root.value(QStringLiteral("monthSources")).toArray().toVariantList();
+    m_dailyUsage = root.value(QStringLiteral("dailyUsage")).toArray().toVariantList();
     m_todaySplit = agSplitMap(m_today);
     m_weekSplit = agSplitMap(m_week);
     m_monthSplit = agSplitMap(m_month);
@@ -649,6 +694,7 @@ void AntigravityUsage::saveCachedResult(const AgRefreshResult &result) {
     root[QStringLiteral("lastDaysRequested")] = result.lastDaysRequested;
     root[QStringLiteral("monthModels")] = QJsonArray::fromVariantList(result.monthModels);
     root[QStringLiteral("monthSources")] = QJsonArray::fromVariantList(result.monthSources);
+    root[QStringLiteral("dailyUsage")] = QJsonArray::fromVariantList(result.dailyUsage);
     root[QStringLiteral("refreshedAt")] = result.refreshedAt;
     QSaveFile file(agUsageCachePath());
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -697,8 +743,8 @@ void AntigravityUsage::refresh() {
 void AntigravityUsage::setLastDays(int days) {
     if (days < 1) {
         days = 1;
-    } else if (days > 30) {
-        days = 30;
+    } else if (days > 400) {
+        days = 400;
     }
     if (m_lastDays == days) {
         return;
@@ -743,6 +789,7 @@ void AntigravityUsage::onRefreshed(const AgRefreshResult &result) {
         m_lastDaysWindow = result.lastDays;
         m_monthModels = result.monthModels;
         m_monthSources = result.monthSources;
+        m_dailyUsage = result.dailyUsage;
         m_todaySplit = agSplitMap(result.today);
         m_weekSplit = agSplitMap(result.week);
         m_monthSplit = agSplitMap(result.month);

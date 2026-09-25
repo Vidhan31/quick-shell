@@ -23,60 +23,34 @@ Item {
 
   property int currentTab: 0 // 0: Overview, 1: OpenCode, 2: Antigravity
 
-  property int lastDays: 10
-  readonly property var lastDaysOptions: [5, 10, 15, 30]
+  property int selectedMonths: 1
+  readonly property var monthOptions: [1, 3, 6, 12]
 
-  function syncLastDays(): void {
-    if (root.ocMonitor && root.ocMonitor.lastDays !== undefined && root.ocMonitor.lastDays !== root.lastDays)
-      root.ocMonitor.setLastDays(root.lastDays);
-    if (root.agyMonitor && root.agyMonitor.lastDays !== undefined && root.agyMonitor.lastDays !== root.lastDays)
-      root.agyMonitor.setLastDays(root.lastDays);
+  function monthsToDays(m: int): int {
+    switch (m) {
+      case 1: return 30;
+      case 3: return 90;
+      case 6: return 180;
+      case 12: return 365;
+      default: return m * 30;
+    }
   }
 
-  onLastDaysChanged: root.syncLastDays()
-  onOcMonitorChanged: root.syncLastDays()
-  onAgyMonitorChanged: root.syncLastDays()
-  Component.onCompleted: root.syncLastDays()
+  function syncRange(): void {
+    const days = root.monthsToDays(root.selectedMonths);
+    if (root.ocMonitor && root.ocMonitor.lastDays !== undefined && root.ocMonitor.lastDays !== days)
+      root.ocMonitor.setLastDays(days);
+    if (root.agyMonitor && root.agyMonitor.lastDays !== undefined && root.agyMonitor.lastDays !== days)
+      root.agyMonitor.setLastDays(days);
+  }
+
+  onSelectedMonthsChanged: root.syncRange()
+  onOcMonitorChanged: root.syncRange()
+  onAgyMonitorChanged: root.syncRange()
+  Component.onCompleted: root.syncRange()
 
   implicitWidth: 440
   implicitHeight: 620
-
-  // ---- Shared tooltip state (one system for all tabs) ----
-
-  property var tipDetails: null
-  property Item tipTarget: null
-  property int tipX: 0
-  property int tipY: 0
-
-  Timer {
-    id: tipTimer
-    interval: 350
-    repeat: false
-    onTriggered: root.showTip()
-  }
-
-  function showTip(): void {
-    if (root.tipDetails === null || root.tipTarget === null) {
-      return;
-    }
-    if (root.barWindow === null || root.popupWindow === null) {
-      return;
-    }
-    const pt = root.tipTarget.mapToItem(root, root.tipTarget.width / 2, root.tipTarget.height);
-    const frame = root.popupWindow.anchor.rect;
-    root.tipX = frame.x + pt.x;
-    root.tipY = frame.y + pt.y;
-    tip.visible = true;
-  }
-
-  function hideTip(): void {
-    tipTimer.stop();
-    tip.visible = false;
-    root.tipDetails = null;
-    root.tipTarget = null;
-  }
-
-  onCurrentTabChanged: root.hideTip()
 
   // ---- Derived state ----
   readonly property bool busy: (root.ocMonitor ? root.ocMonitor.busy : false) || (root.agyMonitor ? root.agyMonitor.busy : false)
@@ -91,91 +65,7 @@ Item {
     return "$" + value.toFixed(2);
   }
 
-  // ---- Per-source detail rows (same semantics as the old separate cards) ----
-  function ocSplitDetails(split: var, cost: double): var {
-    return [
-      { k: "Input", v: root.ocMonitor.compact(split.input) },
-      { k: "Output", v: root.ocMonitor.compact(split.output) },
-      { k: "Cache read", v: root.ocMonitor.compact(split.cacheRead) },
-      { k: "Cache write", v: root.ocMonitor.compact(split.cacheWrite) },
-      { k: "Reasoning", v: root.ocMonitor.compact(split.reasoning) },
-      { k: "Cost", v: root.money(cost) }
-    ];
-  }
 
-  function agySplitDetails(split: var): var {
-    return [
-      { k: "Input", v: root.agyMonitor.compact(split.input) },
-      { k: "Output", v: root.agyMonitor.compact(split.output) },
-      { k: "Cache read", v: root.agyMonitor.compact(split.cacheRead) },
-      { k: "Reasoning", v: root.agyMonitor.compact(split.reasoning) }
-    ];
-  }
-
-  readonly property var ocRows: root.ocMonitor === null ? [] : [
-    { label: "Today", tokens: root.ocMonitor.compact(root.ocMonitor.todayTokens), rawTokens: root.ocMonitor.todayTokens, split: root.ocMonitor.todaySplit, cost: root.ocMonitor.todayCost, details: root.ocSplitDetails(root.ocMonitor.todaySplit, root.ocMonitor.todayCost) },
-    { label: "This week", tokens: root.ocMonitor.compact(root.ocMonitor.weekTokens), rawTokens: root.ocMonitor.weekTokens, split: root.ocMonitor.weekSplit, cost: root.ocMonitor.weekCost, details: root.ocSplitDetails(root.ocMonitor.weekSplit, root.ocMonitor.weekCost) },
-    { label: "This month", tokens: root.ocMonitor.compact(root.ocMonitor.monthTokens), rawTokens: root.ocMonitor.monthTokens, split: root.ocMonitor.monthSplit, cost: root.ocMonitor.monthCost, details: root.ocSplitDetails(root.ocMonitor.monthSplit, root.ocMonitor.monthCost) }
-  ]
-
-  readonly property var agyRows: root.agyMonitor === null ? [] : [
-    { label: "Today", tokens: root.agyMonitor.compact(root.agyMonitor.todayTokens), rawTokens: root.agyMonitor.todayTokens, split: root.agyMonitor.todaySplit, details: root.agySplitDetails(root.agyMonitor.todaySplit) },
-    { label: "This week", tokens: root.agyMonitor.compact(root.agyMonitor.weekTokens), rawTokens: root.agyMonitor.weekTokens, split: root.agyMonitor.weekSplit, details: root.agySplitDetails(root.agyMonitor.weekSplit) },
-    { label: "This month", tokens: root.agyMonitor.compact(root.agyMonitor.monthTokens), rawTokens: root.agyMonitor.monthTokens, split: root.agyMonitor.monthSplit, details: root.agySplitDetails(root.agyMonitor.monthSplit) }
-  ]
-
-  // ---- Overview: combined period cards ----
-  function periodTotal(ocTokens: double, agyTokens: double): string {
-    if (root.ocMonitor === null || root.agyMonitor === null) return "--";
-    return root.ocMonitor.compact(ocTokens + agyTokens);
-  }
-
-  readonly property var overviewPeriods: (root.ocMonitor === null || root.agyMonitor === null) ? [] : [
-    {
-      label: "Today",
-      oc: root.ocMonitor.compact(root.ocMonitor.todayTokens),
-      ocSub: root.money(root.ocMonitor.todayCost),
-      ocRaw: root.ocMonitor.todayTokens,
-      agy: root.agyMonitor.compact(root.agyMonitor.todayTokens),
-      agyRaw: root.agyMonitor.todayTokens,
-      totalRaw: root.ocMonitor.todayTokens + root.agyMonitor.todayTokens,
-      total: root.periodTotal(root.ocMonitor.todayTokens, root.agyMonitor.todayTokens)
-    },
-    {
-      label: "This week",
-      oc: root.ocMonitor.compact(root.ocMonitor.weekTokens),
-      ocSub: root.money(root.ocMonitor.weekCost),
-      ocRaw: root.ocMonitor.weekTokens,
-      agy: root.agyMonitor.compact(root.agyMonitor.weekTokens),
-      agyRaw: root.agyMonitor.weekTokens,
-      totalRaw: root.ocMonitor.weekTokens + root.agyMonitor.weekTokens,
-      total: root.periodTotal(root.ocMonitor.weekTokens, root.agyMonitor.weekTokens)
-    },
-    {
-      label: "This month",
-      oc: root.ocMonitor.compact(root.ocMonitor.monthTokens),
-      ocSub: root.money(root.ocMonitor.monthCost),
-      ocRaw: root.ocMonitor.monthTokens,
-      agy: root.agyMonitor.compact(root.agyMonitor.monthTokens),
-      agyRaw: root.agyMonitor.monthTokens,
-      totalRaw: root.ocMonitor.monthTokens + root.agyMonitor.monthTokens,
-      total: root.periodTotal(root.ocMonitor.monthTokens, root.agyMonitor.monthTokens)
-    }
-  ]
-
-  readonly property var lastDaysCard: (root.ocMonitor === null || root.agyMonitor === null) ? null : ({
-    oc: root.ocMonitor.lastDaysTokens !== undefined ? root.ocMonitor.compact(root.ocMonitor.lastDaysTokens) : "--",
-    ocSub: root.ocMonitor.lastDaysCost !== undefined ? root.money(root.ocMonitor.lastDaysCost) : "--",
-    ocRaw: root.ocMonitor.lastDaysTokens !== undefined ? root.ocMonitor.lastDaysTokens : 0,
-    ocDetails: root.ocMonitor.lastDaysSplit !== undefined ? root.ocSplitDetails(root.ocMonitor.lastDaysSplit, root.ocMonitor.lastDaysCost) : [],
-    agy: root.agyMonitor.lastDaysTokens !== undefined ? root.agyMonitor.compact(root.agyMonitor.lastDaysTokens) : "--",
-    agyRaw: root.agyMonitor.lastDaysTokens !== undefined ? root.agyMonitor.lastDaysTokens : 0,
-    agyDetails: root.agyMonitor.lastDaysSplit !== undefined ? root.agySplitDetails(root.agyMonitor.lastDaysSplit) : [],
-    totalRaw: (root.ocMonitor.lastDaysTokens !== undefined ? root.ocMonitor.lastDaysTokens : 0) + (root.agyMonitor.lastDaysTokens !== undefined ? root.agyMonitor.lastDaysTokens : 0),
-    total: root.periodTotal(
-      root.ocMonitor.lastDaysTokens !== undefined ? root.ocMonitor.lastDaysTokens : 0,
-      root.agyMonitor.lastDaysTokens !== undefined ? root.agyMonitor.lastDaysTokens : 0)
-  })
 
   // ---- Models, tagged by source and merged for the Overview tab ----
   readonly property var ocModelRows: root.ocMonitor === null ? [] : root.ocMonitor.monthModels.map(function (m) {
@@ -206,7 +96,7 @@ Item {
 
 
   // ---- Chart data and period selection ----
-  property int overviewChartPeriod: 0 // 0: Today, 1: Last days, 2: Month
+  property int overviewChartPeriod: 0 // 0: Today, 1: Week, 2: Month
   property int ocChartPeriod: 0 // 0: Today, 1: Week, 2: Month
   property int agyChartPeriod: 0 // 0: Today, 1: Week, 2: Month
 
@@ -215,14 +105,14 @@ Item {
       return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, totalText: "--", totalSub: "tokens", ocTokens: 0, agyTokens: 0 };
     }
     const ocS = root.overviewChartPeriod === 0 ? root.ocMonitor.todaySplit
-              : (root.overviewChartPeriod === 1 ? root.ocMonitor.lastDaysSplit : root.ocMonitor.monthSplit);
+              : (root.overviewChartPeriod === 1 ? root.ocMonitor.weekSplit : root.ocMonitor.monthSplit);
     const agyS = root.overviewChartPeriod === 0 ? root.agyMonitor.todaySplit
-               : (root.overviewChartPeriod === 1 ? root.agyMonitor.lastDaysSplit : root.agyMonitor.monthSplit);
+               : (root.overviewChartPeriod === 1 ? root.agyMonitor.weekSplit : root.agyMonitor.monthSplit);
 
     const ocT = root.overviewChartPeriod === 0 ? root.ocMonitor.todayTokens
-              : (root.overviewChartPeriod === 1 ? (root.ocMonitor.lastDaysTokens !== undefined ? root.ocMonitor.lastDaysTokens : 0) : root.ocMonitor.monthTokens);
+              : (root.overviewChartPeriod === 1 ? root.ocMonitor.weekTokens : root.ocMonitor.monthTokens);
     const agyT = root.overviewChartPeriod === 0 ? root.agyMonitor.todayTokens
-               : (root.overviewChartPeriod === 1 ? (root.agyMonitor.lastDaysTokens !== undefined ? root.agyMonitor.lastDaysTokens : 0) : root.agyMonitor.monthTokens);
+               : (root.overviewChartPeriod === 1 ? root.agyMonitor.weekTokens : root.agyMonitor.monthTokens);
 
     const inp = (ocS ? (ocS.input || 0) : 0) + (agyS ? (agyS.input || 0) : 0);
     const out = (ocS ? (ocS.output || 0) : 0) + (agyS ? (agyS.output || 0) : 0);
@@ -238,7 +128,7 @@ Item {
       cacheWrite: cw,
       reasoning: rz,
       totalText: root.ocMonitor.compact(total),
-      totalSub: root.overviewChartPeriod === 0 ? "today" : (root.overviewChartPeriod === 1 ? ("last " + root.lastDays + " days") : "month"),
+      totalSub: root.overviewChartPeriod === 0 ? "today" : (root.overviewChartPeriod === 1 ? "this week" : "this month"),
       ocTokens: ocT,
       agyTokens: agyT
     };
@@ -294,142 +184,7 @@ Item {
   readonly property var t: Theme
 
 
-  // Small "i" affordance shared by both detail tabs; arms the shared tooltip.
-  component InfoDot: Item {
-    id: inf
-    property var details: null
-    implicitWidth: 20
-    implicitHeight: 20
-    Rectangle {
-      anchors.fill: parent
-      radius: 10
-      color: infoMouse.containsMouse ? t.hoverFill : "transparent"
-      border.color: infoMouse.containsMouse ? t.accent : t.line
-      border.width: 1
-      Text {
-        anchors.centerIn: parent
-        text: "i"
-        color: infoMouse.containsMouse ? t.ink1 : t.ink3
-        font.pixelSize: 11
-        font.family: t.mono
-      }
-    }
-    MouseArea {
-      id: infoMouse
-      anchors.fill: parent
-      cursorShape: Qt.PointingHandCursor
-      hoverEnabled: true
-      onEntered: {
-        root.tipDetails = { label: "", rows: inf.details };
-        root.tipTarget = inf;
-        tipTimer.restart();
-      }
-      onExited: root.hideTip()
-      onClicked: root.showTip()
-    }
-  }
 
-  // One period row inside a detail-tab surface card with inline segmented ribbon.
-  component PeriodRow: Item {
-    id: prow
-    property string label: ""
-    property string tokens: ""
-    property var details: []
-    property var split: null
-    property double rawTokens: 0
-    property bool first: false
-    width: parent ? parent.width : 0
-    height: innerCol.height
-    Column {
-      id: innerCol
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: parent.top
-      Hairline {
-        width: parent.width - 24
-        anchors.horizontalCenter: parent.horizontalCenter
-        visible: !prow.first
-      }
-      RowLayout {
-        width: parent.width
-        height: 42
-        Text {
-          Layout.fillWidth: true
-          Layout.leftMargin: 12
-          text: prow.label
-          color: t.ink2
-          font.pixelSize: 13
-          font.family: t.mono
-          verticalAlignment: Text.AlignVCenter
-        }
-        InfoDot {
-          Layout.alignment: Qt.AlignVCenter
-          details: prow.details
-        }
-        Text {
-          Layout.rightMargin: 12
-          text: prow.tokens
-          color: t.ink1
-          font.pixelSize: 14
-          font.weight: Font.DemiBold
-          font.family: t.mono
-          horizontalAlignment: Text.AlignRight
-          verticalAlignment: Text.AlignVCenter
-        }
-      }
-
-      // Inline Segmented Ribbon: immediate composition at a glance
-      Item {
-        width: parent.width - 24
-        height: 5
-        anchors.horizontalCenter: parent.horizontalCenter
-        visible: prow.rawTokens > 0 && prow.split !== null
-
-        Row {
-          anchors.fill: parent
-          spacing: 1
-
-          Rectangle {
-            visible: prow.split && prow.split.input > 0
-            width: Math.max(2, Math.round((parent.width - 3) * (prow.split.input / prow.rawTokens)))
-            height: parent.height
-            radius: 2
-            color: t.accent
-          }
-          Rectangle {
-            visible: prow.split && prow.split.output > 0
-            width: Math.max(2, Math.round((parent.width - 3) * (prow.split.output / prow.rawTokens)))
-            height: parent.height
-            radius: 2
-            color: t.green
-          }
-          Rectangle {
-            visible: prow.split && prow.split.cacheRead > 0
-            width: Math.max(2, Math.round((parent.width - 3) * (prow.split.cacheRead / prow.rawTokens)))
-            height: parent.height
-            radius: 2
-            color: t.violet
-          }
-          Rectangle {
-            visible: prow.split && prow.split.cacheWrite !== undefined && prow.split.cacheWrite > 0
-            width: Math.max(2, Math.round((parent.width - 3) * (prow.split.cacheWrite / prow.rawTokens)))
-            height: parent.height
-            radius: 2
-            color: t.teal
-          }
-          Rectangle {
-            visible: prow.split && prow.split.reasoning > 0
-            width: Math.max(2, Math.round((parent.width - 3) * (prow.split.reasoning / prow.rawTokens)))
-            height: parent.height
-            radius: 2
-            color: t.amber
-          }
-        }
-      }
-
-      Item { width: 1; height: 6 }
-    }
-  }
 
 
   // ================= Card =================
@@ -499,7 +254,7 @@ Item {
             TokenDonutCard {
               width: parent.width
               title: "Composition"
-               periods: ["Today", "Last " + root.lastDays + " days", "Month"]
+               periods: ["Today", "Week", "Month"]
 
               selectedPeriod: root.overviewChartPeriod
               onPeriodSelected: idx => root.overviewChartPeriod = idx
@@ -522,354 +277,19 @@ Item {
 
             SectionHead {
               width: parent.width
-               label: "Last " + root.lastDays + " days"
-
+              label: "Usage timeline"
             }
 
-
-            Row {
+            TokenTimelineChart {
               width: parent.width
-              spacing: 6
-              Repeater {
-                 model: root.lastDaysOptions
-
-                TextBtn {
-                  required property var modelData
-                  required property int index
-                  text: modelData
-                   fg: modelData === root.lastDays ? t.ink1 : t.ink3
-
-                  fs: 11
-                   bold: modelData === root.lastDays
-                   onClicked: root.lastDays = modelData
-
-                }
-              }
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.busy ? "updating…" : ""
-                font.pixelSize: 11
-                font.family: t.mono
-                color: t.ink3
-              }
-            }
-
-            Rectangle {
-               visible: root.lastDaysCard !== null
-
-              width: parent.width
-               height: lastDaysInner.height + 8
-
-              radius: 12
-              color: t.surface
-
-              Column {
-                 id: lastDaysInner
-
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.topMargin: 4
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-
-                RowLayout {
-                  width: parent.width
-                  height: 38
-                  Row {
-                    Layout.fillWidth: true
-                    spacing: 7
-                    Image {
-                      anchors.verticalCenter: parent.verticalCenter
-                      source: Qt.resolvedUrl("../assets/opencode.svg")
-                      width: 12
-                      height: 14
-                      sourceSize.width: 24
-                      sourceSize.height: 28
-                      fillMode: Image.PreserveAspectFit
-                    }
-                    Text {
-                      anchors.verticalCenter: parent.verticalCenter
-                      text: "OpenCode"
-                      font.pixelSize: 12
-                      font.family: t.mono
-                      color: t.teal
-                    }
-                  }
-                  InfoDot {
-                    Layout.alignment: Qt.AlignVCenter
-                    details: root.lastDaysCard ? root.lastDaysCard.ocDetails : []
-                  }
-                  ColumnLayout {
-                    spacing: 0
-                    Text {
-                      Layout.alignment: Qt.AlignRight
-                       text: root.lastDaysCard ? root.lastDaysCard.oc : "--"
-
-                      font.pixelSize: 13
-                      font.weight: Font.Medium
-                      font.family: t.mono
-                      color: t.ink1
-                    }
-                    Text {
-                      Layout.alignment: Qt.AlignRight
-                       text: root.lastDaysCard ? root.lastDaysCard.ocSub : ""
-
-                      font.pixelSize: 10
-                      font.family: t.mono
-                      color: t.ink3
-                    }
-                  }
-                }
-
-                Hairline { width: parent.width; anchors.horizontalCenter: parent.horizontalCenter }
-
-                RowLayout {
-                  width: parent.width
-                  height: 38
-                  Row {
-                    Layout.fillWidth: true
-                    spacing: 7
-                    Image {
-                      anchors.verticalCenter: parent.verticalCenter
-                      source: Qt.resolvedUrl("../assets/gemini.svg")
-                      width: 14
-                      height: 14
-                      sourceSize.width: 28
-                      sourceSize.height: 28
-                      fillMode: Image.PreserveAspectFit
-                    }
-                    Text {
-                      anchors.verticalCenter: parent.verticalCenter
-                      text: "Antigravity"
-                      font.pixelSize: 12
-                      font.family: t.mono
-                      color: t.violet
-                    }
-                  }
-                  InfoDot {
-                    Layout.alignment: Qt.AlignVCenter
-                     details: root.lastDaysCard ? root.lastDaysCard.agyDetails : []
-
-                  }
-                  ColumnLayout {
-                    spacing: 0
-                     Text {
-                       Layout.alignment: Qt.AlignRight
-                        text: root.lastDaysCard ? root.lastDaysCard.agy : "--"
-
-                       font.pixelSize: 13
-                       font.weight: Font.Medium
-                       font.family: t.mono
-                       color: t.ink1
-                     }
-
-                  }
-                }
-
-                Hairline { width: parent.width; anchors.horizontalCenter: parent.horizontalCenter }
-
-                // Proportional provider balance bar
-                Item {
-                  width: parent.width
-                  height: 4
-                    visible: root.lastDaysCard && root.lastDaysCard.totalRaw > 0
-
-
-                  Row {
-                    anchors.fill: parent
-                    spacing: 2
-                    Rectangle {
-                       width: Math.max(2, Math.round((parent.width - 2) * (root.lastDaysCard.ocRaw / root.lastDaysCard.totalRaw)))
-
-                      height: parent.height
-                      radius: 2
-                      color: t.teal
-                    }
-                    Rectangle {
-                       width: Math.max(2, (parent.width - 2) - Math.max(2, Math.round((parent.width - 2) * (root.lastDaysCard.ocRaw / root.lastDaysCard.totalRaw))))
-
-                      height: parent.height
-                      radius: 2
-                      color: t.violet
-                    }
-                  }
-                }
-
-                RowLayout {
-                  width: parent.width
-                  height: 34
-                  Text {
-                    Layout.fillWidth: true
-                    text: "Combined"
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
-                    color: t.ink2
-                  }
-                  Text {
-                     text: root.lastDaysCard ? root.lastDaysCard.total : "--"
-
-                    font.pixelSize: 14
-                    font.weight: Font.DemiBold
-                    font.family: t.mono
-                    color: t.ink1
-                  }
-                }
-              }
-            }
-
-            Repeater {
-              model: root.overviewPeriods
-              Column {
-                required property var modelData
-                required property int index
-                width: overviewCol.width
-                spacing: 0
-
-                SectionHead {
-                  width: parent.width
-                  label: modelData.label
-                }
-
-                Item { width: 1; height: 6 }
-
-                Rectangle {
-                  width: parent.width
-                  height: periodInner.height + 8
-                  radius: 12
-                  color: t.surface
-
-                  Column {
-                    id: periodInner
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.topMargin: 4
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 12
-
-                    RowLayout {
-                      width: parent.width
-                      height: 38
-                      Row {
-                        Layout.fillWidth: true
-                        spacing: 7
-                        Image {
-                          anchors.verticalCenter: parent.verticalCenter
-                          source: Qt.resolvedUrl("../assets/opencode.svg")
-                          width: 12
-                          height: 14
-                          sourceSize.width: 24
-                          sourceSize.height: 28
-                          fillMode: Image.PreserveAspectFit
-                        }
-                        Text {
-                          anchors.verticalCenter: parent.verticalCenter
-                          text: "OpenCode"
-                          font.pixelSize: 12
-                          font.family: t.mono
-                          color: t.teal
-                        }
-                      }
-                      ColumnLayout {
-                        spacing: 0
-                         Text {
-                           Layout.alignment: Qt.AlignRight
-                           text: modelData.oc
-                           font.pixelSize: 13
-                           font.weight: Font.Medium
-                           font.family: t.mono
-                           color: t.ink1
-                         }
-
-                      }
-                    }
-
-                    Hairline { width: parent.width; anchors.horizontalCenter: parent.horizontalCenter }
-
-                    RowLayout {
-                      width: parent.width
-                      height: 38
-                      Row {
-                        Layout.fillWidth: true
-                        spacing: 7
-                        Image {
-                          anchors.verticalCenter: parent.verticalCenter
-                          source: Qt.resolvedUrl("../assets/gemini.svg")
-                          width: 14
-                          height: 14
-                          sourceSize.width: 28
-                          sourceSize.height: 28
-                          fillMode: Image.PreserveAspectFit
-                        }
-                        Text {
-                          anchors.verticalCenter: parent.verticalCenter
-                          text: "Antigravity"
-                          font.pixelSize: 12
-                          font.family: t.mono
-                          color: t.violet
-                        }
-                      }
-                      ColumnLayout {
-                        spacing: 0
-                        Text {
-                          Layout.alignment: Qt.AlignRight
-                          text: modelData.agy
-                          font.pixelSize: 13
-                          font.weight: Font.Medium
-                          font.family: t.mono
-                          color: t.ink1
-                        }
-                      }
-                    }
-
-                    Hairline { width: parent.width; anchors.horizontalCenter: parent.horizontalCenter }
-
-                    // Proportional provider balance bar
-                    Item {
-                      width: parent.width
-                      height: 4
-                      visible: modelData.totalRaw > 0
-
-                      Row {
-                        anchors.fill: parent
-                        spacing: 2
-                        Rectangle {
-                          width: Math.max(2, Math.round((parent.width - 2) * (modelData.ocRaw / modelData.totalRaw)))
-                          height: parent.height
-                          radius: 2
-                          color: t.teal
-                        }
-                        Rectangle {
-                          width: Math.max(2, (parent.width - 2) - Math.max(2, Math.round((parent.width - 2) * (modelData.ocRaw / modelData.totalRaw))))
-                          height: parent.height
-                          radius: 2
-                          color: t.violet
-                        }
-                      }
-                    }
-
-                    RowLayout {
-                      width: parent.width
-                      height: 34
-                      Text {
-                        Layout.fillWidth: true
-                        text: "Combined"
-                        font.pixelSize: 12
-                        font.weight: Font.DemiBold
-                        color: t.ink2
-                      }
-                      Text {
-                        text: modelData.total
-                        font.pixelSize: 14
-                        font.weight: Font.DemiBold
-                        font.family: t.mono
-                        color: t.ink1
-                      }
-                    }
-                  }
-                }
-              }
+              mode: "overview"
+              rangeOptions: root.monthOptions
+              selectedRange: root.selectedMonths
+              onRangeSelected: months => root.selectedMonths = months
+              primaryDaily: root.ocMonitor ? root.ocMonitor.dailyUsage : []
+              secondaryDaily: root.agyMonitor ? root.agyMonitor.dailyUsage : []
+              compactFn: v => root.ocMonitor ? root.ocMonitor.compact(v) : (v >= 1e6 ? (v/1e6).toFixed(1) + "M" : v.toString())
+              moneyFn: v => root.money(v)
             }
 
 
@@ -1036,33 +456,18 @@ Item {
 
               SectionHead {
                 width: parent.width
-                label: "Usage"
+                label: "Usage timeline"
               }
 
-
-              Rectangle {
+              TokenTimelineChart {
                 width: parent.width
-                height: ocPeriods.height
-                radius: 12
-                color: t.surface
-
-                Column {
-                  id: ocPeriods
-                  width: parent.width
-                  Repeater {
-                    model: root.ocRows
-                    PeriodRow {
-                      required property var modelData
-                      required property int index
-                      label: modelData.label
-                      tokens: modelData.tokens
-                      details: modelData.details
-                      split: modelData.split
-                      rawTokens: modelData.rawTokens
-                      first: index === 0
-                    }
-                  }
-                }
+                mode: "opencode"
+                rangeOptions: root.monthOptions
+                selectedRange: root.selectedMonths
+                onRangeSelected: months => root.selectedMonths = months
+                primaryDaily: root.ocMonitor ? root.ocMonitor.dailyUsage : []
+                compactFn: v => root.ocMonitor ? root.ocMonitor.compact(v) : (v >= 1e6 ? (v/1e6).toFixed(1) + "M" : v.toString())
+                moneyFn: v => root.money(v)
               }
 
 
@@ -1211,34 +616,17 @@ Item {
 
               SectionHead {
                 width: parent.width
-                label: "Usage"
+                label: "Usage timeline"
               }
 
-
-              Rectangle {
+              TokenTimelineChart {
                 width: parent.width
-                height: agyPeriods.height
-                radius: 12
-                color: t.surface
-
-                Column {
-                  id: agyPeriods
-                  width: parent.width
-                  Repeater {
-                    model: root.agyRows
-                    PeriodRow {
-                      required property var modelData
-                      required property int index
-                      label: modelData.label
-                      tokens: modelData.tokens
-                      details: modelData.details
-                      split: modelData.split
-                      rawTokens: modelData.rawTokens
-                      first: index === 0
-                    }
-
-                  }
-                }
+                mode: "antigravity"
+                rangeOptions: root.monthOptions
+                selectedRange: root.selectedMonths
+                onRangeSelected: months => root.selectedMonths = months
+                primaryDaily: root.agyMonitor ? root.agyMonitor.dailyUsage : []
+                compactFn: v => root.agyMonitor ? root.agyMonitor.compact(v) : (v >= 1e6 ? (v/1e6).toFixed(1) + "M" : v.toString())
               }
 
               SectionHead {
@@ -1417,60 +805,6 @@ Item {
                 font.family: t.mono
                 color: t.red
                 wrapMode: Text.Wrap
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // ---- Shared hover tooltip (same pattern as the old separate cards) ----
-    PopupWindow {
-      id: tip
-      anchor.window: root.barWindow
-      anchor.rect.x: root.barWindow ? Math.max(8, Math.min(root.tipX - tipBox.width / 2, root.barWindow.width - tipBox.width - 12)) : 0
-      anchor.rect.y: root.tipY
-      visible: false
-      implicitWidth: tipBox.width
-      implicitHeight: tipBox.height
-      color: "transparent"
-
-      Rectangle {
-        id: tipBox
-        implicitWidth: Math.max(50, tipCol.implicitWidth + 16)
-        implicitHeight: tipCol.implicitHeight + 10
-        radius: t.radiusSm
-        color: t.surfaceElevated
-        border.color: t.line
-        border.width: 1
-
-        Column {
-          id: tipCol
-          anchors.centerIn: parent
-          spacing: 3
-
-          Repeater {
-            model: root.tipDetails ? root.tipDetails.rows : []
-
-            delegate: Row {
-              id: tipDelegate
-              required property var modelData
-              required property int index
-              spacing: 12
-
-              Text {
-                width: 78
-                text: tipDelegate.modelData.k
-                color: t.ink3
-                font.pixelSize: 11
-                font.family: t.mono
-              }
-
-              Text {
-                text: tipDelegate.modelData.v
-                color: t.ink1
-                font.pixelSize: 11
-                font.family: t.mono
               }
             }
           }

@@ -61,6 +61,7 @@ int main(int argc, char *argv[]) {
     root[QStringLiteral("lastDays")] = windowToJson(result.lastDays);
     root[QStringLiteral("lastDaysRequested")] = result.lastDaysRequested;
     root[QStringLiteral("monthModels")] = models;
+    root[QStringLiteral("dailyUsage")] = QJsonArray::fromVariantList(result.dailyUsage);
     root[QStringLiteral("refreshedAt")] = result.refreshedAt;
 
     QTextStream out(stdout);

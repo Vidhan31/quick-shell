@@ -34,6 +34,7 @@ struct TokenRefreshResult {
     int lastDaysRequested = 10;
     QString refreshedAt;
     QVariantList monthModels;
+    QVariantList dailyUsage;
 };
 
 // Window bounds in milliseconds since epoch, local time.
@@ -85,6 +86,7 @@ class TokenUsage : public QObject {
     Q_PROPERTY(double lastDaysCost READ lastDaysCost NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap lastDaysSplit READ lastDaysSplit NOTIFY dataChanged)
     Q_PROPERTY(QString lastRefresh READ lastRefresh NOTIFY dataChanged)
+    Q_PROPERTY(QVariantList dailyUsage READ dailyUsage NOTIFY dataChanged)
     Q_PROPERTY(QString error READ error NOTIFY dataChanged)
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
     Q_PROPERTY(bool configured READ isConfigured NOTIFY dataChanged)
@@ -100,6 +102,7 @@ public:
     [[nodiscard]] double weekCost() const { return m_week.cost; }
     [[nodiscard]] double monthCost() const { return m_month.cost; }
     [[nodiscard]] QVariantList monthModels() const { return m_monthModels; }
+    [[nodiscard]] QVariantList dailyUsage() const { return m_dailyUsage; }
     [[nodiscard]] QVariantMap todaySplit() const { return m_todaySplit; }
     [[nodiscard]] QVariantMap weekSplit() const { return m_weekSplit; }
     [[nodiscard]] QVariantMap monthSplit() const { return m_monthSplit; }
@@ -138,6 +141,7 @@ private:
     TokenWindow m_lastDaysWindow;
     int m_lastDays{10};
     QVariantList m_monthModels;
+    QVariantList m_dailyUsage;
     QVariantMap m_todaySplit;
     QVariantMap m_weekSplit;
     QVariantMap m_monthSplit;

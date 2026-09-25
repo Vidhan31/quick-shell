@@ -36,6 +36,7 @@ struct AgRefreshResult {
     QString refreshedAt;
     QVariantList monthModels;
     QVariantList monthSources;
+    QVariantList dailyUsage;
 };
 
 // Window bounds in milliseconds since epoch, Asia/Kolkata calendar days.
@@ -84,6 +85,7 @@ class AntigravityUsage : public QObject {
     Q_PROPERTY(qlonglong lastDaysTokens READ lastDaysTokens NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap lastDaysSplit READ lastDaysSplit NOTIFY dataChanged)
     Q_PROPERTY(QString lastRefresh READ lastRefresh NOTIFY dataChanged)
+    Q_PROPERTY(QVariantList dailyUsage READ dailyUsage NOTIFY dataChanged)
     Q_PROPERTY(QString error READ error NOTIFY dataChanged)
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
     Q_PROPERTY(bool configured READ isConfigured NOTIFY dataChanged)
@@ -97,6 +99,7 @@ public:
     [[nodiscard]] qlonglong monthTokens() const { return m_month.total(); }
     [[nodiscard]] QVariantList monthModels() const { return m_monthModels; }
     [[nodiscard]] QVariantList monthSources() const { return m_monthSources; }
+    [[nodiscard]] QVariantList dailyUsage() const { return m_dailyUsage; }
     [[nodiscard]] QVariantMap todaySplit() const { return m_todaySplit; }
     [[nodiscard]] QVariantMap weekSplit() const { return m_weekSplit; }
     [[nodiscard]] QVariantMap monthSplit() const { return m_monthSplit; }
@@ -135,6 +138,7 @@ private:
     int m_lastDays{10};
     QVariantList m_monthModels;
     QVariantList m_monthSources;
+    QVariantList m_dailyUsage;
     QVariantMap m_todaySplit;
     QVariantMap m_weekSplit;
     QVariantMap m_monthSplit;

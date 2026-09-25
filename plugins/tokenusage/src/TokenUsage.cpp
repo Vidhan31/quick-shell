@@ -141,10 +141,56 @@ bool queryWindow(QSqlDatabase &db, qint64 startMs, qint64 endMs, TokenWindow *ou
     return true;
 }
 
+// Daily aggregates for the rolling window.
+bool queryDaily(QSqlDatabase &db,
+                qint64 startMs,
+                qint64 endMs,
+                const QString &tzModifier,
+                QMap<QString, TokenWindow> *out,
+                QString *error) {
+    QSqlQuery query(db);
+    query.setForwardOnly(true);
+    const QString sql = QStringLiteral(
+        "SELECT strftime('%Y-%m-%d', time_created / 1000, 'unixepoch', '%1') AS day,"
+        " COALESCE(SUM(CAST(json_extract(data,'$.tokens.input') AS INTEGER)),0),"
+        " COALESCE(SUM(CAST(json_extract(data,'$.tokens.output') AS INTEGER)),0),"
+        " COALESCE(SUM(CAST(json_extract(data,'$.tokens.cache.read') AS INTEGER)),0),"
+        " COALESCE(SUM(CAST(json_extract(data,'$.tokens.cache.write') AS INTEGER)),0),"
+        " COALESCE(SUM(CAST(json_extract(data,'$.tokens.reasoning') AS INTEGER)),0),"
+        " COALESCE(SUM(CAST(json_extract(data,'$.cost') AS REAL)),0)"
+        " FROM message"
+        " WHERE json_valid(data) AND time_created >= ? AND time_created < ?"
+        " GROUP BY day").arg(tzModifier);
+    query.prepare(sql);
+    query.addBindValue(startMs);
+    query.addBindValue(endMs);
+    if (!query.exec()) {
+        *error = query.lastError().text();
+        return false;
+    }
+    while (query.next()) {
+        const QString day = query.value(0).toString();
+        if (day.isEmpty()) {
+            continue;
+        }
+        TokenWindow &window = (*out)[day];
+        window.input += query.value(1).toLongLong();
+        window.output += query.value(2).toLongLong();
+        window.cacheRead += query.value(3).toLongLong();
+        window.cacheWrite += query.value(4).toLongLong();
+        window.reasoning += query.value(5).toLongLong();
+        window.cost += query.value(6).toDouble();
+    }
+    return true;
+}
+
 bool collectFromDb(const QString &path,
                    const TokenWindowBounds &bounds,
+                   qint64 dailyStartMs,
+                   const QString &tzModifier,
                    TokenRefreshResult *result,
                    QMap<QString, TokenWindow> *monthModels,
+                   QMap<QString, TokenWindow> *dailyMap,
                    QString *error) {
     const QString connectionName = QStringLiteral("tokenusage-%1").arg(g_connectionCounter.fetchAndAddOrdered(1));
     {
@@ -176,9 +222,11 @@ bool collectFromDb(const QString &path,
         const bool lastDaysOk = monthOk && queryWindow(db, bounds.lastDaysStart, bounds.end, &result->lastDays, error);
         const bool modelsOk =
             lastDaysOk && queryModels(db, bounds.monthStart, bounds.end, monthModels, error);
+        const bool dailyOk =
+            modelsOk && queryDaily(db, dailyStartMs, bounds.end, tzModifier, dailyMap, error);
 
         db.close();
-        if (!modelsOk) {
+        if (!dailyOk) {
             QSqlDatabase::removeDatabase(connectionName);
             return false;
         }
@@ -240,10 +288,10 @@ QStringList discoverOpenCodeDbPaths() {
 
 int clampLastDays(int days) {
     if (days < 1) {
-        return 10;
-    }
-    if (days > 30) {
         return 30;
+    }
+    if (days > 400) {
+        return 400;
     }
     return days;
 }
@@ -261,12 +309,25 @@ TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastDa
     }
     result.configured = true;
 
+    static const QTimeZone ist(QStringLiteral("Asia/Kolkata").toLatin1());
+    const QTimeZone zone = ist.isValid() ? ist : QTimeZone::systemTimeZone();
+    const QDateTime now = QDateTime::currentDateTimeUtc().toTimeZone(zone);
+    const QDate today = now.date();
+    const int offsetSec = zone.offsetFromUtc(now);
+    const QString tzModifier = QStringLiteral("%1%2 seconds")
+        .arg(offsetSec >= 0 ? QStringLiteral("+") : QStringLiteral("-"))
+        .arg(qAbs(offsetSec));
+
+    const QDate rangeStartDay = today.addDays(-(result.lastDaysRequested - 1));
+    const qint64 dailyStartMs = QDateTime(rangeStartDay, QTime(0, 0), zone).toMSecsSinceEpoch();
+
     int readable = 0;
     QString firstError;
     QMap<QString, TokenWindow> monthModels;
+    QMap<QString, TokenWindow> dailyMap;
     for (const QString &path : result.dbPaths) {
         QString error;
-        if (collectFromDb(path, rollingBounds, &result, &monthModels, &error)) {
+        if (collectFromDb(path, rollingBounds, dailyStartMs, tzModifier, &result, &monthModels, &dailyMap, &error)) {
             ++readable;
         } else if (firstError.isEmpty()) {
             firstError = error;
@@ -296,6 +357,28 @@ TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastDa
         models.append(item);
     }
     result.monthModels = models;
+
+    QVariantList dailyList;
+    for (int d = 0; d < result.lastDaysRequested; ++d) {
+        const QDate day = rangeStartDay.addDays(d);
+        const QString dayKey = day.toString(QStringLiteral("yyyy-MM-dd"));
+        const TokenWindow window = dailyMap.value(dayKey);
+        QVariantMap point;
+        point.insert(QStringLiteral("date"), dayKey);
+        point.insert(QStringLiteral("label"), day.toString(QStringLiteral("d MMM")));
+        point.insert(QStringLiteral("weekday"), day.toString(QStringLiteral("ddd")));
+        point.insert(QStringLiteral("dayNumber"), day.day());
+        point.insert(QStringLiteral("tokens"), window.total());
+        point.insert(QStringLiteral("input"), window.input);
+        point.insert(QStringLiteral("output"), window.output);
+        point.insert(QStringLiteral("cacheRead"), window.cacheRead);
+        point.insert(QStringLiteral("cacheWrite"), window.cacheWrite);
+        point.insert(QStringLiteral("reasoning"), window.reasoning);
+        point.insert(QStringLiteral("cost"), window.cost);
+        dailyList.append(point);
+    }
+    result.dailyUsage = dailyList;
+
     result.ok = true;
     result.refreshedAt = refreshedAtIst();
     return result;
@@ -357,11 +440,12 @@ void TokenUsage::loadCachedResult() {
     m_week = windowFromCache(root.value(QStringLiteral("week")).toObject());
     m_month = windowFromCache(root.value(QStringLiteral("month")).toObject());
     m_lastDaysWindow = windowFromCache(root.value(QStringLiteral("lastDays")).toObject());
-    m_lastDays = root.value(QStringLiteral("lastDaysRequested")).toInt(10);
-    if (m_lastDays < 1 || m_lastDays > 30) {
-        m_lastDays = 10;
+    m_lastDays = root.value(QStringLiteral("lastDaysRequested")).toInt(30);
+    if (m_lastDays < 1 || m_lastDays > 400) {
+        m_lastDays = 30;
     }
     m_monthModels = root.value(QStringLiteral("monthModels")).toArray().toVariantList();
+    m_dailyUsage = root.value(QStringLiteral("dailyUsage")).toArray().toVariantList();
     m_todaySplit = splitMap(m_today);
     m_weekSplit = splitMap(m_week);
     m_monthSplit = splitMap(m_month);
@@ -383,6 +467,7 @@ void TokenUsage::saveCachedResult(const TokenRefreshResult &result) {
     root[QStringLiteral("lastDays")] = windowToCache(result.lastDays);
     root[QStringLiteral("lastDaysRequested")] = result.lastDaysRequested;
     root[QStringLiteral("monthModels")] = QJsonArray::fromVariantList(result.monthModels);
+    root[QStringLiteral("dailyUsage")] = QJsonArray::fromVariantList(result.dailyUsage);
     root[QStringLiteral("refreshedAt")] = result.refreshedAt;
     QSaveFile file(usageCachePath());
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -432,8 +517,8 @@ void TokenUsage::refresh() {
 void TokenUsage::setLastDays(int days) {
     if (days < 1) {
         days = 1;
-    } else if (days > 30) {
-        days = 30;
+    } else if (days > 400) {
+        days = 400;
     }
     if (m_lastDays == days) {
         return;
@@ -479,6 +564,7 @@ void TokenUsage::onRefreshed(const TokenRefreshResult &result) {
         m_month = result.month;
         m_lastDaysWindow = result.lastDays;
         m_monthModels = result.monthModels;
+        m_dailyUsage = result.dailyUsage;
         m_todaySplit = splitMap(result.today);
         m_weekSplit = splitMap(result.week);
         m_monthSplit = splitMap(result.month);
