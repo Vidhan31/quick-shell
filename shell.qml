@@ -310,7 +310,7 @@ ShellRoot {
         color: "transparent"
 
         onVisibleChanged: {
-          if (!visible)
+          if (!visible && typeof aiControlCenter.hideTip === "function")
             aiControlCenter.hideTip();
         }
 

@@ -44,6 +44,10 @@ Item {
       root.agyMonitor.setLastDays(days);
   }
 
+  function hideTip(): void {
+    // Retained for popup dismissal lifecycle compatibility
+  }
+
   onSelectedMonthsChanged: root.syncRange()
   onOcMonitorChanged: root.syncRange()
   onAgyMonitorChanged: root.syncRange()
