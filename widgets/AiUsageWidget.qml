@@ -54,12 +54,15 @@ Item {
     spacing: 7
     anchors.verticalCenter: parent.verticalCenter
 
-    Text {
+    Image {
       anchors.verticalCenter: parent.verticalCenter
-      text: "Σ"
-      font.family: Theme.mono
-      font.pixelSize: 13
-      color: root.ocConfigured ? Theme.teal : Theme.ink3
+      source: Qt.resolvedUrl("../assets/opencode.svg")
+      width: 10
+      height: 13
+      sourceSize.width: 20
+      sourceSize.height: 26
+      fillMode: Image.PreserveAspectFit
+      opacity: root.ocConfigured ? 1.0 : 0.35
     }
 
     Text {
@@ -107,12 +110,15 @@ Item {
     }
 
 
-    Text {
+    Image {
       anchors.verticalCenter: parent.verticalCenter
-      text: "✦"
-      font.family: Theme.mono
-      font.pixelSize: 13
-      color: root.agyConfigured ? Theme.violet : Theme.ink3
+      source: Qt.resolvedUrl("../assets/gemini.svg")
+      width: 14
+      height: 14
+      sourceSize.width: 28
+      sourceSize.height: 28
+      fillMode: Image.PreserveAspectFit
+      opacity: root.agyConfigured ? 1.0 : 0.35
     }
 
     Text {

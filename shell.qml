@@ -88,7 +88,7 @@ ShellRoot {
         notifPopup.visible = false;
       }
 
-      // Left: CPU/MEM/GPU, AI tokens, and Tailscale
+      // Left: CPU/MEM/GPU and AI tokens
       RowLayout {
         id: leftBarRow
         anchors {
@@ -115,16 +115,6 @@ ShellRoot {
 
           AiUsageWidget {
             id: aiBarWidget
-          }
-        }
-
-        BarChip {
-          id: tsHit
-          active: tsPopup.visible
-          onClicked: bar.togglePopup(tsPopup)
-
-          TailscaleWidget {
-            id: tsBarWidget
           }
         }
       }
@@ -157,7 +147,7 @@ ShellRoot {
         }
       }
 
-      // Right: Media, Volume, Ethernet, Privacy, Notifications, and System Tray
+      // Right: Privacy, Audio & Media, Connectivity, Notifications, and System Tray
       RowLayout {
         id: rightBarRow
         anchors {
@@ -167,55 +157,7 @@ ShellRoot {
         }
         spacing: 8
 
-        BarChip {
-          id: mediaHit
-          active: mediaPopup.visible
-          acceptedButtons: Qt.LeftButton | Qt.RightButton
-          onClicked: bar.togglePopup(mediaPopup)
-          onRightClicked: {
-            if (mediaBarWidget.activePlayer && mediaBarWidget.activePlayer.canTogglePlaying) {
-              mediaBarWidget.activePlayer.togglePlaying();
-            }
-          }
-
-          MediaBarWidget {
-            id: mediaBarWidget
-          }
-        }
-
-        BarChip {
-          id: volHit
-          active: volPopup.visible
-          acceptedButtons: Qt.LeftButton | Qt.RightButton
-          onClicked: bar.togglePopup(volPopup)
-          onRightClicked: volBarWidget.toggleMute()
-
-          VolumeBarWidget {
-            id: volBarWidget
-            audio: audioService
-          }
-        }
-
-        BarChip {
-          id: ethHit
-          active: ethPopup.visible
-          onClicked: bar.togglePopup(ethPopup)
-
-          EthernetWidget {
-            id: ethBarWidget
-          }
-        }
-
-        BarChip {
-          id: bluetoothHit
-          active: bluetoothPopup.visible
-          onClicked: bar.togglePopup(bluetoothPopup)
-
-          BluetoothWidget {
-            id: bluetoothBarWidget
-          }
-        }
-
+        // Dynamic Privacy Capsule (Camera & Microphone)
         Item {
           id: privacyHit
           visible: privacyWidget.hasActive || implicitWidth > 0
@@ -234,6 +176,85 @@ ShellRoot {
           }
         }
 
+        // Combined Audio & Media Capsule
+        BarCapsule {
+          id: audioMediaCapsule
+
+          BarSegment {
+            id: volHit
+            active: volPopup.visible
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: bar.togglePopup(volPopup)
+            onRightClicked: volBarWidget.toggleMute()
+
+            VolumeBarWidget {
+              id: volBarWidget
+              audio: audioService
+            }
+          }
+
+          BarDivider {
+            visible: mediaBarWidget.hasPlayer
+          }
+
+          BarSegment {
+            id: mediaHit
+            visible: mediaBarWidget.hasPlayer
+            active: mediaPopup.visible
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: bar.togglePopup(mediaPopup)
+            onRightClicked: {
+              if (mediaBarWidget.activePlayer && mediaBarWidget.activePlayer.canTogglePlaying) {
+                mediaBarWidget.activePlayer.togglePlaying();
+              }
+            }
+
+            MediaBarWidget {
+              id: mediaBarWidget
+            }
+          }
+        }
+
+        // Combined Connectivity Capsule (Ethernet, Tailscale, Bluetooth)
+        BarCapsule {
+          id: connectivityCapsule
+
+          BarSegment {
+            id: ethHit
+            active: ethPopup.visible
+            onClicked: bar.togglePopup(ethPopup)
+
+            EthernetWidget {
+              id: ethBarWidget
+            }
+          }
+
+          BarDivider {}
+
+          BarSegment {
+            id: tsHit
+            active: tsPopup.visible
+            onClicked: bar.togglePopup(tsPopup)
+
+            TailscaleWidget {
+              id: tsBarWidget
+            }
+          }
+
+          BarDivider {}
+
+          BarSegment {
+            id: bluetoothHit
+            active: bluetoothPopup.visible
+            onClicked: bar.togglePopup(bluetoothPopup)
+
+            BluetoothWidget {
+              id: bluetoothBarWidget
+            }
+          }
+        }
+
+        // Notifications
         BarChip {
           id: notifHit
           active: notifPopup.visible
@@ -245,6 +266,7 @@ ShellRoot {
           }
         }
 
+        // System Tray
         SystemTrayWidget {
           id: trayWidget
           barWindow: bar
@@ -306,8 +328,8 @@ ShellRoot {
       PopupWindow {
         id: tsPopup
         anchor.item: tsHit
-        anchor.edges: Edges.Bottom | Edges.Left
-        anchor.gravity: Edges.Bottom | Edges.Right
+        anchor.edges: Edges.Bottom
+        anchor.gravity: Edges.Bottom
         anchor.margins.top: 6
         anchor.adjustment: PopupAdjustment.SlideX
         visible: false

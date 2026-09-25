@@ -34,161 +34,128 @@ Item {
   }
 
   implicitHeight: Theme.btnHeightSm
-  implicitWidth: contentRow.width
+  implicitWidth: root.hasActive ? (contentRow.implicitWidth + 16) : 0
   width: implicitWidth
   height: implicitHeight
 
+  Rectangle {
+    id: capsuleBg
+    anchors.fill: parent
+    radius: Theme.radiusSm
+    color: privacyMouse.containsMouse ? Theme.hoverFill : Theme.surface
+    border.color: (root.cameraActive && root.micActive) ? Theme.warn : (root.cameraActive ? Theme.ok : Theme.warn)
+    border.width: 1
+
+    Behavior on color { ColorAnimation { duration: 120 } }
+    Behavior on border.color { ColorAnimation { duration: 120 } }
+  }
+
   Row {
     id: contentRow
-    spacing: 6
-    anchors.verticalCenter: parent.verticalCenter
+    anchors.centerIn: parent
+    spacing: 8
 
-    // -------------------------------------------------------------
-    // Camera Indicator Pill
-    // -------------------------------------------------------------
-    Item {
-      id: camPill
+    // Camera Section
+    Row {
+      id: camSection
       visible: root.cameraActive
-      width: root.cameraActive ? (camInnerRow.width + 16) : 0
-      height: Theme.btnHeightSm
       anchors.verticalCenter: parent.verticalCenter
+      spacing: 6
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: "󰄀"
+        font.family: root.monoFont
+        font.pixelSize: 16
+        font.bold: true
+        color: Theme.ok
+      }
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.cameraApps.length > 0 ? ("Cam: " + root.cameraApps[0]) : "Camera"
+        font.family: root.monoFont
+        font.pixelSize: Theme.fontSm
+        font.bold: true
+        color: Theme.ok
+        elide: Text.ElideRight
+        width: Math.min(implicitWidth, 110)
+      }
 
       Rectangle {
-        id: camBg
-        anchors.fill: parent
-        radius: Theme.radiusSm
-        color: camMouse.containsMouse ? Qt.rgba(Theme.green.r, Theme.green.g, Theme.green.b, 0.25) : Qt.rgba(Theme.green.r, Theme.green.g, Theme.green.b, 0.15)
-        border.color: Theme.ok
-        border.width: 1
+        width: 7
+        height: 7
+        radius: 3.5
+        anchors.verticalCenter: parent.verticalCenter
+        color: Theme.ok
 
-        Behavior on color { ColorAnimation { duration: 120 } }
-      }
-
-      Row {
-        id: camInnerRow
-        anchors.centerIn: parent
-        spacing: 6
-
-        // Camera Icon
-        Text {
-          anchors.verticalCenter: parent.verticalCenter
-          text: "󰄀"
-          font.family: root.monoFont
-          font.pixelSize: 13
-          font.bold: true
-          color: Theme.ok
+        SequentialAnimation on opacity {
+          running: root.cameraActive
+          loops: Animation.Infinite
+          NumberAnimation { from: 1.0; to: 0.25; duration: 600; easing.type: Easing.InOutQuad }
+          NumberAnimation { from: 0.25; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
         }
-
-        // Camera text label (app name if available, else "Cam")
-        Text {
-          anchors.verticalCenter: parent.verticalCenter
-          text: root.cameraApps.length > 0 ? ("Cam: " + root.cameraApps[0]) : "Camera"
-          font.family: root.monoFont
-          font.pixelSize: Theme.fontSm
-          font.bold: true
-          color: Theme.ok
-          elide: Text.ElideRight
-          width: Math.min(implicitWidth, 110)
-        }
-
-        // Live Pulsing Green Status Dot
-        Rectangle {
-          width: 6
-          height: 6
-          radius: 3
-          anchors.verticalCenter: parent.verticalCenter
-          color: Theme.ok
-
-          SequentialAnimation on opacity {
-            running: root.cameraActive
-            loops: Animation.Infinite
-            NumberAnimation { from: 1.0; to: 0.25; duration: 600; easing.type: Easing.InOutQuad }
-            NumberAnimation { from: 0.25; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
-          }
-        }
-      }
-
-      MouseArea {
-        id: camMouse
-        anchors.fill: parent
-        cursorShape: Qt.PointingHandCursor
-        hoverEnabled: true
-        onClicked: root.clicked()
       }
     }
 
-    // -------------------------------------------------------------
-    // Microphone Indicator Pill
-    // -------------------------------------------------------------
-    Item {
-      id: micPill
+    // Divider between camera and mic if both active
+    Rectangle {
+      visible: root.cameraActive && root.micActive
+      width: 1
+      height: 12
+      anchors.verticalCenter: parent.verticalCenter
+      color: Theme.line
+    }
+
+    // Microphone Section
+    Row {
+      id: micSection
       visible: root.micActive
-      width: root.micActive ? (micInnerRow.width + 16) : 0
-      height: Theme.btnHeightSm
       anchors.verticalCenter: parent.verticalCenter
+      spacing: 6
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: "󰍬"
+        font.family: root.monoFont
+        font.pixelSize: 16
+        font.bold: true
+        color: Theme.warn
+      }
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.micApps.length > 0 ? ("Mic: " + root.micApps[0]) : "Microphone"
+        font.family: root.monoFont
+        font.pixelSize: Theme.fontSm
+        font.bold: true
+        color: Theme.warn
+        elide: Text.ElideRight
+        width: Math.min(implicitWidth, 110)
+      }
 
       Rectangle {
-        id: micBg
-        anchors.fill: parent
-        radius: Theme.radiusSm
-        color: micMouse.containsMouse ? Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.25) : Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.15)
-        border.color: Theme.warn
-        border.width: 1
+        width: 7
+        height: 7
+        radius: 3.5
+        anchors.verticalCenter: parent.verticalCenter
+        color: Theme.warn
 
-        Behavior on color { ColorAnimation { duration: 120 } }
-      }
-
-      Row {
-        id: micInnerRow
-        anchors.centerIn: parent
-        spacing: 6
-
-        // Microphone Icon
-        Text {
-          anchors.verticalCenter: parent.verticalCenter
-          text: "󰍬"
-          font.family: root.monoFont
-          font.pixelSize: 13
-          font.bold: true
-          color: Theme.warn
+        SequentialAnimation on opacity {
+          running: root.micActive
+          loops: Animation.Infinite
+          NumberAnimation { from: 1.0; to: 0.25; duration: 600; easing.type: Easing.InOutQuad }
+          NumberAnimation { from: 0.25; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
         }
-
-        // Microphone text label (app name if available, else "Mic")
-        Text {
-          anchors.verticalCenter: parent.verticalCenter
-          text: root.micApps.length > 0 ? ("Mic: " + root.micApps[0]) : "Microphone"
-          font.family: root.monoFont
-          font.pixelSize: Theme.fontSm
-          font.bold: true
-          color: Theme.warn
-          elide: Text.ElideRight
-          width: Math.min(implicitWidth, 110)
-        }
-
-        // Live Pulsing Peach/Orange Status Dot
-        Rectangle {
-          width: 6
-          height: 6
-          radius: 3
-          anchors.verticalCenter: parent.verticalCenter
-          color: Theme.warn
-
-          SequentialAnimation on opacity {
-            running: root.micActive
-            loops: Animation.Infinite
-            NumberAnimation { from: 1.0; to: 0.25; duration: 600; easing.type: Easing.InOutQuad }
-            NumberAnimation { from: 0.25; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
-          }
-        }
-      }
-
-      MouseArea {
-        id: micMouse
-        anchors.fill: parent
-        cursorShape: Qt.PointingHandCursor
-        hoverEnabled: true
-        onClicked: root.clicked()
       }
     }
+  }
+
+  MouseArea {
+    id: privacyMouse
+    anchors.fill: parent
+    cursorShape: Qt.PointingHandCursor
+    hoverEnabled: true
+    onClicked: root.clicked()
   }
 }

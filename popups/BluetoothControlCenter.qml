@@ -141,7 +141,13 @@ Item {
           spacing: 10
 
           Text {
-            text: "󰖲"
+            text: {
+              if (!root.adapter || root.adapter.state === BluetoothAdapterState.Blocked) return "󰂲";
+              if (root.adapter.state === BluetoothAdapterState.Enabled) {
+                return (root.devices && root.devices.filter(d => d.connected).length > 0) ? "󰂱" : "󰂯";
+              }
+              return "󰂲";
+            }
             font.family: Theme.mono
             font.pixelSize: 19
             color: root.adapterStateColor()
@@ -348,7 +354,7 @@ Item {
 
                 Text {
                   visible: !deviceCard.modelData.icon || deviceCard.modelData.icon.length === 0
-                  text: "󰖲"
+                  text: deviceCard.modelData.connected ? "󰂱" : "󰂯"
                   font.family: Theme.mono
                   font.pixelSize: 18
                   color: Theme.accent

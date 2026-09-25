@@ -33,16 +33,23 @@ Item {
 
   Component.onCompleted: root.refresh()
 
+  readonly property string activeLabel: {
+    if (!root.isConnected) return "Offline";
+    if (root.hasFunnel) return "Funnel " + root.serveCount;
+    if (root.serveCount > 0) return "Serve " + root.serveCount;
+    return "";
+  }
+
   Row {
     id: contentRow
-    spacing: 7
+    spacing: root.activeLabel !== "" ? 6 : 0
     anchors.verticalCenter: parent.verticalCenter
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
-      text: "󰖩"
+      text: "󰦝"
       font.family: Theme.mono
-      font.pixelSize: 13
+      font.pixelSize: 16
       color: {
         if (!root.isConnected) return Theme.ink3;
         if (root.hasFunnel) return Theme.violet;
@@ -52,12 +59,8 @@ Item {
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
-      text: {
-        if (!root.isConnected) return "Offline";
-        if (root.hasFunnel) return "Funnel " + root.serveCount;
-        if (root.serveCount > 0) return "Serve " + root.serveCount;
-        return "Tailscale";
-      }
+      visible: root.activeLabel !== ""
+      text: root.activeLabel
       font.pixelSize: Theme.fontBase
       color: root.isConnected ? Theme.ink1 : Theme.ink3
     }

@@ -353,7 +353,7 @@ Item {
         spacing: 10
 
         Text {
-          text: "󰖩"
+          text: "󰦝"
           font.family: t.mono
           font.pixelSize: 19
           color: root.connected ? t.accent : t.ink3

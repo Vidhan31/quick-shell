@@ -99,8 +99,8 @@ Item {
     repeat: false
     onTriggered: {
       if (root.hoveredItem && root.hoveredTarget && !passivePopup.visible && !contextMenuPopup.visible) {
-        const pt = root.hoveredTarget.mapToItem(root, 0, 0);
-        root.tooltipX = root.x + pt.x + root.hoveredTarget.width / 2;
+        const pt = root.hoveredTarget.mapToItem(null, 0, 0);
+        root.tooltipX = pt.x + root.hoveredTarget.width / 2;
         trayTooltip.visible = true;
       }
     }
@@ -289,8 +289,8 @@ Item {
         root.menuPopupX = passivePopup.anchor.rect.x + pt.x + targetItem.width / 2;
         root.menuPopupY = passivePopup.anchor.rect.y + pt.y + targetItem.height + 4;
       } else {
-        const pt = targetItem.mapToItem(root, 0, 0);
-        root.menuPopupX = root.x + pt.x + targetItem.width / 2;
+        const pt = targetItem.mapToItem(null, 0, 0);
+        root.menuPopupX = pt.x + targetItem.width / 2;
         root.menuPopupY = root.barWindow ? (root.barWindow.implicitHeight + 6) : 38;
       }
 
@@ -311,7 +311,7 @@ Item {
         }
       }
     } else if (root.barWindow) {
-      const relX = root.x + targetItem.mapToItem(root, 0, 0).x;
+      const relX = targetItem.mapToItem(null, 0, 0).x;
       trayItem.display(root.barWindow, relX, root.barWindow.height);
     }
   }
@@ -517,8 +517,8 @@ Item {
     anchor.window: root.barWindow
     anchor.rect.x: {
       if (!chevronButton.visible || !root.barWindow) return 0;
-      const targetRelX = root.x + chevronButton.mapToItem(root, 0, 0).x;
-      const idealX = targetRelX + chevronButton.width / 2 - passiveCard.implicitWidth / 2;
+      const targetX = chevronButton.mapToItem(null, 0, 0).x;
+      const idealX = targetX + chevronButton.width / 2 - passiveCard.implicitWidth / 2;
       return Math.max(8, Math.min(idealX, root.barWindow.width - passiveCard.implicitWidth - 12));
     }
     anchor.rect.y: root.barWindow ? (root.barWindow.implicitHeight + 6) : 38

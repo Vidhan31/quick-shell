@@ -26,12 +26,12 @@ Item {
   readonly property bool isCarrier: monitor.carrier
   readonly property bool hasIp: Boolean(monitor.ip)
 
-  // Status-derived icon glyph
+  // Status-derived icon glyph (Wi-Fi glyph)
   readonly property string iconGlyph: {
-    if (!root.isCarrier) return "󰈂"; // Cable disconnected
-    if (root.currentStatus === "connecting") return "󰌗"; // Pending / DHCP
-    if (root.hasInternet) return "󰈀"; // Connected & Internet OK
-    return "󰈀"; // Connected LAN, no WAN
+    if (!root.isCarrier) return "󰤭"; // Disconnected
+    if (root.currentStatus === "connecting") return "󰤫"; // Connecting / Pending
+    if (root.hasInternet) return "󰖩"; // Connected & Internet OK
+    return "󰖩"; // Connected LAN, no WAN
   }
 
   // Status-derived color
@@ -64,30 +64,15 @@ Item {
 
   Row {
     id: contentRow
-    spacing: 5
     anchors.verticalCenter: parent.verticalCenter
 
-    // Small Ethernet status icon
+    // Ethernet status icon — color indicates state (Green: OK, Amber: LAN, Red: Unplugged)
     Text {
       id: ethIcon
       anchors.verticalCenter: parent.verticalCenter
       text: root.iconGlyph
       font.family: root.monoFont
-      font.pixelSize: 13
-      color: root.statusColor
-
-      Behavior on color {
-        ColorAnimation { duration: 150 }
-      }
-    }
-
-    // Small status dot indicator
-    Rectangle {
-      id: statusDot
-      width: 6
-      height: 6
-      radius: 3
-      anchors.verticalCenter: parent.verticalCenter
+      font.pixelSize: 16
       color: root.statusColor
 
       Behavior on color {

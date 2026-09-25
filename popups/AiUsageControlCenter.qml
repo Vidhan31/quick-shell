@@ -287,8 +287,8 @@ Item {
 
   readonly property var segItems: [
     { icon: "", label: "Overview", count: 0, alert: root.hasError },
-    { icon: "Σ", label: "OpenCode", count: root.ocModelRows.length, alert: root.ocError !== "" },
-    { icon: "✦", label: "Antigravity", count: root.agyModelRows.length, alert: root.agyError !== "" }
+    { iconSource: Qt.resolvedUrl("../assets/opencode.svg"), label: "OpenCode", count: root.ocModelRows.length, alert: root.ocError !== "" },
+    { iconSource: Qt.resolvedUrl("../assets/gemini.svg"), label: "Antigravity", count: root.agyModelRows.length, alert: root.agyError !== "" }
   ]
 
   readonly property var t: Theme
@@ -576,12 +576,25 @@ Item {
                 RowLayout {
                   width: parent.width
                   height: 38
-                  Text {
+                  Row {
                     Layout.fillWidth: true
-                    text: "Σ  OpenCode"
-                    font.pixelSize: 12
-                    font.family: t.mono
-                    color: t.teal
+                    spacing: 7
+                    Image {
+                      anchors.verticalCenter: parent.verticalCenter
+                      source: Qt.resolvedUrl("../assets/opencode.svg")
+                      width: 12
+                      height: 14
+                      sourceSize.width: 24
+                      sourceSize.height: 28
+                      fillMode: Image.PreserveAspectFit
+                    }
+                    Text {
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: "OpenCode"
+                      font.pixelSize: 12
+                      font.family: t.mono
+                      color: t.teal
+                    }
                   }
                   InfoDot {
                     Layout.alignment: Qt.AlignVCenter
@@ -614,12 +627,25 @@ Item {
                 RowLayout {
                   width: parent.width
                   height: 38
-                  Text {
+                  Row {
                     Layout.fillWidth: true
-                    text: "✦  Antigravity"
-                    font.pixelSize: 12
-                    font.family: t.mono
-                    color: t.violet
+                    spacing: 7
+                    Image {
+                      anchors.verticalCenter: parent.verticalCenter
+                      source: Qt.resolvedUrl("../assets/gemini.svg")
+                      width: 14
+                      height: 14
+                      sourceSize.width: 28
+                      sourceSize.height: 28
+                      fillMode: Image.PreserveAspectFit
+                    }
+                    Text {
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: "Antigravity"
+                      font.pixelSize: 12
+                      font.family: t.mono
+                      color: t.violet
+                    }
                   }
                   InfoDot {
                     Layout.alignment: Qt.AlignVCenter
@@ -725,12 +751,25 @@ Item {
                     RowLayout {
                       width: parent.width
                       height: 38
-                      Text {
+                      Row {
                         Layout.fillWidth: true
-                        text: "Σ  OpenCode"
-                        font.pixelSize: 12
-                        font.family: t.mono
-                        color: t.teal
+                        spacing: 7
+                        Image {
+                          anchors.verticalCenter: parent.verticalCenter
+                          source: Qt.resolvedUrl("../assets/opencode.svg")
+                          width: 12
+                          height: 14
+                          sourceSize.width: 24
+                          sourceSize.height: 28
+                          fillMode: Image.PreserveAspectFit
+                        }
+                        Text {
+                          anchors.verticalCenter: parent.verticalCenter
+                          text: "OpenCode"
+                          font.pixelSize: 12
+                          font.family: t.mono
+                          color: t.teal
+                        }
                       }
                       ColumnLayout {
                         spacing: 0
@@ -751,12 +790,25 @@ Item {
                     RowLayout {
                       width: parent.width
                       height: 38
-                      Text {
+                      Row {
                         Layout.fillWidth: true
-                        text: "✦  Antigravity"
-                        font.pixelSize: 12
-                        font.family: t.mono
-                        color: t.violet
+                        spacing: 7
+                        Image {
+                          anchors.verticalCenter: parent.verticalCenter
+                          source: Qt.resolvedUrl("../assets/gemini.svg")
+                          width: 14
+                          height: 14
+                          sourceSize.width: 28
+                          sourceSize.height: 28
+                          fillMode: Image.PreserveAspectFit
+                        }
+                        Text {
+                          anchors.verticalCenter: parent.verticalCenter
+                          text: "Antigravity"
+                          font.pixelSize: 12
+                          font.family: t.mono
+                          color: t.violet
+                        }
                       }
                       ColumnLayout {
                         spacing: 0

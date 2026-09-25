@@ -297,18 +297,51 @@ Rectangle {
 
       RowLayout {
         Layout.fillWidth: true
-        Text {
-          text: "Σ  OpenCode " + root.ocPctText
-          font.pixelSize: 11
-          font.family: Theme.mono
-          color: Theme.teal
+        Row {
+          spacing: 6
+          Image {
+            anchors.verticalCenter: parent.verticalCenter
+            source: Qt.resolvedUrl("../assets/opencode.svg")
+            width: 10
+            height: 12
+            sourceSize.width: 20
+            sourceSize.height: 24
+            fillMode: Image.PreserveAspectFit
+          }
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "OpenCode " + root.ocPctText
+            font.pixelSize: 11
+            font.family: Theme.mono
+            color: Theme.teal
+          }
         }
         Item { Layout.fillWidth: true }
-        Text {
-          text: root.agyPctText + "  ✦ Antigravity"
-          font.pixelSize: 11
-          font.family: Theme.mono
-          color: Theme.violet
+        Row {
+          spacing: 6
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.agyPctText
+            font.pixelSize: 11
+            font.family: Theme.mono
+            color: Theme.violet
+          }
+          Image {
+            anchors.verticalCenter: parent.verticalCenter
+            source: Qt.resolvedUrl("../assets/gemini.svg")
+            width: 12
+            height: 12
+            sourceSize.width: 24
+            sourceSize.height: 24
+            fillMode: Image.PreserveAspectFit
+          }
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Antigravity"
+            font.pixelSize: 11
+            font.family: Theme.mono
+            color: Theme.violet
+          }
         }
       }
 

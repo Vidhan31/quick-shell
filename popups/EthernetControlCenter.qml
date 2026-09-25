@@ -71,9 +71,9 @@ Item {
     return "No internet";
   }
   readonly property string statusGlyph: {
-    if (!root.isCarrier) return "󰈂";
-    if (root.currentStatus === "connecting") return "󰌗";
-    return "󰈀";
+    if (!root.isCarrier) return "󰤭";
+    if (root.currentStatus === "connecting") return "󰤫";
+    return "󰖩";
   }
 
   implicitWidth: 440

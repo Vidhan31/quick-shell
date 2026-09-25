@@ -43,8 +43,20 @@ Item {
           anchors.centerIn: parent
           spacing: 6
 
+          Image {
+            visible: Boolean(segItem.modelData && segItem.modelData.iconSource)
+            anchors.verticalCenter: parent.verticalCenter
+            source: (segItem.modelData && segItem.modelData.iconSource) ? segItem.modelData.iconSource : ""
+            width: 12
+            height: 14
+            sourceSize.width: 24
+            sourceSize.height: 28
+            fillMode: Image.PreserveAspectFit
+            opacity: root.current === segItem.index ? 1.0 : 0.6
+          }
+
           Text {
-            visible: Boolean(segItem.modelData && segItem.modelData.icon && segItem.modelData.icon.length > 0)
+            visible: Boolean(segItem.modelData && segItem.modelData.icon && segItem.modelData.icon.length > 0 && !segItem.modelData.iconSource)
             anchors.verticalCenter: parent.verticalCenter
             text: (segItem.modelData && segItem.modelData.icon) ? segItem.modelData.icon : ""
             font.family: Theme.mono

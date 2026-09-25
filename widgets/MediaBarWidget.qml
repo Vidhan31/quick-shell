@@ -45,22 +45,22 @@ Item {
         Rectangle {
           id: eqBar
           required property int index
-          width: 2
-          radius: 1
+          width: 3
+          radius: 1.5
           color: Theme.ok // Green accent
 
           SequentialAnimation on height {
             running: root.isPlaying
             loops: Animation.Infinite
             NumberAnimation {
-              from: index === 1 ? 5 : (index === 0 ? 11 : 8)
-              to: index === 1 ? 13 : (index === 0 ? 4 : 12)
+              from: index === 1 ? 5 : (index === 0 ? 12 : 9)
+              to: index === 1 ? 14 : (index === 0 ? 5 : 13)
               duration: index === 1 ? 300 : (index === 0 ? 420 : 360)
               easing.type: Easing.InOutQuad
             }
             NumberAnimation {
-              from: index === 1 ? 13 : (index === 0 ? 4 : 12)
-              to: index === 1 ? 5 : (index === 0 ? 11 : 8)
+              from: index === 1 ? 14 : (index === 0 ? 5 : 13)
+              to: index === 1 ? 5 : (index === 0 ? 12 : 9)
               duration: index === 1 ? 300 : (index === 0 ? 420 : 360)
               easing.type: Easing.InOutQuad
             }
@@ -75,7 +75,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: root.hasPlayer ? "󰏤" : "󰝚"
       font.family: root.monoFont
-      font.pixelSize: 13
+      font.pixelSize: 16
       color: root.hasPlayer ? Theme.warn : Theme.ink2
     }
 

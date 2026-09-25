@@ -34,7 +34,7 @@ Item {
   readonly property string labelText: {
     if (root.isDnd) return root.unreadCount > 0 ? `Muted ${root.unreadCount}` : "Muted";
     if (root.unreadCount > 0) return root.unreadCount > 99 ? "99+ new" : `${root.unreadCount} new`;
-    return "Notifications";
+    return "";
   }
 
   readonly property color labelColor: {
@@ -48,7 +48,7 @@ Item {
 
   Row {
     id: contentRow
-    spacing: 7
+    spacing: (root.unreadCount > 0 || root.isDnd) ? 7 : 0
     anchors.verticalCenter: parent.verticalCenter
 
     Text {
@@ -56,7 +56,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: root.iconGlyph
       font.family: root.monoFont
-      font.pixelSize: 13
+      font.pixelSize: 16
       color: root.iconColor
 
       Behavior on color {
@@ -66,6 +66,7 @@ Item {
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
+      visible: root.unreadCount > 0 || root.isDnd
       text: root.labelText
       font.pixelSize: 12
       color: root.labelColor
