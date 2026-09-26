@@ -1,5 +1,5 @@
 //@ pragma UseQApplication
-//@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/plugins/topprocesses/build/imports:/home/dev/Projects/quick-shell/plugins/privacy/build/imports:/home/dev/Projects/quick-shell/plugins/ethernet/build/imports:/home/dev/Projects/quick-shell/plugins/tailscale/build/imports:/home/dev/Projects/quick-shell/plugins/tokenusage/build/imports:/home/dev/Projects/quick-shell/plugins/antigravityusage/build/imports:/home/dev/Projects/quick-shell/plugins/notifications/build/imports
+//@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/plugins/topprocesses/build/imports:/home/dev/Projects/quick-shell/plugins/privacy/build/imports:/home/dev/Projects/quick-shell/plugins/ethernet/build/imports:/home/dev/Projects/quick-shell/plugins/tailscale/build/imports:/home/dev/Projects/quick-shell/plugins/tokenusage/build/imports:/home/dev/Projects/quick-shell/plugins/antigravityusage/build/imports:/home/dev/Projects/quick-shell/plugins/notifications/build/imports:/home/dev/Projects/quick-shell/plugins/updatemanager/build/imports
 // Shell.qml — Main Quickshell entrypoint for the desktop bar.
 // Docs:
 // - PanelWindow: anchors, height, color, screen
@@ -32,6 +32,10 @@ ShellRoot {
 
   AudioService {
     id: audioService
+  }
+
+  UpdateService {
+    id: updateService
   }
 
   Timer {
@@ -86,6 +90,7 @@ ShellRoot {
         bluetoothPopup.visible = false;
         privacyPopup.visible = false;
         notifPopup.visible = false;
+        updatePopup.visible = false;
       }
 
       // Left: CPU/MEM/GPU and AI tokens
@@ -251,6 +256,18 @@ ShellRoot {
             BluetoothWidget {
               id: bluetoothBarWidget
             }
+          }
+        }
+
+        // Updates
+        BarChip {
+          id: updateHit
+          active: updatePopup.visible
+          onClicked: bar.togglePopup(updatePopup)
+
+          UpdateWidget {
+            id: updateBarWidget
+            service: updateService
           }
         }
 
@@ -495,6 +512,33 @@ ShellRoot {
           anchors.fill: parent
           service: notifService
           onCloseRequested: notifPopup.visible = false
+        }
+      }
+
+      PopupWindow {
+        id: updatePopup
+        anchor.item: updateHit
+        anchor.edges: Edges.Bottom
+        anchor.gravity: Edges.Bottom
+        anchor.margins.top: 6
+        anchor.adjustment: PopupAdjustment.SlideX
+        visible: false
+        grabFocus: true
+        implicitWidth: updateControlCenter.implicitWidth
+        implicitHeight: updateControlCenter.implicitHeight
+        color: "transparent"
+
+        onVisibleChanged: {
+          if (visible) {
+            updateControlCenter.syncHeight();
+          }
+        }
+
+        UpdateControlCenter {
+          id: updateControlCenter
+          anchors.fill: parent
+          service: updateService
+          onCloseRequested: updatePopup.visible = false
         }
       }
 
