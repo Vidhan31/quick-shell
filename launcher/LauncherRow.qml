@@ -95,17 +95,17 @@ Item {
     visible: appIcon.status === Image.Error || !row.modelData.iconSrc
   }
 
-  // Not a Column: elided Texts report implicit heights that overflow the row
-  // and drop the description into the row below.
+  readonly property bool hasGeneric: (row.modelData.generic || "").length > 0
+  readonly property real textSpace: Math.max(0, row.width - (Theme.launcherContentInset * 2 + Theme.launcherIconSize + Theme.launcherRowPadX))
+
   Text {
     id: nameText
     anchors.left: appIcon.right
     anchors.leftMargin: Theme.launcherRowPadX
-    anchors.right: parent.right
-    anchors.rightMargin: Theme.launcherContentInset
-    anchors.top: parent.top
-    anchors.topMargin: Theme.launcherTextTop
-    height: Theme.launcherNameHeight
+    anchors.verticalCenter: parent.verticalCenter
+    width: row.hasGeneric
+      ? Math.min(implicitWidth, Math.max(row.textSpace * 0.4, row.textSpace - genericText.implicitWidth - Theme.spaceMd))
+      : Math.min(implicitWidth, row.textSpace)
     text: row.isCurrent ? row.richName : row.plainName
     textFormat: (row.isCurrent && row.hlName.length > 0) ? Text.RichText : Text.PlainText
     font.family: row.isCommand ? Theme.mono : Theme.displayFont
@@ -117,14 +117,14 @@ Item {
 
   Text {
     id: genericText
-    anchors.left: nameText.left
-    anchors.right: nameText.right
-    anchors.top: nameText.bottom
-    anchors.topMargin: Theme.launcherLineGap
-    height: Theme.launcherGenericHeight
+    anchors.left: nameText.right
+    anchors.leftMargin: Theme.spaceMd
+    anchors.right: parent.right
+    anchors.rightMargin: Theme.launcherContentInset
+    anchors.baseline: nameText.baseline
     text: row.isCurrent ? row.richGeneric : (row.modelData.generic || "")
     textFormat: (row.isCurrent && row.hlGeneric.length > 0) ? Text.RichText : Text.PlainText
-    visible: (row.modelData.generic || "").length > 0
+    visible: row.hasGeneric
     font.family: row.isCommand ? Theme.mono : Theme.textFont
     font.pixelSize: Theme.fontSm
     color: Theme.ink3

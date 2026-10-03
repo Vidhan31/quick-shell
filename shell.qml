@@ -23,6 +23,7 @@ ShellRoot {
 
   property string time: ""
   property string date: ""
+  property var primaryBar: null
 
   NotificationService {
     id: notifService
@@ -134,6 +135,28 @@ ShellRoot {
       WlrLayershell.layer: WlrLayer.Top
       WlrLayershell.exclusiveZone: Theme.barHeight
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+      Component.onCompleted: {
+        if (!root.primaryBar) {
+          root.primaryBar = bar;
+        }
+      }
+
+      function openPopup(name: string): void {
+        let item = null;
+        if (name === "proc") item = sysStatsHit;
+        else if (name === "ai") item = aiHit;
+        else if (name === "cal") item = clockHit;
+        else if (name === "media") item = mediaHit;
+        else if (name === "docker") item = dockerHit;
+        else if (name === "ts") item = tsHit;
+        else if (name === "update") item = updateHit;
+        else if (name === "eth") item = ethHit;
+        else if (name === "bluetooth") item = bluetoothHit;
+        else if (name === "vol") item = volHit;
+        else if (name === "notif") item = notifSeg;
+        if (item) popupHost.open(item, name);
+      }
 
       function closeAllPopups(): void {
         barTooltip.hide();
@@ -470,6 +493,19 @@ ShellRoot {
     }
     function close(): void {
       launcherService.close();
+    }
+  }
+
+  IpcHandler {
+    target: "popup"
+
+    function open(name: string): void {
+      if (root.primaryBar && typeof root.primaryBar.openPopup === "function") {
+        root.primaryBar.openPopup(name);
+      }
+    }
+    function close(): void {
+      popupHost.close();
     }
   }
 }

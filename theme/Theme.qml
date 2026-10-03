@@ -113,12 +113,6 @@ Singleton {
   readonly property int launcherRowHeight: 44
   readonly property int launcherMaxVisible: 8
   readonly property int launcherIconSize: 28
-  // Fixed, not derived from Text implicit heights: the name line must keep one
-  // baseline whether or not a description shows. 6+18+1+14 = 39 in a 44px row.
-  readonly property int launcherTextTop: 6
-  readonly property int launcherNameHeight: 18
-  readonly property int launcherGenericHeight: 14
-  readonly property int launcherLineGap: 1
   readonly property int launcherRowPadX: 10
   readonly property int launcherRowInset: 4
   // Shared by the icon, the text and the search field so one line runs down
