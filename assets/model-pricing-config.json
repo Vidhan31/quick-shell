@@ -1,0 +1,8 @@
+{
+  "endpoint": "https://models.dev/api.json?type=all",
+  "logoBase": "https://models.dev/logos/",
+  "ttlHours": 24,
+  "gatewayNpmMarkers": ["compatible", "router", "gateway"],
+  "tierSuffixes": [":free", "-free", "-tiered", "-thinking", "-think", "-mediumh", "-medium", "-xhigh", "-high", "-minimal", "-low"],
+  "overrides": {}
+}
