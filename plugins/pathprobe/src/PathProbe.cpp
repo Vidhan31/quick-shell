@@ -1,13 +1,19 @@
 #include "PathProbe.hpp"
 
+#include <QClipboard>
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusInterface>
+#include <QGuiApplication>
+#include <QMimeData>
 #include <QDBusMessage>
 #include <QDBusPendingCall>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
+#include <QDBusUnixFileDescriptor>
 #include <QDir>
+#include <fcntl.h>
+#include <unistd.h>
 #include <QFileInfo>
 #include <QMimeDatabase>
 #include <QProcess>
@@ -150,6 +156,75 @@ void PathProbe::reveal(const QString &absPath, bool isDir) {
             _fallbackToCli(absPath, isDir);
         }
     });
+}
+
+bool PathProbe::copyFile(const QString &absPath) {
+    if (absPath.isEmpty()) {
+        return false;
+    }
+    const QFileInfo fi(absPath);
+    if (!fi.exists()) {
+        return false;
+    }
+    const QString canonical = fi.absoluteFilePath();
+    const QUrl url = QUrl::fromLocalFile(canonical);
+
+    if (auto *clipboard = QGuiApplication::clipboard()) {
+        auto *mime = new QMimeData();
+        mime->setUrls({url});
+        mime->setText(canonical);
+        mime->setData(QStringLiteral("application/x-kde-cutselection"), QByteArray("0"));
+        mime->setData(QStringLiteral("x-special/gnome-copied-files"),
+                      QByteArray("copy\n") + url.toEncoded() + '\n');
+        clipboard->setMimeData(mime);
+        return true;
+    }
+    return false;
+}
+
+bool PathProbe::openWith(const QString &absPath) {
+    if (absPath.isEmpty()) {
+        return false;
+    }
+    const QFileInfo fi(absPath);
+    if (!fi.exists()) {
+        return false;
+    }
+    const int fd = ::open(QFile::encodeName(fi.absoluteFilePath()).constData(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return false;
+    }
+
+    if (!QCoreApplication::instance() || !QDBusConnection::sessionBus().isConnected()) {
+        ::close(fd);
+        return false;
+    }
+
+    QDBusInterface portal(QStringLiteral("org.freedesktop.portal.Desktop"),
+                          QStringLiteral("/org/freedesktop/portal/desktop"),
+                          QStringLiteral("org.freedesktop.portal.OpenURI"),
+                          QDBusConnection::sessionBus());
+    if (!portal.isValid()) {
+        ::close(fd);
+        return false;
+    }
+
+    QVariantMap options;
+    options.insert(QStringLiteral("ask"), true);
+
+    const QDBusUnixFileDescriptor qfd(fd);
+    ::close(fd);
+
+    const QDBusPendingCall call = portal.asyncCall(
+        QStringLiteral("OpenFile"),
+        QStringLiteral(""),
+        QVariant::fromValue(qfd),
+        options);
+    auto *watcher = new QDBusPendingCallWatcher(call, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [watcher]() {
+        watcher->deleteLater();
+    });
+    return true;
 }
 
 void PathProbe::_fallbackToCli(const QString &absPath, bool isDir) const {

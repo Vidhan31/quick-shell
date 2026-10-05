@@ -178,11 +178,18 @@ PanelWindow {
               break;
             case Qt.Key_Return:
             case Qt.Key_Enter:
-              /* Shift shares Key_Return with plain Return, so the modifier
-                 must be read here: a key-only case would swallow Shift+Return
-                 and launch normally. */
-              win.launcher.activateSelected((event.modifiers & Qt.ShiftModifier) !== 0);
-              event.accepted = true;
+              {
+                const isCtrl = (event.modifiers & Qt.ControlModifier) !== 0;
+                const isShift = (event.modifiers & Qt.ShiftModifier) !== 0;
+                if (isCtrl && isShift) {
+                  win.launcher.activateSelected("terminal");
+                } else if (isShift) {
+                  win.launcher.activateSelected("shift");
+                } else {
+                  win.launcher.activateSelected("default");
+                }
+                event.accepted = true;
+              }
               break;
             case Qt.Key_Escape:
               win.launcher.close();
@@ -191,6 +198,19 @@ PanelWindow {
             case Qt.Key_Tab:
               // Reserved for the action panel.
               event.accepted = true;
+              break;
+            case Qt.Key_C:
+              if ((event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
+                if (win.launcher && win.launcher.openWithSelected()) {
+                  win.launcher.close();
+                  event.accepted = true;
+                }
+              } else if ((event.modifiers & Qt.ControlModifier) && field.selectedText.length === 0) {
+                if (win.launcher && win.launcher.copySelectedFile()) {
+                  win.launcher.close();
+                  event.accepted = true;
+                }
+              }
               break;
             default:
               if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_K) {
@@ -206,7 +226,7 @@ PanelWindow {
           anchors.fill: field
           verticalAlignment: Text.AlignVCenter
           visible: field.text.length === 0
-          text: "Search applications, paths, or > command..."
+          text: "Search applications, f <file>, paths, or > command..."
           font.family: Theme.displayFont
           font.pixelSize: Theme.fontXl
           color: Theme.ink3
@@ -252,9 +272,15 @@ PanelWindow {
         anchors.rightMargin: Theme.launcherContentInset
         visible: list.count === 0
         horizontalAlignment: Text.AlignHCenter
-        text: win.launcher && win.launcher.query.trim().startsWith(">")
-          ? "Type a shell command to execute..."
-          : "No matching applications or paths"
+        text: {
+          if (!win.launcher) return "No matching applications or paths";
+          const q = win.launcher.query.trim();
+          if (q.startsWith(">")) return "Type a shell command to execute...";
+          if (win.launcher.isFileSearchActive) {
+            return win.launcher.isFileSearching ? "Searching files..." : "No matching files or folders";
+          }
+          return "No matching applications or paths";
+        }
         font.family: Theme.textFont
         font.pixelSize: Theme.fontBase
         color: Theme.ink3
@@ -274,9 +300,9 @@ PanelWindow {
           if (sel.kind === "command") {
             return "↵ run in terminal · ⇧↵ run in background · esc close";
           }
-          if (sel.kind === "path") {
-            return (sel.isDir ? "↵ open folder" : "↵ open containing folder")
-              + " · ⇧↵ terminal here · esc close";
+          if (sel.kind === "file" || sel.kind === "path") {
+            return (sel.isDir ? "↵ open folder" : "↵ open file")
+              + " · ⇧↵ dolphin · ⌃⇧↵ terminal · ⌃C copy · ⌃⇧C open with · esc close";
           }
           return "↵ open · ⇧↵ terminal · ↑↓ navigate · esc close";
         }

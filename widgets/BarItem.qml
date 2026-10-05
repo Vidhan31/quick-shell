@@ -78,11 +78,11 @@ Item {
     anchors.fill: parent
     anchors.margins: root.segment ? 1 : 0
     radius: root.radius
-    color: root.active ? Theme.selected : (ma.containsMouse || root.activeFocus) ? Theme.hoverFill : (root.segment ? "transparent" : Theme.surface)
+    color: root.active ? Theme.selected : (ma.containsMouse || root.activeFocus) ? Theme.hoverFill : Theme.surface
     border.color: root.activeFocus ? Theme.focusRing : "transparent"
     border.width: root.activeFocus ? Theme.focusRingWidth : 0
 
-    Behavior on color { ColorAnimation { duration: root.segment ? Theme.durationFast : Theme.durationNormal } }
+    Behavior on color { ColorAnimation { duration: Theme.durationNormal } }
     Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
   }
 

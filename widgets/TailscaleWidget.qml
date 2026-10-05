@@ -7,7 +7,7 @@ Item {
 
   property var tailscale: null
 
-  readonly property bool isConnected: tailscale ? tailscale.isConnected : false
+  readonly property bool isConnected: tailscale ? (Boolean(tailscale.connected) || Boolean(tailscale.isConnected)) : false
   readonly property int serveCount: tailscale ? tailscale.serveCount : 0
   readonly property bool hasFunnel: tailscale ? tailscale.hasFunnel : false
 

@@ -212,8 +212,7 @@ ShellRoot {
         BarItem {
           id: sysStatsHit
           active: popupHost.isOpen(sysStatsHit, "proc")
-          tooltip: "CPU: " + Math.round(sysStats.cpuPercent) + "% · RAM: " + Math.round(sysStats.memPercent) + "%" + (sysStats.gpuAvailable ? " · GPU: " + Math.round(sysStats.gpuPercent) + "%" : "")
-          tooltipSub: "Click for top processes"
+          Accessible.name: "System stats"
           onClicked: popupHost.toggle(sysStatsHit, "proc")
 
           SysStats {
@@ -224,8 +223,7 @@ ShellRoot {
         BarItem {
           id: aiHit
           active: popupHost.isOpen(aiHit, "ai")
-          tooltip: "AI tokens: " + (aiUsageService ? aiUsageService.ocText() : "--") + " (OpenCode) · " + (aiUsageService ? aiUsageService.agyText() : "--") + " (Antigravity)"
-          tooltipSub: "Click for cost & model analytics"
+          Accessible.name: "AI tokens"
           onClicked: popupHost.toggle(aiHit, "ai")
 
           AiUsageWidget {
@@ -242,8 +240,7 @@ ShellRoot {
           id: clockHit
           segment: true
           active: popupHost.isOpen(clockHit, "cal")
-          tooltip: root.date + " · " + root.time
-          tooltipSub: "Click for calendar & events"
+          Accessible.name: "Clock & calendar"
           onClicked: popupHost.toggle(clockHit, "cal")
 
           Row {
@@ -276,8 +273,7 @@ ShellRoot {
           segment: true
           visible: mediaService.hasPlayer
           active: popupHost.isOpen(mediaHit, "media")
-          tooltip: mediaService.trackTitle || "Media Player"
-          tooltipSub: "Left-click: controls · Right-click: play/pause"
+          Accessible.name: "Media player"
           acceptedButtons: Qt.LeftButton | Qt.RightButton
           onClicked: popupHost.toggle(mediaHit, "media")
           onRightClicked: {
@@ -344,7 +340,7 @@ ShellRoot {
             id: tsHit
             segment: true
             active: popupHost.isOpen(tsHit, "ts")
-            tooltip: "Tailscale: " + (tailscaleService.isConnected ? "Connected" : "Disconnected")
+            tooltip: "Tailscale: " + (!tailscaleService.connected ? "Disconnected" : (tailscaleService.hasFunnel ? "Connected · Funnel active" : (tailscaleService.serveCount > 0 ? ("Connected · " + tailscaleService.serveCount + " shared") : "Connected")))
             tooltipSub: "Click for peers & funnel"
             onClicked: popupHost.toggle(tsHit, "ts")
 
@@ -378,8 +374,7 @@ ShellRoot {
             id: ethHit
             segment: true
             active: popupHost.isOpen(ethHit, "eth")
-            tooltip: ethBarWidget.tooltipText
-            tooltipSub: "Click for network details"
+            Accessible.name: "Ethernet network"
             onClicked: popupHost.toggle(ethHit, "eth")
 
             EthernetWidget {
@@ -394,8 +389,7 @@ ShellRoot {
             id: bluetoothHit
             segment: true
             active: popupHost.isOpen(bluetoothHit, "bluetooth")
-            tooltip: "Bluetooth"
-            tooltipSub: "Click for devices & discovery"
+            Accessible.name: "Bluetooth"
             onClicked: popupHost.toggle(bluetoothHit, "bluetooth")
 
             BluetoothWidget {
@@ -409,8 +403,7 @@ ShellRoot {
             id: volHit
             segment: true
             active: popupHost.isOpen(volHit, "vol")
-            tooltip: "Volume: " + (volBarWidget.muted ? "Muted" : (volBarWidget.volumePercent + "%"))
-            tooltipSub: "Left-click: controls · Right-click: mute"
+            Accessible.name: "Audio volume"
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             onClicked: popupHost.toggle(volHit, "vol")
             onRightClicked: volBarWidget.toggleMute()
@@ -427,8 +420,7 @@ ShellRoot {
             id: notifSeg
             segment: true
             active: popupHost.isOpen(notifSeg, "notif")
-            tooltip: "Notifications: " + (notifService.totalCount > 0 ? (notifService.totalCount + " active") : "None")
-            tooltipSub: "Click for notification center"
+            Accessible.name: "Notifications"
             onClicked: popupHost.toggle(notifSeg, "notif")
 
             NotificationWidget {

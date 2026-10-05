@@ -53,17 +53,18 @@ Item {
     return segs.join("/");
   }
 
-  readonly property bool isPath: row.modelData.kind === "path"
+  readonly property bool isPath: row.modelData.kind === "path" || row.modelData.kind === "file"
   readonly property bool isCommand: row.modelData.kind === "command"
-  readonly property string plainName: row.isPath
-    ? row.trimPath(row.modelData.name || "")
-    : (row.modelData.name || "")
+  readonly property string plainName: row.modelData.name || ""
+  readonly property string plainGeneric: row.isPath
+    ? row.trimPath(row.modelData.generic || "")
+    : (row.modelData.generic || "")
 
   readonly property var hlName: row.modelData.hlName || []
   readonly property var hlGeneric: row.modelData.hlGeneric || []
 
   readonly property string richName: formatHl(row.plainName, hlName)
-  readonly property string richGeneric: formatHl(row.modelData.generic || "", hlGeneric)
+  readonly property string richGeneric: formatHl(row.plainGeneric, hlGeneric)
 
   Rectangle {
     id: bg
@@ -103,45 +104,95 @@ Item {
     anchors.left: appIcon.right
     anchors.leftMargin: Theme.launcherRowPadX
     anchors.verticalCenter: parent.verticalCenter
-    width: row.hasGeneric
-      ? Math.min(implicitWidth, Math.max(row.textSpace * 0.4, row.textSpace - genericText.implicitWidth - Theme.spaceMd))
-      : Math.min(implicitWidth, row.textSpace)
+    anchors.verticalCenterOffset: (row.isPath && row.hasGeneric) ? -8 : 0
+    width: row.isPath
+      ? row.textSpace
+      : (row.hasGeneric
+          ? Math.min(implicitWidth, Math.max(row.textSpace * 0.4, row.textSpace - genericText.implicitWidth - Theme.spaceMd))
+          : Math.min(implicitWidth, row.textSpace))
     text: row.isCurrent ? row.richName : row.plainName
-    textFormat: (row.isCurrent && row.hlName.length > 0) ? Text.RichText : Text.PlainText
+    textFormat: (row.isCurrent && row.hlName.length > 0) ? Text.StyledText : Text.PlainText
     font.family: row.isCommand ? Theme.mono : Theme.displayFont
     font.pixelSize: row.isCommand ? Theme.fontSm : Theme.fontMd
     color: Theme.ink1
-    elide: Text.ElideRight
+    elide: Text.ElideMiddle
     maximumLineCount: 1
   }
 
   Text {
     id: genericText
-    anchors.left: nameText.right
-    anchors.leftMargin: Theme.spaceMd
+    anchors.left: row.isPath ? nameText.left : nameText.right
+    anchors.leftMargin: row.isPath ? 0 : Theme.spaceMd
     anchors.right: parent.right
     anchors.rightMargin: Theme.launcherContentInset
-    anchors.baseline: nameText.baseline
-    text: row.isCurrent ? row.richGeneric : (row.modelData.generic || "")
-    textFormat: (row.isCurrent && row.hlGeneric.length > 0) ? Text.RichText : Text.PlainText
+    anchors.top: row.isPath ? nameText.bottom : undefined
+    anchors.topMargin: row.isPath ? 1 : 0
+    anchors.baseline: row.isPath ? undefined : nameText.baseline
+    text: row.isCurrent ? row.richGeneric : row.plainGeneric
+    textFormat: (row.isCurrent && row.hlGeneric.length > 0) ? Text.StyledText : Text.PlainText
     visible: row.hasGeneric
     font.family: row.isCommand ? Theme.mono : Theme.textFont
     font.pixelSize: Theme.fontSm
     color: Theme.ink3
-    elide: Text.ElideRight
+    elide: row.isPath ? Text.ElideMiddle : Text.ElideRight
     maximumLineCount: 1
+  }
+
+  Item {
+    id: dragDummy
+  }
+
+  Drag.dragType: Drag.Automatic
+  Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
+  Drag.mimeData: (row.isPath && row.modelData.abs) ? {
+    "text/uri-list": "file://" + row.modelData.abs + "\r\n",
+    "text/plain": row.modelData.abs,
+    "application/x-kde-cutselection": "0",
+    "x-special/gnome-copied-files": "copy\nfile://" + row.modelData.abs + "\n"
+  } : ({})
+  Drag.imageSource: (row.isPath && row.modelData.iconSrc) ? row.modelData.iconSrc : ""
+  Drag.imageSourceSize: Qt.size(Theme.launcherIconSize, Theme.launcherIconSize)
+  Drag.hotSpot: Qt.point(Theme.launcherIconSize / 2, Theme.launcherIconSize / 2)
+  Drag.active: row.isPath && ma.drag.active
+
+  Drag.onDragStarted: {
+    if (row.launcher) {
+      row.launcher.isDragging = true;
+    }
+  }
+
+  Drag.onDragFinished: {
+    if (row.launcher) {
+      row.launcher.isDragging = false;
+      row.launcher.close();
+    }
   }
 
   MouseArea {
     id: ma
     anchors.fill: parent
     hoverEnabled: true
-    acceptedButtons: Qt.LeftButton
+    acceptedButtons: Qt.LeftButton | Qt.RightButton
     cursorShape: Qt.PointingHandCursor
+    drag.target: row.isPath ? dragDummy : undefined
+    drag.threshold: 10
     onClicked: mouse => {
-      if (row.launcher) {
-        const inTerminal = (mouse.modifiers & Qt.ShiftModifier) !== 0;
-        row.launcher.activateIndex(row.index, inTerminal);
+      if (!row.launcher) return;
+      if (mouse.button === Qt.RightButton) {
+        if (row.isPath) {
+          row.launcher.copyIndex(row.index);
+          row.launcher.close();
+        }
+        return;
+      }
+      const isCtrl = (mouse.modifiers & Qt.ControlModifier) !== 0;
+      const isShift = (mouse.modifiers & Qt.ShiftModifier) !== 0;
+      if (isCtrl && isShift) {
+        row.launcher.activateIndex(row.index, "terminal");
+      } else if (isShift) {
+        row.launcher.activateIndex(row.index, "shift");
+      } else {
+        row.launcher.activateIndex(row.index, "default");
       }
     }
   }

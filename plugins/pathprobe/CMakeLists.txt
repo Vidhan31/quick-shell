@@ -5,7 +5,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(pathprobe_plugin VERSION 1.0.0 LANGUAGES CXX)
 
-find_package(Qt6 6.11 REQUIRED COMPONENTS Core Quick Qml DBus)
+find_package(Qt6 6.11 REQUIRED COMPONENTS Core Quick Qml DBus Gui)
 
 qt_standard_project_setup(REQUIRES 6.11)
 
@@ -40,6 +40,7 @@ target_link_libraries(pathprobe
         qs::compiler_flags
     PRIVATE
         Qt6::Core
+        Qt6::Gui
         Qt6::Quick
         Qt6::Qml
         Qt6::DBus
@@ -62,6 +63,7 @@ target_link_libraries(pathprobe-probe
         qs::compiler_flags
     PRIVATE
         Qt6::Core
+        Qt6::Gui
         Qt6::Qml
         Qt6::DBus
 )

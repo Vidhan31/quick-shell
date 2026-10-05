@@ -81,6 +81,7 @@ class TailscaleMonitor : public QObject {
 
     Q_PROPERTY(bool ok READ isOk NOTIFY stateChanged)
     Q_PROPERTY(bool connected READ isConnected NOTIFY stateChanged)
+    Q_PROPERTY(bool isConnected READ isConnected NOTIFY stateChanged)
     Q_PROPERTY(QString backendState READ backendState NOTIFY stateChanged)
     Q_PROPERTY(QString version READ version NOTIFY stateChanged)
     Q_PROPERTY(QString tailnet READ tailnet NOTIFY stateChanged)

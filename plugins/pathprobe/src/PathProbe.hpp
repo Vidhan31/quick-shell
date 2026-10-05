@@ -34,6 +34,10 @@ public:
     // dolphin CLI.
     Q_INVOKABLE void reveal(const QString &absPath, bool isDir);
 
+    Q_INVOKABLE bool copyFile(const QString &absPath);
+
+    Q_INVOKABLE bool openWith(const QString &absPath);
+
 private:
     void _fallbackToCli(const QString &absPath, bool isDir) const;
 };

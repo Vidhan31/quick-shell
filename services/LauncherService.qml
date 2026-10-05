@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Plugins.PathProbe
+import Quickshell.Plugins.FileSearch
 import qs.utils
 
 /* Domain state for the application launcher.
@@ -18,6 +19,7 @@ Item {
   property int openedAt: 0
   property var deTarget: null
   property bool corpusStarted: false
+  property bool isDragging: false
 
   /* Absolute path because the terminal on this system is an AppImage that is
      not on PATH. Point this at any binary accepting
@@ -40,6 +42,22 @@ Item {
   // the mimetype lookup. QML only decides what to show.
   PathProbe {
     id: probe
+  }
+
+  FileSearch {
+    id: fileSearch
+  }
+
+  readonly property bool isFileSearchActive: fileSearch.available && fileSearch.isSearchQuery(root.query)
+  readonly property bool isFileSearching: fileSearch.searching
+
+  Connections {
+    target: fileSearch
+    function onResultsChanged(): void {
+      if (!root.isFileSearchActive) return;
+      root.rows = root.fileSearchRowsFrom(fileSearch.results);
+      root.selectedIndex = 0;
+    }
   }
 
   /* DesktopEntries is a lazily created singleton whose constructor runs the
@@ -65,6 +83,7 @@ Item {
 
   function close(): void {
     root.isOpen = false;
+    root.isDragging = false;
   }
 
   function toggle(): void {
@@ -74,6 +93,9 @@ Item {
 
   function resetQuery(): void {
     root.query = "";
+    if (fileSearch.query !== "") {
+      fileSearch.query = "";
+    }
     refilter();
   }
 
@@ -86,7 +108,7 @@ Item {
   // Focus-loss triage for the window: a loss inside the grace window means
   // something stole focus mid-open, so re-arm instead of closing.
   function notifyFocusLost(): void {
-    if (!root.isOpen) return;
+    if (!root.isOpen || root.isDragging) return;
     if (Date.now() - root.openedAt < root.focusGraceMs) root.refocusRequested();
     else close();
   }
@@ -111,40 +133,53 @@ Item {
     root.selectedIndex = Math.max(0, root.rows.length - 1);
   }
 
-  function activateSelected(inTerminal: bool): void {
-    const r = root.rows[root.selectedIndex];
+  function activateSelected(action: var): void {
+    activateIndex(root.selectedIndex, action);
+  }
+
+  function activateIndex(i: int, action: var): void {
+    const r = root.rows[i];
     if (!r) return;
-    if (r.kind === "path") {
-      launchPath(r, inTerminal);
+    const mode = (action === true) ? "terminal" : (typeof action === "string" ? action : "default");
+    if (r.kind === "file" || r.kind === "path") {
+      if (mode === "terminal") {
+        launchFileTerminal(r);
+      } else if (mode === "dolphin" || mode === "shift") {
+        probe.reveal(r.abs, r.isDir);
+      } else {
+        launchFileDefault(r);
+      }
       close();
       return;
     }
     if (r.kind === "command") {
-      launchCommand(r.command, inTerminal);
+      launchCommand(r.command, mode === "background" || mode === "shift");
       close();
       return;
     }
     if (!r.entry) return;
-    launchEntry(r.entry, r.name, inTerminal);
+    launchEntry(r.entry, r.name, mode === "terminal" || mode === "shift");
     close();
   }
 
-  function activateIndex(i: int, inTerminal: bool): void {
+  function copyIndex(i: int): bool {
     const r = root.rows[i];
-    if (!r) return;
-    if (r.kind === "path") {
-      launchPath(r, inTerminal);
-      close();
-      return;
-    }
-    if (r.kind === "command") {
-      launchCommand(r.command, inTerminal);
-      close();
-      return;
-    }
-    if (!r.entry) return;
-    launchEntry(r.entry, r.name, inTerminal);
-    close();
+    if (!r || !r.abs) return false;
+    return probe.copyFile(r.abs);
+  }
+
+  function copySelectedFile(): bool {
+    return copyIndex(root.selectedIndex);
+  }
+
+  function openWithIndex(i: int): bool {
+    const r = root.rows[i];
+    if (!r || !r.abs) return false;
+    return probe.openWith(r.abs);
+  }
+
+  function openWithSelected(): bool {
+    return openWithIndex(root.selectedIndex);
   }
 
   function launchCommand(cmdText: string, inBackground: bool): void {
@@ -180,18 +215,20 @@ Item {
     });
   }
 
-  // Paths go to the file manager over D-Bus, with the dolphin CLI as a native
-  // fallback. A directory is opened; a file is revealed inside its parent.
-  function launchPath(r: var, inTerminal: bool): void {
-    if (inTerminal) {
-      const dir = r.isDir ? r.abs : r.parent;
-      const argv = terminalShellArgv(dir, r.abs);
-      if (argv !== null) {
-        Quickshell.execDetached({ command: argv, unbindStdout: true });
-        return;
-      }
+  function launchFileTerminal(r: var): void {
+    const dir = r.isDir ? r.abs : r.parent;
+    const argv = terminalShellArgv(dir, r.abs);
+    if (argv !== null) {
+      Quickshell.execDetached({ command: argv, unbindStdout: true });
     }
-    probe.reveal(r.abs, r.isDir);
+  }
+
+  function launchFileDefault(r: var): void {
+    if (r.isDir) {
+      probe.reveal(r.abs, true);
+    } else {
+      Quickshell.execDetached({ command: ["xdg-open", r.abs], unbindStdout: true });
+    }
   }
 
   /* No -e, so the terminal starts its own configured shell instead of a
@@ -291,7 +328,44 @@ Item {
     return null;
   }
 
+  function fileSearchRowsFrom(results: var): var {
+    const out = [];
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      const stockIcon = iconResolver.resolveStockIcon(String(r.iconName));
+      const fallback = r.isDir ? iconResolver.resolveStockIcon("folder") : iconResolver.resolveStockIcon("text-x-generic");
+      out.push({
+        id: r.id,
+        kind: "file",
+        name: r.name,
+        generic: r.generic,
+        iconSrc: stockIcon || fallback,
+        abs: r.abs,
+        parent: r.parent,
+        isDir: r.isDir,
+        tier: 0,
+        hlName: [],
+        hlGeneric: [],
+        entry: null
+      });
+    }
+    return out;
+  }
+
   function refilter(): void {
+    if (fileSearch.available && fileSearch.isSearchQuery(root.query)) {
+      const term = fileSearch.searchTerm(root.query);
+      fileSearch.query = term;
+      if (!term) {
+        root.rows = [];
+        root.selectedIndex = 0;
+      }
+      return;
+    }
+    if (fileSearch.query !== "") {
+      fileSearch.query = "";
+    }
+
     const raw = root.query.trim();
     if (raw.startsWith(">")) {
       const cmd = raw.slice(1).trim();
@@ -361,6 +435,13 @@ Item {
     };
   }
 
+  function toDisplayPath(abs: string): string {
+    const home = String(Quickshell.env("HOME") || "/home/dev");
+    if (abs === home) return "~";
+    if (abs.startsWith(home + "/")) return "~" + abs.slice(home.length);
+    return abs;
+  }
+
   /* Turns a path-shaped query into one result row, or null when the text is not
      a path or does not resolve. The id is namespaced so it cannot collide with
      a desktop-entry id under ScriptModel's identity comparison. hlName stays
@@ -369,11 +450,14 @@ Item {
   function pathRowFor(q: string): var {
     const info = probe.classify(q);
     if (!info.pathShape || !info.exists) return null;
+    const abs = String(info.abs);
+    const lastSlash = abs.lastIndexOf("/");
+    const base = (lastSlash >= 0 && abs.length > 1) ? abs.slice(lastSlash + 1) : abs;
     return {
       id: "path:" + info.abs,
       kind: "path",
-      name: info.abs,
-      generic: info.isDir ? "Folder" : "File",
+      name: base,
+      generic: root.toDisplayPath(abs),
       iconSrc: iconResolver.resolveStockIcon(String(info.iconName)),
       abs: info.abs,
       parent: info.parent,
