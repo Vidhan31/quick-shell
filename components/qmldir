@@ -14,3 +14,4 @@ SectionCard 1.0 SectionCard.qml
 PopupHeader 1.0 PopupHeader.qml
 StatusPill 1.0 StatusPill.qml
 HoverTip 1.0 HoverTip.qml
+Kbd 1.0 Kbd.qml

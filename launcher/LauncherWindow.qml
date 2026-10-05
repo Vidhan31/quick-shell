@@ -14,6 +14,42 @@ PanelWindow {
 
   property var launcher: null
 
+  readonly property var shortcuts: {
+    const l = win.launcher;
+    const sel = l && l.selectedIndex >= 0 && l.rows && l.selectedIndex < l.rows.length
+      ? l.rows[l.selectedIndex]
+      : null;
+    if (!sel) {
+      return [
+        { key: "↑↓", label: "navigate" },
+        { key: "Esc", label: "close" }
+      ];
+    }
+    if (sel.kind === "command") {
+      return [
+        { key: "↵", label: "run in terminal" },
+        { key: "⇧↵", label: "run in background" },
+        { key: "Esc", label: "close" }
+      ];
+    }
+    if (sel.kind === "file" || sel.kind === "path") {
+      return [
+        { key: "↵", label: sel.isDir ? "open folder" : "open file" },
+        { key: "⇧↵", label: "dolphin" },
+        { key: "Ctrl+⇧+↵", label: "terminal" },
+        { key: "Ctrl+C", label: "copy" },
+        { key: "Ctrl+⇧+C", label: "open with" },
+        { key: "Esc", label: "close" }
+      ];
+    }
+    return [
+      { key: "↵", label: "open" },
+      { key: "⇧↵", label: "terminal" },
+      { key: "↑↓", label: "navigate" },
+      { key: "Esc", label: "close" }
+    ];
+  }
+
   readonly property int screenW: Quickshell.screens.length > 0 ? Quickshell.screens[0].width : 1920
   readonly property int screenH: Quickshell.screens.length > 0 ? Quickshell.screens[0].height : 1080
   readonly property real sideMargin: Math.max(24, (screenW - Theme.launcherWidth) / 2)
@@ -272,6 +308,8 @@ PanelWindow {
         anchors.rightMargin: Theme.launcherContentInset
         visible: list.count === 0
         horizontalAlignment: Text.AlignHCenter
+        topPadding: Theme.spaceLg
+        bottomPadding: Theme.spaceLg
         text: {
           if (!win.launcher) return "No matching applications or paths";
           const q = win.launcher.query.trim();
@@ -286,29 +324,41 @@ PanelWindow {
         color: Theme.ink3
       }
 
-      Text {
+      Hairline {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.leftMargin: Theme.launcherContentInset
         anchors.rightMargin: Theme.launcherContentInset
-        horizontalAlignment: Text.AlignHCenter
-        text: {
-          const sel = win.launcher && win.launcher.selectedIndex >= 0
-            ? win.launcher.rows[win.launcher.selectedIndex]
-            : null;
-          if (!sel) return "↑↓ navigate · esc close";
-          if (sel.kind === "command") {
-            return "↵ run in terminal · ⇧↵ run in background · esc close";
+      }
+
+      Row {
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: Theme.spaceLg
+
+        Repeater {
+          model: win.shortcuts
+
+          Row {
+            id: shortcutItem
+            required property var modelData
+
+            spacing: Theme.spaceXs
+            anchors.verticalCenter: parent.verticalCenter
+
+            Kbd {
+              text: shortcutItem.modelData.key
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+              text: shortcutItem.modelData.label
+              anchors.verticalCenter: parent.verticalCenter
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontSm
+              color: Theme.ink3
+            }
           }
-          if (sel.kind === "file" || sel.kind === "path") {
-            return (sel.isDir ? "↵ open folder" : "↵ open file")
-              + " · ⇧↵ dolphin · ⌃⇧↵ terminal · ⌃C copy · ⌃⇧C open with · esc close";
-          }
-          return "↵ open · ⇧↵ terminal · ↑↓ navigate · esc close";
         }
-        font.family: Theme.textFont
-        font.pixelSize: Theme.fontSm
-        color: Theme.ink3
       }
     }
   }
