@@ -196,6 +196,7 @@ bool collectFromDb(const QString &path,
                    const QString &tzModifier,
                    TokenRefreshResult *result,
                    QMap<QString, TokenWindow> *monthModels,
+                   QMap<QString, TokenWindow> *allModels,
                    QMap<QString, TokenWindow> *dailyMap,
                    QString *error) {
     const QString connectionName = QStringLiteral("tokenusage-%1").arg(g_connectionCounter.fetchAndAddOrdered(1));
@@ -219,9 +220,12 @@ bool collectFromDb(const QString &path,
                 const bool weekOk = todayOk && queryWindow(db, tableName, bounds.weekStart, bounds.end, &result->week, error);
                 const bool monthOk = weekOk && queryWindow(db, tableName, bounds.monthStart, bounds.end, &result->month, error);
                 const bool lastDaysOk = monthOk && queryWindow(db, tableName, bounds.lastDaysStart, bounds.end, &result->lastDays, error);
+                const bool allTimeOk = lastDaysOk && queryWindow(db, tableName, 0, bounds.end, &result->allTime, error);
                 const bool modelsOk =
-                    lastDaysOk && queryModels(db, tableName, bounds.lastDaysStart, bounds.end, monthModels, error);
-                ok = modelsOk && queryDaily(db, tableName, dailyStartMs, bounds.end, tzModifier, dailyMap, error);
+                    allTimeOk && queryModels(db, tableName, bounds.lastDaysStart, bounds.end, monthModels, error);
+                const bool allModelsOk =
+                    modelsOk && queryModels(db, tableName, 0, bounds.end, allModels, error);
+                ok = allModelsOk && queryDaily(db, tableName, dailyStartMs, bounds.end, tzModifier, dailyMap, error);
             }
             db.close();
         }
@@ -321,10 +325,11 @@ TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastDa
     int readable = 0;
     QString firstError;
     QMap<QString, TokenWindow> monthModels;
+    QMap<QString, TokenWindow> allModels;
     QMap<QString, TokenWindow> dailyMap;
     for (const QString &path : result.dbPaths) {
         QString error;
-        if (collectFromDb(path, rollingBounds, dailyStartMs, tzModifier, &result, &monthModels, &dailyMap, &error)) {
+        if (collectFromDb(path, rollingBounds, dailyStartMs, tzModifier, &result, &monthModels, &allModels, &dailyMap, &error)) {
             ++readable;
         } else if (firstError.isEmpty()) {
             firstError = error;
@@ -360,6 +365,28 @@ TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastDa
         models.append(item);
     }
     result.monthModels = models;
+    std::vector<std::pair<QString, TokenWindow>> rankedAll(allModels.keyValueBegin(), allModels.keyValueEnd());
+    rankedAll.erase(std::remove_if(rankedAll.begin(),
+                                   rankedAll.end(),
+                                   [](const auto &entry) { return entry.second.total() <= 0; }),
+                    rankedAll.end());
+    std::sort(rankedAll.begin(), rankedAll.end(), [](const auto &left, const auto &right) {
+        return left.second.total() > right.second.total();
+    });
+    QVariantList allModelList;
+    for (const auto &entry : rankedAll) {
+        QVariantMap item;
+        item.insert(QStringLiteral("name"), entry.first);
+        item.insert(QStringLiteral("tokens"), entry.second.total());
+        item.insert(QStringLiteral("input"), entry.second.input);
+        item.insert(QStringLiteral("output"), entry.second.output);
+        item.insert(QStringLiteral("cacheRead"), entry.second.cacheRead);
+        item.insert(QStringLiteral("cacheWrite"), entry.second.cacheWrite);
+        item.insert(QStringLiteral("reasoning"), entry.second.reasoning);
+        item.insert(QStringLiteral("cost"), entry.second.cost);
+        allModelList.append(item);
+    }
+    result.allModels = allModelList;
 
     QVariantList dailyList;
     for (int d = 0; d < result.lastDaysRequested; ++d) {
@@ -436,23 +463,26 @@ void TokenUsage::loadCachedResult() {
         return;
     }
     const QJsonObject root = document.object();
-    if (root.value(QStringLiteral("version")).toInt() != 3) {
+    if (root.value(QStringLiteral("version")).toInt() != 4) {
         return;
     }
     m_today = windowFromCache(root.value(QStringLiteral("today")).toObject());
     m_week = windowFromCache(root.value(QStringLiteral("week")).toObject());
     m_month = windowFromCache(root.value(QStringLiteral("month")).toObject());
     m_lastDaysWindow = windowFromCache(root.value(QStringLiteral("lastDays")).toObject());
+    m_allTime = windowFromCache(root.value(QStringLiteral("allTime")).toObject());
     m_lastDays = root.value(QStringLiteral("lastDaysRequested")).toInt(30);
     if (m_lastDays < 1 || m_lastDays > 400) {
         m_lastDays = 30;
     }
     m_monthModels = root.value(QStringLiteral("monthModels")).toArray().toVariantList();
+    m_allModels = root.value(QStringLiteral("allModels")).toArray().toVariantList();
     m_dailyUsage = root.value(QStringLiteral("dailyUsage")).toArray().toVariantList();
     m_todaySplit = splitMap(m_today);
     m_weekSplit = splitMap(m_week);
     m_monthSplit = splitMap(m_month);
     m_lastDaysSplit = splitMap(m_lastDaysWindow);
+    m_allSplit = splitMap(m_allTime);
     m_lastRefresh = root.value(QStringLiteral("refreshedAt")).toString();
     m_configured = !m_lastRefresh.isEmpty();
 }
@@ -463,13 +493,15 @@ void TokenUsage::saveCachedResult(const TokenRefreshResult &result) {
         return;
     }
     QJsonObject root;
-    root[QStringLiteral("version")] = 3;
+    root[QStringLiteral("version")] = 4;
     root[QStringLiteral("today")] = windowToCache(result.today);
     root[QStringLiteral("week")] = windowToCache(result.week);
     root[QStringLiteral("month")] = windowToCache(result.month);
     root[QStringLiteral("lastDays")] = windowToCache(result.lastDays);
+    root[QStringLiteral("allTime")] = windowToCache(result.allTime);
     root[QStringLiteral("lastDaysRequested")] = result.lastDaysRequested;
     root[QStringLiteral("monthModels")] = QJsonArray::fromVariantList(result.monthModels);
+    root[QStringLiteral("allModels")] = QJsonArray::fromVariantList(result.allModels);
     root[QStringLiteral("dailyUsage")] = QJsonArray::fromVariantList(result.dailyUsage);
     root[QStringLiteral("refreshedAt")] = result.refreshedAt;
     QSaveFile file(usageCachePath());
@@ -566,12 +598,15 @@ void TokenUsage::onRefreshed(const TokenRefreshResult &result) {
         m_week = result.week;
         m_month = result.month;
         m_lastDaysWindow = result.lastDays;
+        m_allTime = result.allTime;
         m_monthModels = result.monthModels;
+        m_allModels = result.allModels;
         m_dailyUsage = result.dailyUsage;
         m_todaySplit = splitMap(result.today);
         m_weekSplit = splitMap(result.week);
         m_monthSplit = splitMap(result.month);
         m_lastDaysSplit = splitMap(result.lastDays);
+        m_allSplit = splitMap(result.allTime);
         m_lastRefresh = result.refreshedAt;
         saveCachedResult(result);
         if (m_lastDays != result.lastDaysRequested) {

@@ -32,9 +32,11 @@ struct AgRefreshResult {
     AgTokenWindow week;
     AgTokenWindow month;
     AgTokenWindow lastDays;
+    AgTokenWindow allTime;
     int lastDaysRequested = 10;
     QString refreshedAt;
     QVariantList monthModels;
+    QVariantList allModels;
     QVariantList monthSources;
     QVariantList dailyUsage;
 };
@@ -76,11 +78,14 @@ class AntigravityUsage : public QObject {
     Q_PROPERTY(qlonglong todayTokens READ todayTokens NOTIFY dataChanged)
     Q_PROPERTY(qlonglong weekTokens READ weekTokens NOTIFY dataChanged)
     Q_PROPERTY(qlonglong monthTokens READ monthTokens NOTIFY dataChanged)
+    Q_PROPERTY(qlonglong allTokens READ allTokens NOTIFY dataChanged)
     Q_PROPERTY(QVariantList monthModels READ monthModels NOTIFY dataChanged)
+    Q_PROPERTY(QVariantList allModels READ allModels NOTIFY dataChanged)
     Q_PROPERTY(QVariantList monthSources READ monthSources NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap todaySplit READ todaySplit NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap weekSplit READ weekSplit NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap monthSplit READ monthSplit NOTIFY dataChanged)
+    Q_PROPERTY(QVariantMap allSplit READ allSplit NOTIFY dataChanged)
     Q_PROPERTY(int lastDays READ lastDays WRITE setLastDays NOTIFY lastDaysChanged)
     Q_PROPERTY(qlonglong lastDaysTokens READ lastDaysTokens NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap lastDaysSplit READ lastDaysSplit NOTIFY dataChanged)
@@ -97,12 +102,15 @@ public:
     [[nodiscard]] qlonglong todayTokens() const { return m_today.total(); }
     [[nodiscard]] qlonglong weekTokens() const { return m_week.total(); }
     [[nodiscard]] qlonglong monthTokens() const { return m_month.total(); }
+    [[nodiscard]] qlonglong allTokens() const { return m_allTime.total(); }
     [[nodiscard]] QVariantList monthModels() const { return m_monthModels; }
+    [[nodiscard]] QVariantList allModels() const { return m_allModels; }
     [[nodiscard]] QVariantList monthSources() const { return m_monthSources; }
     [[nodiscard]] QVariantList dailyUsage() const { return m_dailyUsage; }
     [[nodiscard]] QVariantMap todaySplit() const { return m_todaySplit; }
     [[nodiscard]] QVariantMap weekSplit() const { return m_weekSplit; }
     [[nodiscard]] QVariantMap monthSplit() const { return m_monthSplit; }
+    [[nodiscard]] QVariantMap allSplit() const { return m_allSplit; }
     [[nodiscard]] int lastDays() const { return m_lastDays; }
     [[nodiscard]] qlonglong lastDaysTokens() const { return m_lastDaysWindow.total(); }
     [[nodiscard]] QVariantMap lastDaysSplit() const { return m_lastDaysSplit; }
@@ -135,14 +143,17 @@ private:
     AgTokenWindow m_week;
     AgTokenWindow m_month;
     AgTokenWindow m_lastDaysWindow;
+    AgTokenWindow m_allTime;
     int m_lastDays{10};
     QVariantList m_monthModels;
+    QVariantList m_allModels;
     QVariantList m_monthSources;
     QVariantList m_dailyUsage;
     QVariantMap m_todaySplit;
     QVariantMap m_weekSplit;
     QVariantMap m_monthSplit;
     QVariantMap m_lastDaysSplit;
+    QVariantMap m_allSplit;
     QString m_lastRefresh;
     QString m_error;
     bool m_busy{false};

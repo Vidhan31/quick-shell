@@ -539,6 +539,7 @@ bool collectFromAgDb(const QString &path,
                      const QDate &today,
                      AgRefreshResult *result,
                      QMap<QString, AgTokenWindow> *monthModels,
+                     QMap<QString, AgTokenWindow> *allModels,
                      QMap<QString, AgTokenWindow> *monthSources,
                      QMap<QDate, AgTokenWindow> *dailyMap,
                      QSet<QString> *seen,
@@ -624,6 +625,15 @@ bool collectFromAgDb(const QString &path,
             }
             if (inMonth) {
                 addTo(result->month);
+            }
+            if (actualTimeMs <= bounds.end) {
+                addTo(result->allTime);
+                if (allModels && !turn.model.isEmpty() && turn.model != QStringLiteral("(unknown)")) {
+                    (*allModels)[turn.model].input += turn.input;
+                    (*allModels)[turn.model].output += turn.output;
+                    (*allModels)[turn.model].cacheRead += turn.cacheRead;
+                    (*allModels)[turn.model].reasoning += turn.reasoning;
+                }
             }
         }
     return true;
@@ -726,6 +736,7 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastDays) {
     const QDate rangeStartDay = today.addDays(-(result.lastDaysRequested - 1));
 
     QMap<QString, AgTokenWindow> monthModels;
+    QMap<QString, AgTokenWindow> allModels;
     QMap<QString, AgTokenWindow> monthSources;
     QMap<QDate, AgTokenWindow> dailyMap;
     QSet<QString> seen;
@@ -778,6 +789,7 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastDays) {
                                 today,
                                 &result,
                                 &monthModels,
+                                &allModels,
                                 &monthSources,
                                 &dailyMap,
                                 &seen,
@@ -820,6 +832,20 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastDays) {
         modelItems.append(item);
     }
     result.monthModels = modelItems;
+
+    auto allModelsRanked = ranked(allModels);
+    QVariantList allModelItems;
+    for (const auto &entry : allModelsRanked) {
+        QVariantMap item;
+        item.insert(QStringLiteral("name"), entry.first);
+        item.insert(QStringLiteral("tokens"), entry.second.total());
+        item.insert(QStringLiteral("input"), entry.second.input);
+        item.insert(QStringLiteral("output"), entry.second.output);
+        item.insert(QStringLiteral("cacheRead"), entry.second.cacheRead);
+        item.insert(QStringLiteral("reasoning"), entry.second.reasoning);
+        allModelItems.append(item);
+    }
+    result.allModels = allModelItems;
     QVariantList sourceItems;
     for (const auto &entry : ranked(monthSources)) {
         QVariantMap item;
@@ -898,24 +924,27 @@ void AntigravityUsage::loadCachedResult() {
         return;
     }
     const QJsonObject root = document.object();
-    if (root.value(QStringLiteral("version")).toInt() != 3) {
+    if (root.value(QStringLiteral("version")).toInt() != 4) {
         return;
     }
     m_today = agWindowFromCache(root.value(QStringLiteral("today")).toObject());
     m_week = agWindowFromCache(root.value(QStringLiteral("week")).toObject());
     m_month = agWindowFromCache(root.value(QStringLiteral("month")).toObject());
     m_lastDaysWindow = agWindowFromCache(root.value(QStringLiteral("lastDays")).toObject());
+    m_allTime = agWindowFromCache(root.value(QStringLiteral("allTime")).toObject());
     m_lastDays = root.value(QStringLiteral("lastDaysRequested")).toInt(30);
     if (m_lastDays < 1 || m_lastDays > 400) {
         m_lastDays = 30;
     }
     m_monthModels = root.value(QStringLiteral("monthModels")).toArray().toVariantList();
+    m_allModels = root.value(QStringLiteral("allModels")).toArray().toVariantList();
     m_monthSources = root.value(QStringLiteral("monthSources")).toArray().toVariantList();
     m_dailyUsage = root.value(QStringLiteral("dailyUsage")).toArray().toVariantList();
     m_todaySplit = agSplitMap(m_today);
     m_weekSplit = agSplitMap(m_week);
     m_monthSplit = agSplitMap(m_month);
     m_lastDaysSplit = agSplitMap(m_lastDaysWindow);
+    m_allSplit = agSplitMap(m_allTime);
     m_lastRefresh = root.value(QStringLiteral("refreshedAt")).toString();
     m_configured = !m_lastRefresh.isEmpty();
 }
@@ -926,13 +955,15 @@ void AntigravityUsage::saveCachedResult(const AgRefreshResult &result) {
         return;
     }
     QJsonObject root;
-    root[QStringLiteral("version")] = 3;
+    root[QStringLiteral("version")] = 4;
     root[QStringLiteral("today")] = agWindowToCache(result.today);
     root[QStringLiteral("week")] = agWindowToCache(result.week);
     root[QStringLiteral("month")] = agWindowToCache(result.month);
     root[QStringLiteral("lastDays")] = agWindowToCache(result.lastDays);
+    root[QStringLiteral("allTime")] = agWindowToCache(result.allTime);
     root[QStringLiteral("lastDaysRequested")] = result.lastDaysRequested;
     root[QStringLiteral("monthModels")] = QJsonArray::fromVariantList(result.monthModels);
+    root[QStringLiteral("allModels")] = QJsonArray::fromVariantList(result.allModels);
     root[QStringLiteral("monthSources")] = QJsonArray::fromVariantList(result.monthSources);
     root[QStringLiteral("dailyUsage")] = QJsonArray::fromVariantList(result.dailyUsage);
     root[QStringLiteral("refreshedAt")] = result.refreshedAt;
@@ -1027,13 +1058,16 @@ void AntigravityUsage::onRefreshed(const AgRefreshResult &result) {
         m_week = result.week;
         m_month = result.month;
         m_lastDaysWindow = result.lastDays;
+        m_allTime = result.allTime;
         m_monthModels = result.monthModels;
+        m_allModels = result.allModels;
         m_monthSources = result.monthSources;
         m_dailyUsage = result.dailyUsage;
         m_todaySplit = agSplitMap(result.today);
         m_weekSplit = agSplitMap(result.week);
         m_monthSplit = agSplitMap(result.month);
         m_lastDaysSplit = agSplitMap(result.lastDays);
+        m_allSplit = agSplitMap(result.allTime);
         m_lastRefresh = result.refreshedAt;
         saveCachedResult(result);
         if (m_lastDays != result.lastDaysRequested) {

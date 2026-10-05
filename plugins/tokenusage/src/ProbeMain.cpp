@@ -51,6 +51,11 @@ int main(int argc, char *argv[]) {
         models.append(modelToJson(value.toMap()));
     }
 
+    QJsonArray allModels;
+    for (const QVariant &value : result.allModels) {
+        allModels.append(modelToJson(value.toMap()));
+    }
+
     QJsonObject root;
     root[QStringLiteral("ok")] = result.ok;
     root[QStringLiteral("configured")] = result.configured;
@@ -59,8 +64,10 @@ int main(int argc, char *argv[]) {
     root[QStringLiteral("week")] = windowToJson(result.week);
     root[QStringLiteral("month")] = windowToJson(result.month);
     root[QStringLiteral("lastDays")] = windowToJson(result.lastDays);
+    root[QStringLiteral("allTime")] = windowToJson(result.allTime);
     root[QStringLiteral("lastDaysRequested")] = result.lastDaysRequested;
     root[QStringLiteral("monthModels")] = models;
+    root[QStringLiteral("allModels")] = allModels;
     root[QStringLiteral("dailyUsage")] = QJsonArray::fromVariantList(result.dailyUsage);
     root[QStringLiteral("refreshedAt")] = result.refreshedAt;
 

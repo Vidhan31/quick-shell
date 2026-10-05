@@ -223,7 +223,9 @@ ShellRoot {
         BarItem {
           id: aiHit
           active: popupHost.isOpen(aiHit, "ai")
-          Accessible.name: "AI tokens"
+          tooltip: "AI usage till today: " + (aiUsageService ? aiUsageService.totalTokensText : "--") + " · " + (aiUsageService ? aiUsageService.totalCostText : "--")
+          tooltipSub: "Click for breakdown & analytics"
+          Accessible.name: "AI tokens and cost"
           onClicked: popupHost.toggle(aiHit, "ai")
 
           AiUsageWidget {
