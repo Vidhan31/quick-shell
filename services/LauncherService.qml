@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Plugins.PathProbe
 import Quickshell.Plugins.FileSearch
 import qs.utils
@@ -20,6 +21,128 @@ Item {
   property var deTarget: null
   property bool corpusStarted: false
   property bool isDragging: false
+
+  property var pinnedIds: []
+  readonly property int maxPins: 15
+
+  readonly property var pinnedApps: {
+    const ids = root.pinnedIds;
+    const allApps = root.apps;
+    if (!ids || ids.length === 0 || !allApps || allApps.length === 0) return [];
+    const map = {};
+    for (let i = 0; i < allApps.length; i++) {
+      map[allApps[i].id] = allApps[i];
+    }
+    const result = [];
+    for (let j = 0; j < ids.length; j++) {
+      const found = map[ids[j]];
+      if (found) {
+        result.push(found);
+      }
+    }
+    return result;
+  }
+
+  PersistentProperties {
+    id: persist
+    property string pinnedJson: "[]"
+    reloadableId: "launcher-pinned-state"
+  }
+
+  readonly property string pinnedConfigPath: Quickshell.env("HOME") + "/.config/quickshell/pinned_apps.json"
+
+  FileView {
+    id: pinnedConfigFile
+    path: root.pinnedConfigPath
+    onLoaded: root.loadPinnedFromFile()
+  }
+
+  function loadPinnedFromFile(): void {
+    if (!pinnedConfigFile.loaded) return;
+    const raw = pinnedConfigFile.text();
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        root.pinnedIds = parsed;
+        persist.pinnedJson = JSON.stringify(parsed);
+      }
+    } catch (e) {
+      console.warn("Failed to parse pinned_apps.json:", e);
+    }
+  }
+
+  Component.onCompleted: {
+    if (persist.pinnedJson && persist.pinnedJson !== "[]") {
+      try {
+        const parsed = JSON.parse(persist.pinnedJson);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          root.pinnedIds = parsed;
+          return;
+        }
+      } catch (e) {
+      }
+    }
+
+    if (pinnedConfigFile.loaded) {
+      loadPinnedFromFile();
+    }
+  }
+
+  function savePinnedToDisk(): void {
+    const json = JSON.stringify(root.pinnedIds);
+    Quickshell.execDetached({
+      command: ["python3", "-c", "import sys, pathlib; p = pathlib.Path.home() / '.config' / 'quickshell' / 'pinned_apps.json'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text(sys.argv[1])", json]
+    });
+  }
+
+  function isPinned(appId: string): bool {
+    if (!appId || !root.pinnedIds) return false;
+    return root.pinnedIds.indexOf(appId) !== -1;
+  }
+
+  function pinApp(appId: string): bool {
+    if (!appId || isPinned(appId)) return false;
+    if (root.pinnedIds.length >= root.maxPins) return false;
+    const next = root.pinnedIds.slice();
+    next.push(appId);
+    root.pinnedIds = next;
+    persist.pinnedJson = JSON.stringify(next);
+    savePinnedToDisk();
+    return true;
+  }
+
+  function unpinApp(appId: string): void {
+    if (!appId || !root.pinnedIds) return;
+    const idx = root.pinnedIds.indexOf(appId);
+    if (idx === -1) return;
+    const next = root.pinnedIds.slice();
+    next.splice(idx, 1);
+    root.pinnedIds = next;
+    persist.pinnedJson = JSON.stringify(next);
+    savePinnedToDisk();
+  }
+
+  function togglePin(appId: string): void {
+    if (isPinned(appId)) unpinApp(appId);
+    else pinApp(appId);
+  }
+
+  function toggleSelectedPin(): void {
+    if (root.selectedIndex < 0 || root.selectedIndex >= root.rows.length) return;
+    const r = root.rows[root.selectedIndex];
+    if (r && r.kind === "app") {
+      togglePin(r.id);
+    }
+  }
+
+  function launchPinned(index: int, mode: var): void {
+    if (index < 0 || index >= root.pinnedApps.length) return;
+    const p = root.pinnedApps[index];
+    if (!p || !p.entry) return;
+    launchEntry(p.entry, p.name, mode === "terminal" || mode === "shift");
+    close();
+  }
 
   /* Absolute path because the terminal on this system is an AppImage that is
      not on PATH. Point this at any binary accepting

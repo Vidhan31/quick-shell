@@ -96,8 +96,11 @@ Item {
     visible: appIcon.status === Image.Error || !row.modelData.iconSrc
   }
 
+  readonly property bool isApp: !row.isPath && !row.isCommand
+  readonly property bool isPinned: row.launcher ? row.launcher.isPinned(row.modelData.id) : false
   readonly property bool hasGeneric: (row.modelData.generic || "").length > 0
-  readonly property real textSpace: Math.max(0, row.width - (Theme.launcherContentInset * 2 + Theme.launcherIconSize + Theme.launcherRowPadX))
+  readonly property real pinSpace: row.isApp ? (pinBtn.width + Theme.spaceSm) : 0
+  readonly property real textSpace: Math.max(0, row.width - (Theme.launcherContentInset * 2 + Theme.launcherIconSize + Theme.launcherRowPadX + row.pinSpace))
 
   Text {
     id: nameText
@@ -123,8 +126,8 @@ Item {
     id: genericText
     anchors.left: row.isPath ? nameText.left : nameText.right
     anchors.leftMargin: row.isPath ? 0 : Theme.spaceMd
-    anchors.right: parent.right
-    anchors.rightMargin: Theme.launcherContentInset
+    anchors.right: pinBtn.visible ? pinBtn.left : parent.right
+    anchors.rightMargin: pinBtn.visible ? Theme.spaceSm : Theme.launcherContentInset
     anchors.top: row.isPath ? nameText.bottom : undefined
     anchors.topMargin: row.isPath ? 1 : 0
     anchors.baseline: row.isPath ? undefined : nameText.baseline
@@ -193,6 +196,52 @@ Item {
         row.launcher.activateIndex(row.index, "shift");
       } else {
         row.launcher.activateIndex(row.index, "default");
+      }
+    }
+  }
+
+  Rectangle {
+    id: pinBtn
+    z: 10
+    anchors.right: parent.right
+    anchors.rightMargin: Theme.launcherContentInset
+    anchors.verticalCenter: parent.verticalCenter
+    width: 24
+    height: 24
+    radius: Theme.radiusSm
+    visible: row.isApp
+    color: pinMa.containsMouse ? Theme.hoverFill : "transparent"
+    border.color: pinMa.containsMouse ? Theme.line : "transparent"
+    border.width: 1
+
+    Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+    Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
+
+    Text {
+      anchors.centerIn: parent
+      text: row.isPinned ? "󰤱" : "󰐃"
+      font.family: Theme.mono
+      font.pixelSize: Theme.iconSm
+      color: row.isPinned ? Theme.accent : (pinMa.containsMouse ? Theme.accent : Theme.ink3)
+      opacity: (row.isPinned || row.isCurrent || pinMa.containsMouse || ma.containsMouse) ? 1.0 : 0.35
+    }
+
+    MouseArea {
+      id: pinMa
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.LeftButton
+      cursorShape: Qt.PointingHandCursor
+      preventStealing: true
+      onClicked: mouse => {
+        mouse.accepted = true;
+        if (row.launcher) {
+          if (row.isPinned) {
+            row.launcher.unpinApp(row.modelData.id);
+          } else {
+            row.launcher.pinApp(row.modelData.id);
+          }
+        }
       }
     }
   }

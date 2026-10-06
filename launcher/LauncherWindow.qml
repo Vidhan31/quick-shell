@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Widgets
 import "../theme"
 import "../components"
 
@@ -13,9 +14,19 @@ PanelWindow {
   id: win
 
   property var launcher: null
+  property int pinnedIndex: -1
 
   readonly property var shortcuts: {
     const l = win.launcher;
+    if (win.pinnedIndex >= 0 && l && l.pinnedApps && win.pinnedIndex < l.pinnedApps.length) {
+      return [
+        { key: "↵", label: "open" },
+        { key: "⇧↵", label: "terminal" },
+        { key: "←→", label: "cycle pins" },
+        { key: "↓", label: "list" },
+        { key: "Esc", label: "close" }
+      ];
+    }
     const sel = l && l.selectedIndex >= 0 && l.rows && l.selectedIndex < l.rows.length
       ? l.rows[l.selectedIndex]
       : null;
@@ -74,6 +85,11 @@ PanelWindow {
   WlrLayershell.namespace: "quickshell-launcher"
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
+  BackgroundEffect.blurRegion: Region {
+    item: card // qmllint disable unqualified
+    radius: Theme.radiusCard
+  }
+
   implicitHeight: card.implicitHeight
 
   function handleFocusLost(): void {
@@ -84,9 +100,16 @@ PanelWindow {
   onVisibleChanged: {
     if (visible) {
       field.text = "";
+      if (win.launcher) {
+        win.launcher.setQuery("");
+        win.pinnedIndex = win.launcher.pinnedApps.length > 0 ? 0 : -1;
+      } else {
+        win.pinnedIndex = -1;
+      }
       armTimer.restart();
     } else {
       armTimer.stop();
+      win.pinnedIndex = -1;
       win.WlrLayershell.keyboardFocus = WlrKeyboardFocus.None;
     }
   }
@@ -119,6 +142,24 @@ PanelWindow {
         list.positionViewAtIndex(win.launcher.selectedIndex, ListView.Contain);
       }
     }
+    function onPinnedIdsChanged(): void {
+      if (field.text.length === 0 && win.launcher) {
+        if (win.launcher.pinnedApps.length === 0) {
+          win.pinnedIndex = -1;
+        } else if (win.pinnedIndex < 0 || win.pinnedIndex >= win.launcher.pinnedApps.length) {
+          win.pinnedIndex = 0;
+        }
+      }
+    }
+    function onPinnedAppsChanged(): void {
+      if (field.text.length === 0 && win.launcher) {
+        if (win.launcher.pinnedApps.length === 0) {
+          win.pinnedIndex = -1;
+        } else if (win.pinnedIndex < 0 || win.pinnedIndex >= win.launcher.pinnedApps.length) {
+          win.pinnedIndex = 0;
+        }
+      }
+    }
   }
 
   /* NOTE: Keys must live on an Item, not on the PanelWindow root.
@@ -133,7 +174,7 @@ PanelWindow {
     anchors.top: parent.top
     implicitHeight: col.implicitHeight + Theme.launcherCardPadY * 2 + 2
 
-    color: Theme.surface
+    color: Theme.tint(Theme.surface, 0.75)
     border.color: Theme.cardBorder
     border.width: 1
     radius: Theme.radiusCard
@@ -179,7 +220,17 @@ PanelWindow {
           focus: true
           inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
           onTextEdited: {
-            if (win.launcher) win.launcher.setQuery(field.text);
+            if (field.text.length > 0) {
+              win.pinnedIndex = -1;
+            } else {
+              win.pinnedIndex = (win.launcher && win.launcher.pinnedApps.length > 0) ? 0 : -1;
+            }
+            if (win.launcher) {
+              win.launcher.setQuery(field.text);
+              if (field.text.length > 0) {
+                win.launcher.selectedIndex = 0;
+              }
+            }
           }
           onActiveFocusChanged: {
             if (!field.activeFocus) win.handleFocusLost();
@@ -188,35 +239,91 @@ PanelWindow {
           Keys.onPressed: event => {
             if (!win.launcher || field.inputMethodComposing) return;
             switch (event.key) {
+            case Qt.Key_Right:
+              if (field.text.length === 0 && win.launcher && win.launcher.pinnedApps.length > 0) {
+                if (win.pinnedIndex < 0) {
+                  win.pinnedIndex = 0;
+                } else {
+                  win.pinnedIndex = (win.pinnedIndex + 1) % win.launcher.pinnedApps.length;
+                }
+                event.accepted = true;
+              }
+              break;
+            case Qt.Key_Left:
+              if (field.text.length === 0 && win.launcher && win.launcher.pinnedApps.length > 0) {
+                if (win.pinnedIndex < 0) {
+                  win.pinnedIndex = win.launcher.pinnedApps.length - 1;
+                } else {
+                  win.pinnedIndex = (win.pinnedIndex - 1 + win.launcher.pinnedApps.length) % win.launcher.pinnedApps.length;
+                }
+                event.accepted = true;
+              }
+              break;
             case Qt.Key_Up:
-              win.launcher.moveSelection(-1);
-              event.accepted = true;
+              if (win.pinnedIndex >= 0) {
+                event.accepted = true;
+              } else if (win.launcher && win.launcher.selectedIndex === 0 && field.text.length === 0 && win.launcher.pinnedApps.length > 0) {
+                win.pinnedIndex = 0;
+                event.accepted = true;
+              } else {
+                win.launcher.moveSelection(-1);
+                event.accepted = true;
+              }
               break;
             case Qt.Key_Down:
-              win.launcher.moveSelection(1);
-              event.accepted = true;
+              if (win.pinnedIndex >= 0) {
+                win.pinnedIndex = -1;
+                if (win.launcher) win.launcher.selectedIndex = 0;
+                event.accepted = true;
+              } else {
+                win.launcher.moveSelection(1);
+                event.accepted = true;
+              }
               break;
             case Qt.Key_PageUp:
-              win.launcher.movePage(-1);
-              event.accepted = true;
+              if (win.pinnedIndex >= 0) {
+                event.accepted = true;
+              } else {
+                win.launcher.movePage(-1);
+                event.accepted = true;
+              }
               break;
             case Qt.Key_PageDown:
-              win.launcher.movePage(1);
-              event.accepted = true;
+              if (win.pinnedIndex >= 0) {
+                event.accepted = true;
+              } else {
+                win.launcher.movePage(1);
+                event.accepted = true;
+              }
               break;
             case Qt.Key_Home:
-              win.launcher.goFirst();
-              event.accepted = true;
+              if (win.pinnedIndex >= 0) {
+                win.pinnedIndex = 0;
+                event.accepted = true;
+              } else {
+                win.launcher.goFirst();
+                event.accepted = true;
+              }
               break;
             case Qt.Key_End:
-              win.launcher.goLast();
-              event.accepted = true;
+              if (win.pinnedIndex >= 0 && win.launcher) {
+                win.pinnedIndex = Math.max(0, win.launcher.pinnedApps.length - 1);
+                event.accepted = true;
+              } else {
+                win.launcher.goLast();
+                event.accepted = true;
+              }
               break;
             case Qt.Key_Return:
             case Qt.Key_Enter:
               {
                 const isCtrl = (event.modifiers & Qt.ControlModifier) !== 0;
                 const isShift = (event.modifiers & Qt.ShiftModifier) !== 0;
+                if (win.pinnedIndex >= 0 && win.launcher && win.pinnedIndex < win.launcher.pinnedApps.length) {
+                  win.launcher.launchPinned(win.pinnedIndex, (isCtrl && isShift) ? "terminal" : (isShift ? "shift" : "default"));
+                  event.accepted = true;
+                  break;
+                }
                 if (isCtrl && isShift) {
                   win.launcher.activateSelected("terminal");
                 } else if (isShift) {
@@ -248,6 +355,21 @@ PanelWindow {
                 }
               }
               break;
+            case Qt.Key_P:
+              if ((event.modifiers & Qt.ControlModifier) && win.launcher) {
+                if (win.pinnedIndex >= 0 && win.pinnedIndex < win.launcher.pinnedApps.length) {
+                  win.launcher.unpinApp(win.launcher.pinnedApps[win.pinnedIndex].id);
+                  if (win.launcher.pinnedApps.length === 0) {
+                    win.pinnedIndex = -1;
+                  } else if (win.pinnedIndex >= win.launcher.pinnedApps.length) {
+                    win.pinnedIndex = win.launcher.pinnedApps.length - 1;
+                  }
+                } else {
+                  win.launcher.toggleSelectedPin();
+                }
+                event.accepted = true;
+              }
+              break;
             default:
               if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_K) {
                 // Reserved for the action panel.
@@ -277,6 +399,138 @@ PanelWindow {
         anchors.rightMargin: Theme.launcherContentInset
       }
 
+      Item {
+        id: pinnedSection
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: Theme.launcherContentInset
+        anchors.rightMargin: Theme.launcherContentInset
+        height: 40
+        visible: win.launcher && win.launcher.pinnedApps.length > 0 && field.text.length === 0
+
+        Row {
+          id: pinnedRow
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Theme.spaceSm
+
+          Repeater {
+            model: win.launcher ? win.launcher.pinnedApps : []
+
+            Rectangle {
+              id: pinTile
+              required property var modelData
+              required property int index
+
+              width: 36
+              height: 36
+              radius: Theme.radiusBase
+              anchors.verticalCenter: parent.verticalCenter
+
+              readonly property bool isSelected: win.pinnedIndex === pinTile.index
+              readonly property bool isHovered: tileMa.containsMouse
+
+              color: pinTile.isSelected ? Theme.selected : (pinTile.isHovered ? Theme.hoverFill : "transparent")
+
+              Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+
+              MouseArea {
+                id: tileMa
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                cursorShape: Qt.PointingHandCursor
+                onClicked: mouse => {
+                  if (!win.launcher) return;
+                  if (mouse.button === Qt.RightButton) {
+                    win.launcher.unpinApp(pinTile.modelData.id);
+                    if (win.launcher.pinnedApps.length === 0) {
+                      win.pinnedIndex = -1;
+                    } else if (win.pinnedIndex >= win.launcher.pinnedApps.length) {
+                      win.pinnedIndex = win.launcher.pinnedApps.length - 1;
+                    }
+                    field.forceActiveFocus();
+                    return;
+                  }
+                  win.launcher.launchPinned(pinTile.index, mouse.modifiers & Qt.ShiftModifier ? "shift" : "default");
+                }
+              }
+
+              IconImage {
+                id: pinIcon
+                anchors.centerIn: parent
+                implicitSize: Theme.launcherIconSize
+                asynchronous: true
+                source: pinTile.modelData.iconSrc || ""
+              }
+
+              Text {
+                anchors.centerIn: parent
+                visible: pinIcon.status === Image.Error || !pinTile.modelData.iconSrc
+                text: (pinTile.modelData.name || "?").charAt(0).toUpperCase()
+                color: Theme.ink1
+                font.family: Theme.roundedFont
+                font.pixelSize: Theme.fontSm
+                font.bold: true
+              }
+
+              Rectangle {
+                id: unpinBadge
+                z: 10
+                width: 16
+                height: 16
+                radius: 8
+                anchors.top: parent.top
+                anchors.topMargin: -3
+                anchors.right: parent.right
+                anchors.rightMargin: -3
+                color: unpinMa.containsMouse ? Theme.red : Theme.surfaceElevated
+                border.color: Theme.line
+                border.width: 1
+                visible: pinTile.isHovered || unpinMa.containsMouse
+
+                Text {
+                  anchors.centerIn: parent
+                  text: "×"
+                  font.family: Theme.displayFont
+                  font.pixelSize: 12
+                  font.bold: true
+                  color: unpinMa.containsMouse ? Theme.ink1 : Theme.ink2
+                }
+
+                MouseArea {
+                  id: unpinMa
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  preventStealing: true
+                  onClicked: mouse => {
+                    mouse.accepted = true;
+                    if (win.launcher) {
+                      win.launcher.unpinApp(pinTile.modelData.id);
+                      if (win.launcher.pinnedApps.length === 0) {
+                        win.pinnedIndex = -1;
+                      } else if (win.pinnedIndex >= win.launcher.pinnedApps.length) {
+                        win.pinnedIndex = win.launcher.pinnedApps.length - 1;
+                      }
+                    }
+                    field.forceActiveFocus();
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      Hairline {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: Theme.launcherContentInset
+        anchors.rightMargin: Theme.launcherContentInset
+        visible: pinnedSection.visible
+      }
+
       ListView {
         id: list
         anchors.left: parent.left
@@ -296,10 +550,11 @@ PanelWindow {
            never from ListView.currentIndex, so it cannot desync from the
            actual selection when the model is replaced each keystroke. */
         delegate: LauncherRow {
-          isCurrent: win.launcher ? index === win.launcher.selectedIndex : false
+          isCurrent: win.launcher ? (win.pinnedIndex < 0 && index === win.launcher.selectedIndex) : false
           launcher: win.launcher
         }
       }
+
 
       Text {
         anchors.left: parent.left
