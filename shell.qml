@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 //@ pragma UseQApplication
+//@ pragma DropExpensiveFonts
 //@ pragma Env QML2_IMPORT_PATH = /home/dev/Projects/quick-shell/build/qml
 import QtQuick
 import QtQuick.Layouts
@@ -21,8 +22,8 @@ import "theme"
 ShellRoot {
   id: root
 
-  property string time: ""
-  property string date: ""
+  readonly property string time: Qt.formatTime(sysClock.date, "hh:mm")
+  readonly property string date: Qt.formatDate(sysClock.date, "ddd, MMM d")
   property var primaryBar: null
 
   NotificationService {
@@ -104,16 +105,9 @@ ShellRoot {
     update: updateService
   })
 
-  Timer {
-    interval: 1000
-    running: true
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: {
-      const now = new Date();
-      root.time = Qt.formatTime(now, "hh:mm");
-      root.date = Qt.formatDate(now, "ddd, MMM d");
-    }
+  SystemClock {
+    id: sysClock
+    precision: SystemClock.Minutes
   }
 
   Variants {

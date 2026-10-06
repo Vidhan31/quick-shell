@@ -1,5 +1,6 @@
 #include "DockerMonitor.hpp"
 
+#include <QDir>
 #include <QFileInfo>
 
 #include <cctype>
@@ -30,12 +31,14 @@ void DockerWorker::start()
         m_debounceTimer->setInterval(400);
         connect(m_debounceTimer, &QTimer::timeout, this, &DockerWorker::sample);
     }
+    setupFsWatcher();
     sample(); // initial full state at quickshell startup
     connectEvents(); // then stay current via the daemon's event stream
 }
 
 void DockerWorker::stop()
 {
+    closeFsWatcher();
     if (m_debounceTimer) {
         m_debounceTimer->stop();
     }
@@ -49,16 +52,52 @@ void DockerWorker::stop()
     m_client->cancel();
 }
 
+void DockerWorker::setupFsWatcher()
+{
+    closeFsWatcher();
+
+    m_fsWatcher = new QFileSystemWatcher(this);
+    connect(m_fsWatcher, &QFileSystemWatcher::directoryChanged, this, &DockerWorker::onSocketDirectoryChanged);
+    connect(m_fsWatcher, &QFileSystemWatcher::fileChanged, this, &DockerWorker::onSocketDirectoryChanged);
+
+    const QString sockPath = m_client->socketPath();
+    const QFileInfo sockInfo(sockPath);
+    const QString dirPath = sockInfo.dir().absolutePath();
+
+    if (QDir(dirPath).exists()) {
+        m_fsWatcher->addPath(dirPath);
+    }
+    if (sockInfo.exists()) {
+        m_fsWatcher->addPath(sockPath);
+    }
+}
+
+void DockerWorker::closeFsWatcher()
+{
+    if (m_fsWatcher) {
+        delete m_fsWatcher;
+        m_fsWatcher = nullptr;
+    }
+}
+
+void DockerWorker::onSocketDirectoryChanged(const QString &)
+{
+    const QString sockPath = m_client->socketPath();
+    if (!m_eventsConnected && QFileInfo::exists(sockPath)) {
+        if (m_reconnectTimer && m_reconnectTimer->isActive()) {
+            m_reconnectTimer->stop();
+        }
+        setupFsWatcher();
+        connectEvents();
+    }
+}
+
 void DockerWorker::connectEvents()
 {
     closeEvents();
 
     const QString sockPath = m_client->socketPath();
     if (!QFileInfo::exists(sockPath)) {
-        // Daemon down — retry; a successful (re)connect triggers a sample.
-        if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
-            m_reconnectTimer->start(3000);
-        }
         return;
     }
 
@@ -214,8 +253,13 @@ void DockerWorker::onEventsError(QLocalSocket::LocalSocketError)
     if (wasConnected) {
         sample(); // connection lost — refresh once, reconnect keeps us live
     }
-    if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
-        m_reconnectTimer->start(3000);
+    const QString sockPath = m_client->socketPath();
+    if (QFileInfo::exists(sockPath)) {
+        if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
+            m_reconnectTimer->start(3000);
+        }
+    } else {
+        setupFsWatcher();
     }
 }
 
@@ -226,8 +270,13 @@ void DockerWorker::onEventsDisconnected()
     if (wasConnected) {
         sample();
     }
-    if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
-        m_reconnectTimer->start(3000);
+    const QString sockPath = m_client->socketPath();
+    if (QFileInfo::exists(sockPath)) {
+        if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
+            m_reconnectTimer->start(3000);
+        }
+    } else {
+        setupFsWatcher();
     }
 }
 

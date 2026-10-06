@@ -3,8 +3,9 @@
 #include "DockerSocketClient.hpp"
 #include "DockerState.hpp"
 
-#include <QObject>
+#include <QFileSystemWatcher>
 #include <QLocalSocket>
+#include <QObject>
 #include <QThread>
 #include <QTimer>
 #include <QVariantList>
@@ -49,15 +50,19 @@ private slots:
     void onEventsError(QLocalSocket::LocalSocketError socketError);
     void onEventsDisconnected();
     void reconnectEvents();
+    void onSocketDirectoryChanged(const QString &path);
 
 private:
     void connectEvents();
     void closeEvents();
     void triggerSampleDebounced();
+    void setupFsWatcher();
+    void closeFsWatcher();
     void setBusy(bool busy, const QString &context = QString(), const QString &label = QString());
     QString containerName(const QString &id) const;
 
     std::shared_ptr<DockerSocketClient> m_client;
+    QFileSystemWatcher *m_fsWatcher{nullptr};
     QLocalSocket *m_eventsSocket{nullptr};
     QByteArray m_eventsBuffer;
     bool m_eventsHeadersParsed{false};

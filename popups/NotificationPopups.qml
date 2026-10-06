@@ -397,6 +397,8 @@ PanelWindow {
                   Image {
                     anchors.fill: parent
                     source: toastItem.imageSrc
+                    sourceSize.width: 320
+                    sourceSize.height: 160
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                   }

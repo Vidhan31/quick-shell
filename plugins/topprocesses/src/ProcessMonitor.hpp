@@ -79,6 +79,7 @@ private:
     unsigned long long m_prevSysIdleJiffies{0};
 
     std::unique_ptr<SimpleThreadPool> m_pool;
+    const char *m_gpuPath{nullptr};
 
     // Persistent containers to avoid heap reallocations
     std::vector<RawProc> m_rawProcs;

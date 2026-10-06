@@ -29,10 +29,14 @@ void PrivacyWorker::start() {
             } else if (m_lastState.micActive) {
                 // Periodically re-evaluate active state to ensure no stale flags
                 evaluatePrivacyState();
+            } else {
+                m_pollTimer->stop();
             }
         });
     }
-    m_pollTimer->start(m_intervalMs > 0 ? m_intervalMs : 800);
+    if (m_lastState.micActive) {
+        m_pollTimer->start(m_intervalMs > 0 ? m_intervalMs : 800);
+    }
 }
 
 void PrivacyWorker::stop() {
@@ -405,6 +409,16 @@ void PrivacyWorker::evaluatePrivacyState() {
         m_initialized = true;
         m_lastState = state;
         emit stateChanged(state);
+    }
+
+    if (m_pollTimer) {
+        if (m_lastState.micActive) {
+            if (!m_pollTimer->isActive()) {
+                m_pollTimer->start(m_intervalMs > 0 ? m_intervalMs : 800);
+            }
+        } else if (m_pollTimer->isActive()) {
+            m_pollTimer->stop();
+        }
     }
 }
 

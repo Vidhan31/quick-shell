@@ -266,42 +266,46 @@ PanelWindow {
           anchors.rightMargin: 6
           spacing: Theme.spaceSm
 
-          TextInput {
-            id: passwordInput
+          Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            verticalAlignment: TextInput.AlignVCenter
 
-            font.family: Theme.mono
-            font.pixelSize: Theme.fontBase
-            color: Theme.ink1
-            selectionColor: Theme.accent
-            selectedTextColor: Theme.darkInk
-            selectByMouse: true
-            activeFocusOnTab: true
-            enabled: win.service?.isResponseRequired ?? false
-            inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhSensitiveData | Qt.ImhHiddenText
+            TextInput {
+              id: passwordInput
+              anchors.fill: parent
+              verticalAlignment: TextInput.AlignVCenter
 
-            echoMode: win.showPlainPassword
-              ? TextInput.Normal
-              : ((win.service?.responseVisible ?? false) ? TextInput.Normal : TextInput.Password)
+              font.family: Theme.mono
+              font.pixelSize: Theme.fontBase
+              color: Theme.ink1
+              selectionColor: Theme.accent
+              selectedTextColor: Theme.darkInk
+              selectByMouse: true
+              activeFocusOnTab: true
+              enabled: win.service?.isResponseRequired ?? false
+              inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhSensitiveData | Qt.ImhHiddenText
 
-            onAccepted: win.submit()
+              echoMode: win.showPlainPassword
+                ? TextInput.Normal
+                : ((win.service?.responseVisible ?? false) ? TextInput.Normal : TextInput.Password)
 
-            Keys.onEscapePressed: event => {
-              win.cancel();
-              event.accepted = true;
+              onAccepted: win.submit()
+
+              Keys.onEscapePressed: event => {
+                win.cancel();
+                event.accepted = true;
+              }
             }
-          }
 
-          Text {
-            anchors.left: passwordInput.left
-            anchors.verticalCenter: parent.verticalCenter
-            text: win.service?.prompt || "Password"
-            font.family: Theme.textFont
-            font.pixelSize: Theme.fontBase
-            color: Theme.ink3
-            visible: passwordInput.text.length === 0 && !passwordInput.activeFocus
+            Text {
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: win.service?.prompt || "Password"
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontBase
+              color: Theme.ink3
+              visible: passwordInput.text.length === 0 && !passwordInput.activeFocus
+            }
           }
 
           Rectangle {

@@ -138,6 +138,7 @@ Item {
                 id: artImage
                 anchors.fill: parent
                 source: root.activeMedia ? root.activeMedia.trackArtUrl : ""
+                sourceSize: Qt.size(128, 128)
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 visible: status === Image.Ready

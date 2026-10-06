@@ -113,10 +113,6 @@ SamplerWorker::SamplerWorker(int intervalMs, int candidateCount, QObject *parent
 
     m_memTotalKb = readMemTotalKb();
 
-    // Initialize 6 worker threads for parallel PSS resolution on multi-core Ryzen
-    size_t poolWorkers = std::clamp<size_t>(m_nCpu > 0 ? static_cast<size_t>(m_nCpu) : 4, 2, 6);
-    m_pool = std::make_unique<SimpleThreadPool>(poolWorkers);
-
     m_rawProcs.reserve(512);
     m_pidToIndex.reserve(512);
     m_prevJiffies.reserve(512);
@@ -130,6 +126,10 @@ SamplerWorker::SamplerWorker(int intervalMs, int candidateCount, QObject *parent
 SamplerWorker::~SamplerWorker() = default;
 
 void SamplerWorker::start() {
+    if (!m_pool) {
+        size_t poolWorkers = std::clamp<size_t>(m_nCpu > 0 ? static_cast<size_t>(m_nCpu) : 4, 2, 6);
+        m_pool = std::make_unique<SimpleThreadPool>(poolWorkers);
+    }
     if (!m_timer) {
         m_timer = new QTimer(this);
         connect(m_timer, &QTimer::timeout, this, &SamplerWorker::sample);
@@ -144,6 +144,7 @@ void SamplerWorker::stop() {
     if (m_timer && m_timer->isActive()) {
         m_timer->stop();
     }
+    m_pool.reset();
 }
 
 void SamplerWorker::setInterval(int intervalMs) {
@@ -220,19 +221,28 @@ void SamplerWorker::sampleSysStats() {
         }
     }
 
-    int fdGpu = open("/sys/class/drm/card1/device/gpu_busy_percent", O_RDONLY | O_CLOEXEC);
-    if (fdGpu < 0) {
-        fdGpu = open("/sys/class/drm/card0/device/gpu_busy_percent", O_RDONLY | O_CLOEXEC);
+    if (!m_gpuPath) {
+        if (access("/sys/class/drm/card1/device/gpu_busy_percent", R_OK) == 0) {
+            m_gpuPath = "/sys/class/drm/card1/device/gpu_busy_percent";
+        } else if (access("/sys/class/drm/card0/device/gpu_busy_percent", R_OK) == 0) {
+            m_gpuPath = "/sys/class/drm/card0/device/gpu_busy_percent";
+        } else {
+            m_gpuPath = "";
+        }
     }
-    if (fdGpu >= 0) {
-        char buf[16];
-        ssize_t n = read(fdGpu, buf, sizeof(buf) - 1);
-        close(fdGpu);
-        if (n > 0) {
-            buf[n] = '\0';
-            int v = atoi(buf);
-            gpuPercent = std::clamp(static_cast<double>(v), 0.0, 100.0);
-            gpuAvailable = true;
+
+    if (m_gpuPath && *m_gpuPath) {
+        int fdGpu = open(m_gpuPath, O_RDONLY | O_CLOEXEC);
+        if (fdGpu >= 0) {
+            char buf[16];
+            ssize_t n = read(fdGpu, buf, sizeof(buf) - 1);
+            close(fdGpu);
+            if (n > 0) {
+                buf[n] = '\0';
+                int v = atoi(buf);
+                gpuPercent = std::clamp(static_cast<double>(v), 0.0, 100.0);
+                gpuAvailable = true;
+            }
         }
     }
 
@@ -280,6 +290,10 @@ long SamplerWorker::readMemTotalKb() {
 }
 
 void SamplerWorker::sample() {
+    if (!m_pool) {
+        size_t poolWorkers = std::clamp<size_t>(m_nCpu > 0 ? static_cast<size_t>(m_nCpu) : 4, 2, 6);
+        m_pool = std::make_unique<SimpleThreadPool>(poolWorkers);
+    }
     if (m_memTotalKb <= 1) {
         m_memTotalKb = readMemTotalKb();
     }

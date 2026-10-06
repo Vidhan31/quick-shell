@@ -37,25 +37,9 @@ Item {
           id: eqBar
           required property int index
           width: 3
+          height: eqBar.index === 1 ? 14 : (eqBar.index === 0 ? 8 : 11)
           radius: 1.5
           color: Theme.ok
-
-          SequentialAnimation on height {
-            running: root.isPlaying
-            loops: Animation.Infinite
-            NumberAnimation {
-              from: eqBar.index === 1 ? 5 : (eqBar.index === 0 ? 12 : 9)
-              to: eqBar.index === 1 ? 14 : (eqBar.index === 0 ? 5 : 13)
-              duration: eqBar.index === 1 ? 300 : (eqBar.index === 0 ? 420 : 360)
-              easing.type: Easing.InOutQuad
-            }
-            NumberAnimation {
-              from: eqBar.index === 1 ? 14 : (eqBar.index === 0 ? 5 : 13)
-              to: eqBar.index === 1 ? 5 : (eqBar.index === 0 ? 12 : 9)
-              duration: eqBar.index === 1 ? 300 : (eqBar.index === 0 ? 420 : 360)
-              easing.type: Easing.InOutQuad
-            }
-          }
         }
       }
     }

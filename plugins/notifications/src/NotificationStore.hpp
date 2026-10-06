@@ -36,7 +36,7 @@ class NotificationStore : public QObject {
     Q_PROPERTY(int unreadCount READ unreadCount NOTIFY unreadCountChanged)
     Q_PROPERTY(int totalCount READ totalCount NOTIFY totalCountChanged)
     Q_PROPERTY(bool dnd READ dnd WRITE setDnd NOTIFY dndChanged)
-    // Incremented on every 10s time tick. QML timestamp labels read this so they
+    // Incremented on every 60s time tick. QML timestamp labels read this so they
     // re-evaluate without waiting for a groupedList rebuild.
     Q_PROPERTY(int timeTick READ timeTick NOTIFY timeTickChanged)
     Q_PROPERTY(int maxNotifications READ maxNotifications WRITE setMaxNotifications NOTIFY maxNotificationsChanged)

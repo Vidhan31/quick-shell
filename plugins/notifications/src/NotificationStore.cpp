@@ -19,9 +19,8 @@ NotificationStore::NotificationStore(QObject *parent)
     , m_timeTimer(new QTimer(this)) {
     m_sweepTimer->setInterval(1000);
     connect(m_sweepTimer, &QTimer::timeout, this, &NotificationStore::onSweepTick);
-    m_timeTimer->setInterval(10000);
+    m_timeTimer->setInterval(60000);
     connect(m_timeTimer, &QTimer::timeout, this, &NotificationStore::onTimeTick);
-    m_timeTimer->start();
 }
 
 int NotificationStore::normalizeUrgency(int u) noexcept {
@@ -604,6 +603,13 @@ void NotificationStore::syncModels() {
         m_sweepTimer->start();
     } else if (!anyTimed && m_sweepTimer->isActive()) {
         m_sweepTimer->stop();
+    }
+
+    const bool hasNotifications = !m_history.isEmpty() || !m_toasts.isEmpty();
+    if (hasNotifications && !m_timeTimer->isActive()) {
+        m_timeTimer->start();
+    } else if (!hasNotifications && m_timeTimer->isActive()) {
+        m_timeTimer->stop();
     }
 }
 

@@ -10,14 +10,7 @@ Item {
   implicitHeight: Math.max(20, contentRow.implicitHeight)
 
   property var audio: null
-
-  Loader {
-    id: fallbackLoader
-    active: root.audio === null
-    sourceComponent: AudioService {}
-  }
-
-  readonly property var activeAudio: root.audio ? root.audio : fallbackLoader.item
+  readonly property var activeAudio: root.audio
 
   readonly property var t: Theme
   readonly property string monoFont: Theme.mono

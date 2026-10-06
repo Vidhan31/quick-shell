@@ -102,6 +102,7 @@ void TailscaleWorker::onSocketDirectoryChanged(const QString &)
         if (m_reconnectTimer && m_reconnectTimer->isActive()) {
             m_reconnectTimer->stop();
         }
+        setupFsWatcher();
         connectWatchBus();
     }
 }
@@ -121,9 +122,6 @@ void TailscaleWorker::connectWatchBus()
 
     const QString sockPath = m_client->socketPath();
     if (!QFileInfo::exists(sockPath)) {
-        if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
-            m_reconnectTimer->start(3000);
-        }
         return;
     }
 
@@ -260,8 +258,13 @@ void TailscaleWorker::onWatchSocketError(QLocalSocket::LocalSocketError)
         sample();
     }
 
-    if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
-        m_reconnectTimer->start(3000);
+    const QString sockPath = m_client->socketPath();
+    if (QFileInfo::exists(sockPath)) {
+        if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
+            m_reconnectTimer->start(3000);
+        }
+    } else {
+        setupFsWatcher();
     }
 }
 
@@ -276,8 +279,13 @@ void TailscaleWorker::onWatchSocketDisconnected()
         sample();
     }
 
-    if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
-        m_reconnectTimer->start(3000);
+    const QString sockPath = m_client->socketPath();
+    if (QFileInfo::exists(sockPath)) {
+        if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
+            m_reconnectTimer->start(3000);
+        }
+    } else {
+        setupFsWatcher();
     }
 }
 

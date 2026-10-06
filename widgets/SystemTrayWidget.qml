@@ -54,8 +54,6 @@ Item {
   property var activeMenu: null
   property Item activeMenuTarget: null
   property bool pendingMenuOpen: false
-  property int menuPopupX: 0
-  property int menuPopupY: 0
 
   QsMenuOpener {
     id: menuOpener
@@ -273,16 +271,6 @@ Item {
     root.requestClosePopups();
 
     if (trayItem.hasMenu && trayItem.menu) {
-      if (isInsidePassivePopup) {
-        const pt = targetItem.mapToItem(passiveCard, 0, 0);
-        root.menuPopupX = passivePopup.anchor.rect.x + pt.x + targetItem.width / 2;
-        root.menuPopupY = passivePopup.anchor.rect.y + pt.y + targetItem.height + 4;
-      } else {
-        const pt = targetItem.mapToItem(null, 0, 0);
-        root.menuPopupX = pt.x + targetItem.width / 2;
-        root.menuPopupY = root.barWindow ? (root.barWindow.implicitHeight + 6) : 38;
-      }
-
       root.activeMenuTarget = targetItem;
 
       if (root.activeMenu === trayItem.menu && menuOpener.children && menuOpener.children.values.length > 0) {
@@ -356,9 +344,10 @@ Item {
 
   PopupWindow {
     id: contextMenuPopup
-    anchor.window: root.barWindow
-    anchor.rect.x: root.barWindow ? Math.max(8, Math.min(root.menuPopupX - contextMenuCard.implicitWidth / 2, root.barWindow.width - contextMenuCard.implicitWidth - 12)) : 0
-    anchor.rect.y: root.menuPopupY
+    anchor.item: root.activeMenuTarget
+    anchor.gravity: Edges.Bottom
+    anchor.margins.top: 4
+    anchor.adjustment: PopupAdjustment.SlideX | PopupAdjustment.FlipY
     visible: false
     grabFocus: true
     implicitWidth: contextMenuCard.implicitWidth
@@ -497,14 +486,10 @@ Item {
 
   PopupWindow {
     id: passivePopup
-    anchor.window: root.barWindow
-    anchor.rect.x: {
-      if (!chevronButton.visible || !root.barWindow) return 0;
-      const targetX = chevronButton.mapToItem(null, 0, 0).x;
-      const idealX = targetX + chevronButton.width / 2 - passiveCard.implicitWidth / 2;
-      return Math.max(8, Math.min(idealX, root.barWindow.width - passiveCard.implicitWidth - 12));
-    }
-    anchor.rect.y: root.barWindow ? (root.barWindow.implicitHeight + 6) : 38
+    anchor.item: chevronButton
+    anchor.gravity: Edges.Bottom
+    anchor.margins.top: 4
+    anchor.adjustment: PopupAdjustment.SlideX | PopupAdjustment.FlipY
     visible: false
     grabFocus: true
     implicitWidth: passiveCard.implicitWidth

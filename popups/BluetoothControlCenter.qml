@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Bluetooth
+import Quickshell.Widgets
 import "../theme"
 import "../components"
 
@@ -211,13 +212,12 @@ Item {
                 Layout.fillWidth: true
                 spacing: 10
 
-                Image {
+                IconImage {
                   Layout.preferredWidth: 20
                   Layout.preferredHeight: 20
-                  visible: deviceCard.modelData.icon && deviceCard.modelData.icon.length > 0
-                  source: deviceCard.modelData.icon && deviceCard.modelData.icon.length > 0 ? Quickshell.iconPath(deviceCard.modelData.icon) : ""
-                  fillMode: Image.PreserveAspectFit
-                  cache: true
+                  visible: Boolean(deviceCard.modelData.icon)
+                  source: deviceCard.modelData.icon ? Quickshell.iconPath(deviceCard.modelData.icon) : ""
+                  asynchronous: true
                 }
 
                 Text {

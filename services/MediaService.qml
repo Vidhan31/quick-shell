@@ -74,8 +74,9 @@ Item {
   readonly property int loopState: root.activePlayer ? root.activePlayer.loopState : MprisLoopState.None
   readonly property bool loopSupported: root.activePlayer ? root.activePlayer.loopSupported : false
 
-  // Position refresh: re-emit the official signal every frame while tracked+playing.
-  FrameAnimation {
+  Timer {
+    interval: 250
+    repeat: true
     running: root.positionTracking && root.isPlaying && root.activePlayer !== null
     onTriggered: {
       if (root.activePlayer) {

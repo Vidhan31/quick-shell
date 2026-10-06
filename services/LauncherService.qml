@@ -91,9 +91,7 @@ Item {
 
   function savePinnedToDisk(): void {
     const json = JSON.stringify(root.pinnedIds);
-    Quickshell.execDetached({
-      command: ["python3", "-c", "import sys, pathlib; p = pathlib.Path.home() / '.config' / 'quickshell' / 'pinned_apps.json'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text(sys.argv[1])", json]
-    });
+    pinnedConfigFile.setText(json);
   }
 
   function isPinned(appId: string): bool {
