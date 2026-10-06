@@ -1,7 +1,6 @@
 #include "PrivacyProbe.hpp"
 
 #include <QByteArray>
-#include <QFile>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -12,31 +11,11 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <mutex>
 #include <sys/stat.h>
-#include <thread>
 #include <unistd.h>
 #include <vector>
 
 namespace qs::plugins {
-
-QString PrivacyProbe::getV4LDeviceName(const QString &vname) {
-    const QString sysPath = QStringLiteral("/sys/class/video4linux/") + vname + QStringLiteral("/name");
-    QFile file(sysPath);
-    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        const QString raw = QString::fromUtf8(file.readAll()).trimmed();
-        const int colonIdx = raw.indexOf(QLatin1Char(':'));
-        QString clean = (colonIdx != -1) ? raw.left(colonIdx).trimmed() : raw;
-        clean = clean.remove(QStringLiteral(" Audio")).trimmed();
-        if (!clean.isEmpty()) {
-            return clean;
-        }
-        if (!raw.isEmpty()) {
-            return raw;
-        }
-    }
-    return QStringLiteral("Camera (") + vname + QStringLiteral(")");
-}
 
 bool PrivacyProbe::isPipeWireRunning() {
     const char *runtimeDir = getenv("XDG_RUNTIME_DIR");
@@ -181,121 +160,6 @@ bool PrivacyProbe::checkAlsaCapture(PrivacyState &state) {
     return true;
 }
 
-bool PrivacyProbe::checkV4L2Fast(PrivacyState &state) {
-    DIR *procDir = opendir("/proc");
-    if (!procDir) {
-        return false;
-    }
-
-    const uid_t myUid = getuid();
-    const int procFd = dirfd(procDir);
-    struct dirent *procEntry;
-    std::vector<int> pids;
-    pids.reserve(128);
-
-    while ((procEntry = readdir(procDir)) != nullptr) {
-        if (procEntry->d_name[0] < '0' || procEntry->d_name[0] > '9') {
-            continue;
-        }
-
-        struct stat st;
-        if (fstatat(procFd, procEntry->d_name, &st, AT_SYMLINK_NOFOLLOW) != 0) {
-            continue;
-        }
-        if (st.st_uid != myUid) {
-            continue;
-        }
-
-        pids.push_back(atoi(procEntry->d_name));
-    }
-    closedir(procDir);
-
-    if (pids.empty()) {
-        return false;
-    }
-
-    struct FoundVideo {
-        QString appName;
-        QString devName;
-    };
-
-    std::mutex foundMutex;
-    std::vector<FoundVideo> foundList;
-    std::atomic<bool> anyFound{false};
-
-    const size_t numThreads = std::min(static_cast<size_t>(6), std::max(static_cast<size_t>(1), pids.size() / 8));
-    std::vector<std::thread> workers;
-    workers.reserve(numThreads);
-
-    for (size_t t = 0; t < numThreads; ++t) {
-        workers.emplace_back([&, t] {
-            char target[PATH_MAX];
-            for (size_t i = t; i < pids.size(); i += numThreads) {
-                char fdPath[64];
-                snprintf(fdPath, sizeof(fdPath), "/proc/%d/fd", pids[i]);
-                DIR *d = opendir(fdPath);
-                if (!d) continue;
-
-                const int dfd = dirfd(d);
-                struct dirent *fe;
-                while ((fe = readdir(d)) != nullptr) {
-                    if (fe->d_name[0] == '.') continue;
-                    const ssize_t len = readlinkat(dfd, fe->d_name, target, sizeof(target) - 1);
-                    if (len > 10 && strncmp(target, "/dev/video", 10) == 0) {
-                        target[len] = '\0';
-
-                        char commPath[64];
-                        snprintf(commPath, sizeof(commPath), "/proc/%d/comm", pids[i]);
-                        char commBuf[64] = {0};
-                        const int cfd = open(commPath, O_RDONLY);
-                        if (cfd >= 0) {
-                            ssize_t clen = read(cfd, commBuf, sizeof(commBuf) - 1);
-                            close(cfd);
-                            if (clen > 0) {
-                                while (clen > 0 && (commBuf[clen - 1] == '\n' || commBuf[clen - 1] == '\r')) {
-                                    commBuf[--clen] = '\0';
-                                }
-                            }
-                        } else {
-                            snprintf(commBuf, sizeof(commBuf), "PID %d", pids[i]);
-                        }
-
-                        if (strcmp(commBuf, "wireplumber") == 0 || strcmp(commBuf, "pipewire") == 0) {
-                            continue;
-                        }
-
-                        const char *slash = strrchr(target, '/');
-                        const char *vname = slash ? slash + 1 : target;
-                        const QString devName = getV4LDeviceName(QString::fromLatin1(vname));
-                        const QString appName = QString::fromUtf8(commBuf);
-
-                        std::lock_guard<std::mutex> lock(foundMutex);
-                        foundList.push_back({appName, devName});
-                        anyFound.store(true, std::memory_order_relaxed);
-                    }
-                }
-                closedir(d);
-            }
-        });
-    }
-
-    for (auto &w : workers) {
-        w.join();
-    }
-
-    for (const auto &item : foundList) {
-        if (!state.cameraDevices.contains(item.devName)) {
-            state.cameraDevices.append(item.devName);
-        }
-        if (!state.cameraApps.contains(item.appName)) {
-            state.cameraApps.append(item.appName);
-        }
-        state.cameraActive = true;
-    }
-
-    return anyFound.load(std::memory_order_relaxed);
-}
-
 void PrivacyProbe::resolvePipeWireMetadata(PrivacyState &state) {
     QProcess proc;
     proc.start(QStringLiteral("pw-dump"), QStringList());
@@ -363,11 +227,9 @@ void PrivacyProbe::resolvePipeWireMetadata(PrivacyState &state) {
         const QString outClass = outProps.value(QStringLiteral("media.class")).toString();
         const QString inClass = inProps.value(QStringLiteral("media.class")).toString();
         const QString inNodeState = inInfo.value(QStringLiteral("state")).toString();
-        const QString outNodeState = outInfo.value(QStringLiteral("state")).toString();
 
         const bool linkIsActive = (linkState == QLatin1String("active"));
         const bool inIsRunning = (inNodeState == QLatin1String("running"));
-        const bool outIsRunning = (outNodeState == QLatin1String("running"));
 
         if (outClass == QLatin1String("Audio/Source") &&
             (inClass.startsWith(QLatin1String("Stream/Input/Audio")) || inClass == QLatin1String("Stream/Input"))) {
@@ -420,94 +282,6 @@ void PrivacyProbe::resolvePipeWireMetadata(PrivacyState &state) {
         // Plasma task-manager hover previews create transient KWin screencast
         // PipeWire streams (Stream/Input/Video consumed by plasmashell) which
         // must NOT be treated as camera use.
-        if (outClass == QLatin1String("Video/Source")
-            && (inClass.startsWith(QLatin1String("Stream/Input/Video"))
-                || inClass == QLatin1String("Stream/Input"))) {
-            const QString deviceApi = outProps.value(QStringLiteral("device.api")).toString().toLower();
-            const bool isV4l2 = (deviceApi == QLatin1String("v4l2") || deviceApi == QLatin1String("libcamera"));
-            const QString factory = outProps.value(QStringLiteral("factory.name")).toString().toLower();
-            const bool factoryIsCam = factory.contains(QLatin1String("v4l2")) || factory.contains(QLatin1String("libcamera"));
-            const bool hasCamPath = !outProps.value(QStringLiteral("api.v4l2.path")).toString().isEmpty()
-                                    || !outProps.value(QStringLiteral("api.libcamera.path")).toString().isEmpty();
-            const QString outNodeName = outProps.value(QStringLiteral("node.name")).toString().toLower();
-            const bool nodeIsCam = outNodeName.startsWith(QLatin1String("v4l2_input"))
-                                   || outNodeName.startsWith(QLatin1String("libcamera_input"))
-                                   || outProps.value(QStringLiteral("media.role")).toString().toLower() == QLatin1String("camera");
-            if (!(isV4l2 || factoryIsCam || hasCamPath || nodeIsCam)) {
-                continue;
-            }
-            const QString inApp = inProps.value(QStringLiteral("application.name")).toString().toLower();
-            const QString inBin = inProps.value(QStringLiteral("application.process.binary")).toString().toLower();
-            static const QStringList screenOwners = {
-                QStringLiteral("plasmashell"),
-                QStringLiteral("kwin_wayland"),
-                QStringLiteral("kwin"),
-                QStringLiteral("xdg-desktop-portal"),
-                QStringLiteral("xdg-desktop-portal-kde"),
-                QStringLiteral("xdg-desktop-portal-wlr"),
-                QStringLiteral("xdg-desktop-portal-gtk"),
-            };
-            bool isScreenConsumer = false;
-            for (const auto &o : screenOwners) {
-                if (inApp == o || inBin == o || inApp.contains(o) || inBin.contains(o)) {
-                    isScreenConsumer = true;
-                    break;
-                }
-            }
-            if (isScreenConsumer) {
-                continue;
-            }
-            const bool isActiveVideo = (linkIsActive || inIsRunning || outIsRunning) &&
-                                       (linkState != QLatin1String("paused")) &&
-                                       (inNodeState != QLatin1String("paused"));
-
-            if (!isActiveVideo) continue;
-
-            state.cameraActive = true;
-
-            QString appName = inProps.value(QStringLiteral("application.name")).toString();
-            if (appName.isEmpty()) appName = inProps.value(QStringLiteral("pipewire.access.portal.app_id")).toString();
-            if (appName.isEmpty()) appName = inProps.value(QStringLiteral("application.process.binary")).toString();
-            if (appName.isEmpty()) appName = inProps.value(QStringLiteral("node.name")).toString();
-            if (appName.isEmpty()) appName = inNode.value(QStringLiteral("info")).toObject().value(QStringLiteral("name")).toString();
-            if (appName.isEmpty()) appName = QStringLiteral("Camera App");
-
-            QString camDesc = outProps.value(QStringLiteral("node.description")).toString();
-            if (camDesc.isEmpty()) camDesc = outProps.value(QStringLiteral("node.nick")).toString();
-            if (camDesc.isEmpty()) camDesc = QStringLiteral("Webcam");
-
-            if (!state.cameraApps.contains(appName)) state.cameraApps.append(appName);
-            if (!state.cameraDevices.contains(camDesc)) state.cameraDevices.append(camDesc);
-        }
-    }
-
-    for (auto it = nodes.constBegin(); it != nodes.constEnd(); ++it) {
-        const QJsonObject node = it.value();
-        const QJsonObject info = node.value(QStringLiteral("info")).toObject();
-        const QString nodeState = info.value(QStringLiteral("state")).toString();
-        const QJsonObject props = info.value(QStringLiteral("props")).toObject();
-        const QString mediaClass = props.value(QStringLiteral("media.class")).toString();
-
-        if (mediaClass == QLatin1String("Video/Source") && nodeState == QLatin1String("running")) {
-            const QString deviceApi = props.value(QStringLiteral("device.api")).toString().toLower();
-            const QString factory = props.value(QStringLiteral("factory.name")).toString().toLower();
-            const QString nodeName = props.value(QStringLiteral("node.name")).toString().toLower();
-            const bool isCam = (deviceApi == QLatin1String("v4l2") || deviceApi == QLatin1String("libcamera"))
-                               || factory.contains(QLatin1String("v4l2")) || factory.contains(QLatin1String("libcamera"))
-                               || !props.value(QStringLiteral("api.v4l2.path")).toString().isEmpty()
-                               || !props.value(QStringLiteral("api.libcamera.path")).toString().isEmpty()
-                               || nodeName.startsWith(QLatin1String("v4l2_input"))
-                               || nodeName.startsWith(QLatin1String("libcamera_input"))
-                               || props.value(QStringLiteral("media.role")).toString().toLower() == QLatin1String("camera");
-            if (!isCam) {
-                continue;
-            }
-            state.cameraActive = true;
-            QString camDesc = props.value(QStringLiteral("node.description")).toString();
-            if (camDesc.isEmpty()) camDesc = props.value(QStringLiteral("node.nick")).toString();
-            if (camDesc.isEmpty()) camDesc = QStringLiteral("Webcam");
-            if (!state.cameraDevices.contains(camDesc)) state.cameraDevices.append(camDesc);
-        }
     }
 
     if (!state.micActive) {
@@ -583,9 +357,6 @@ PrivacyState PrivacyProbe::probe(bool forceDeepQuery) {
         resolvePipeWireMetadata(state);
     }
 
-    if (!state.cameraActive) {
-        checkV4L2Fast(state);
-    }
     if (!state.micActive) {
         checkAlsaCapture(state);
     }

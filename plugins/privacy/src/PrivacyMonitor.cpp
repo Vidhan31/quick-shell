@@ -1,12 +1,9 @@
 #include "PrivacyMonitor.hpp"
 
-#include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
-#include <fcntl.h>
-#include <sys/inotify.h>
 #include <unistd.h>
 
 namespace qs::plugins {
@@ -22,7 +19,6 @@ PrivacyWorker::~PrivacyWorker() {
 }
 
 void PrivacyWorker::start() {
-    setupInotify();
     setupPwProcess();
 
     if (!m_pollTimer) {
@@ -30,7 +26,7 @@ void PrivacyWorker::start() {
         connect(m_pollTimer, &QTimer::timeout, this, [this]() {
             if (!m_pwProcess || m_pwProcess->state() == QProcess::NotRunning) {
                 setupPwProcess();
-            } else if (m_lastState.micActive || m_lastState.cameraActive) {
+            } else if (m_lastState.micActive) {
                 // Periodically re-evaluate active state to ensure no stale flags
                 evaluatePrivacyState();
             }
@@ -47,7 +43,6 @@ void PrivacyWorker::stop() {
         m_debounceTimer->stop();
     }
     stopPwProcess();
-    closeInotify();
 }
 
 void PrivacyWorker::setInterval(int intervalMs) {
@@ -317,58 +312,6 @@ bool PrivacyWorker::handleJsonArray(const QByteArray &chunk) {
 void PrivacyWorker::evaluatePrivacyState() {
     PrivacyState state;
 
-    auto isCameraSource = [](const QJsonObject &props) -> bool {
-        const QString deviceApi = props.value(QStringLiteral("device.api")).toString().toLower();
-        if (deviceApi == QLatin1String("v4l2") || deviceApi == QLatin1String("libcamera")) {
-            return true;
-        }
-        const QString factory = props.value(QStringLiteral("factory.name")).toString().toLower();
-        if (factory.contains(QLatin1String("v4l2")) || factory.contains(QLatin1String("libcamera"))) {
-            return true;
-        }
-        if (!props.value(QStringLiteral("api.v4l2.path")).toString().isEmpty()
-            || !props.value(QStringLiteral("api.libcamera.path")).toString().isEmpty()) {
-            return true;
-        }
-        const QString nodeName = props.value(QStringLiteral("node.name")).toString().toLower();
-        if (nodeName.startsWith(QLatin1String("v4l2_input"))
-            || nodeName.startsWith(QLatin1String("libcamera_input"))) {
-            return true;
-        }
-        // Explicit camera role (real cameras set media.role=Camera).
-        // KWin screencast / portal streams never set this.
-        const QString mediaRole = props.value(QStringLiteral("media.role")).toString().toLower();
-        if (mediaRole == QLatin1String("camera")) {
-            return true;
-        }
-        return false;
-    };
-
-    auto isScreencastConsumer = [](const QJsonObject &props) -> bool {
-        const QString app = props.value(QStringLiteral("application.name")).toString().toLower();
-        const QString bin = props.value(QStringLiteral("application.process.binary")).toString().toLower();
-        const QString node = props.value(QStringLiteral("node.name")).toString().toLower();
-        static const QStringList owners = {
-            QStringLiteral("plasmashell"),
-            QStringLiteral("kwin_wayland"),
-            QStringLiteral("kwin"),
-            QStringLiteral("xdg-desktop-portal"),
-            QStringLiteral("xdg-desktop-portal-kde"),
-            QStringLiteral("xdg-desktop-portal-wlr"),
-            QStringLiteral("xdg-desktop-portal-gtk"),
-        };
-        for (const auto &o : owners) {
-            if (app == o || bin == o || app.contains(o) || bin.contains(o)) {
-                return true;
-            }
-        }
-        if (node.startsWith(QLatin1String("kwin-screencast"))
-            || node.contains(QLatin1String("screencast"))) {
-            return true;
-        }
-        return false;
-    };
-
     for (auto it = m_links.constBegin(); it != m_links.constEnd(); ++it) {
         const QJsonObject link = it.value();
         const QJsonObject linkInfo = link.value(QStringLiteral("info")).toObject();
@@ -398,11 +341,9 @@ void PrivacyWorker::evaluatePrivacyState() {
         const QString outClass = outProps.value(QStringLiteral("media.class")).toString();
         const QString inClass = inProps.value(QStringLiteral("media.class")).toString();
         const QString inNodeState = inInfo.value(QStringLiteral("state")).toString();
-        const QString outNodeState = outInfo.value(QStringLiteral("state")).toString();
 
         const bool linkIsActive = (linkState == QLatin1String("active"));
         const bool inIsRunning = (inNodeState == QLatin1String("running"));
-        const bool outIsRunning = (outNodeState == QLatin1String("running"));
 
         if (outClass == QLatin1String("Audio/Source") &&
             (inClass.startsWith(QLatin1String("Stream/Input/Audio")) || inClass == QLatin1String("Stream/Input"))) {
@@ -454,61 +395,8 @@ void PrivacyWorker::evaluatePrivacyState() {
                 }
             }
         }
-
-        // Camera capture stream — only real v4l2/libcamera sources.
-        // Plasma task-manager hover previews create transient KWin screencast
-        // PipeWire streams (Stream/Input/Video consumed by plasmashell) which
-        // must NOT be treated as camera use.
-        if (outClass == QLatin1String("Video/Source")
-            && (inClass.startsWith(QLatin1String("Stream/Input/Video"))
-                || inClass == QLatin1String("Stream/Input"))) {
-            if (!isCameraSource(outProps) || isScreencastConsumer(inProps)) {
-                continue;
-            }
-            const bool isActiveVideo = (linkIsActive || inIsRunning || outIsRunning) &&
-                                       (linkState != QLatin1String("paused")) &&
-                                       (inNodeState != QLatin1String("paused"));
-
-            if (isActiveVideo) {
-                state.cameraActive = true;
-
-                QString appName = inProps.value(QStringLiteral("application.name")).toString();
-                if (appName.isEmpty()) appName = inProps.value(QStringLiteral("pipewire.access.portal.app_id")).toString();
-                if (appName.isEmpty()) appName = inProps.value(QStringLiteral("application.process.binary")).toString();
-                if (appName.isEmpty()) appName = inProps.value(QStringLiteral("node.name")).toString();
-                if (appName.isEmpty()) appName = inInfo.value(QStringLiteral("name")).toString();
-                if (appName.isEmpty()) appName = QStringLiteral("Camera App");
-
-                QString camDesc = outProps.value(QStringLiteral("node.description")).toString();
-                if (camDesc.isEmpty()) camDesc = outProps.value(QStringLiteral("node.nick")).toString();
-                if (camDesc.isEmpty()) camDesc = QStringLiteral("Webcam");
-
-                if (!state.cameraApps.contains(appName)) state.cameraApps.append(appName);
-                if (!state.cameraDevices.contains(camDesc)) state.cameraDevices.append(camDesc);
-            }
-        }
     }
 
-    for (auto it = m_nodes.constBegin(); it != m_nodes.constEnd(); ++it) {
-        const QJsonObject node = it.value();
-        const QJsonObject info = node.value(QStringLiteral("info")).toObject();
-        const QString nodeState = info.value(QStringLiteral("state")).toString();
-        const QJsonObject props = info.value(QStringLiteral("props")).toObject();
-        const QString mediaClass = props.value(QStringLiteral("media.class")).toString();
-
-        if (mediaClass == QLatin1String("Video/Source") && nodeState == QLatin1String("running")
-            && isCameraSource(props)) {
-            state.cameraActive = true;
-            QString camDesc = props.value(QStringLiteral("node.description")).toString();
-            if (camDesc.isEmpty()) camDesc = props.value(QStringLiteral("node.nick")).toString();
-            if (camDesc.isEmpty()) camDesc = QStringLiteral("Webcam");
-            if (!state.cameraDevices.contains(camDesc)) state.cameraDevices.append(camDesc);
-        }
-    }
-
-    if (!state.cameraActive) {
-        PrivacyProbe::checkV4L2Fast(state);
-    }
     if (!state.micActive) {
         PrivacyProbe::checkAlsaCapture(state);
     }
@@ -517,89 +405,6 @@ void PrivacyWorker::evaluatePrivacyState() {
         m_initialized = true;
         m_lastState = state;
         emit stateChanged(state);
-    }
-}
-
-void PrivacyWorker::setupInotify() {
-    if (m_inotifyFd >= 0) return;
-
-    m_inotifyFd = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
-    if (m_inotifyFd < 0) return;
-
-    int wdDev = inotify_add_watch(m_inotifyFd, "/dev", IN_CREATE | IN_DELETE);
-    if (wdDev >= 0) {
-        m_inotifyWatches.insert(wdDev, QStringLiteral("/dev"));
-    }
-
-    QDir devDir(QStringLiteral("/dev"));
-    const QStringList videoDevs = devDir.entryList(QStringList{QStringLiteral("video*")}, QDir::System);
-    for (const QString &vdev : videoDevs) {
-        const QString fullPath = QStringLiteral("/dev/") + vdev;
-        int wd = inotify_add_watch(m_inotifyFd, fullPath.toUtf8().constData(), IN_OPEN | IN_CLOSE_WRITE | IN_CLOSE_NOWRITE);
-        if (wd >= 0) {
-            m_inotifyWatches.insert(wd, fullPath);
-        }
-    }
-
-    m_inotifyNotifier = new QSocketNotifier(m_inotifyFd, QSocketNotifier::Read, this);
-    connect(m_inotifyNotifier, &QSocketNotifier::activated, this, &PrivacyWorker::onInotifyActivated);
-}
-
-void PrivacyWorker::closeInotify() {
-    if (m_inotifyNotifier) {
-        m_inotifyNotifier->setEnabled(false);
-        delete m_inotifyNotifier;
-        m_inotifyNotifier = nullptr;
-    }
-    if (m_inotifyFd >= 0) {
-        for (auto it = m_inotifyWatches.constBegin(); it != m_inotifyWatches.constEnd(); ++it) {
-            inotify_rm_watch(m_inotifyFd, it.key());
-        }
-        m_inotifyWatches.clear();
-        ::close(m_inotifyFd);
-        m_inotifyFd = -1;
-    }
-}
-
-void PrivacyWorker::onInotifyActivated() {
-    if (m_inotifyFd < 0) return;
-
-    char buffer[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
-    bool needCheck = false;
-
-    while (true) {
-        const ssize_t len = ::read(m_inotifyFd, buffer, sizeof(buffer));
-        if (len <= 0) break;
-
-        const struct inotify_event *event = nullptr;
-        for (char *ptr = buffer; ptr < buffer + len; ptr += sizeof(struct inotify_event) + event->len) {
-            event = reinterpret_cast<const struct inotify_event *>(ptr);
-            if (event->mask & (IN_CREATE | IN_DELETE)) {
-                if (event->len > 0 && strncmp(event->name, "video", 5) == 0) {
-                    const QString path = QStringLiteral("/dev/") + QString::fromUtf8(event->name);
-                    if (event->mask & IN_CREATE) {
-                        int wd = inotify_add_watch(m_inotifyFd, path.toUtf8().constData(), IN_OPEN | IN_CLOSE_WRITE | IN_CLOSE_NOWRITE);
-                        if (wd >= 0) {
-                            m_inotifyWatches.insert(wd, path);
-                        }
-                    }
-                    needCheck = true;
-                }
-            } else if (event->mask & (IN_OPEN | IN_CLOSE_WRITE | IN_CLOSE_NOWRITE)) {
-                needCheck = true;
-            }
-        }
-    }
-
-    if (needCheck) {
-        if (!m_debounceTimer) {
-            m_debounceTimer = new QTimer(this);
-            m_debounceTimer->setSingleShot(true);
-            connect(m_debounceTimer, &QTimer::timeout, this, &PrivacyWorker::evaluatePrivacyState);
-        }
-        if (!m_debounceTimer->isActive()) {
-            m_debounceTimer->start(40);
-        }
     }
 }
 

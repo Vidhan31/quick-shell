@@ -13,7 +13,6 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QProcess>
-#include <QSocketNotifier>
 
 namespace qs::plugins {
 
@@ -37,7 +36,6 @@ private slots:
     void onPwStdoutReady();
     void onPwError(QProcess::ProcessError error);
     void onPwFinished(int exitCode, QProcess::ExitStatus exitStatus);
-    void onInotifyActivated();
 
 private:
     void setupPwProcess();
@@ -45,8 +43,6 @@ private:
     void processPwBuffer();
     bool handleJsonArray(const QByteArray &chunk);
     void evaluatePrivacyState();
-    void setupInotify();
-    void closeInotify();
 
     int m_intervalMs{800};
     PrivacyState m_lastState;
@@ -62,10 +58,6 @@ private:
     QHash<int, QJsonObject> m_nodes;
     QHash<int, QJsonObject> m_links;
 
-    int m_inotifyFd{-1};
-    QSocketNotifier *m_inotifyNotifier{nullptr};
-    QHash<int, QString> m_inotifyWatches;
-
     QTimer *m_restartTimer{nullptr};
     QTimer *m_debounceTimer{nullptr};
     QTimer *m_pollTimer{nullptr};
@@ -76,12 +68,9 @@ class PrivacyMonitor : public QObject {
     QML_ELEMENT
     QML_NAMED_ELEMENT(PrivacyMonitor)
 
-    Q_PROPERTY(bool cameraActive READ cameraActive NOTIFY privacyChanged)
     Q_PROPERTY(bool micActive READ micActive NOTIFY privacyChanged)
     Q_PROPERTY(bool hasActive READ hasActive NOTIFY privacyChanged)
-    Q_PROPERTY(QStringList cameraApps READ cameraApps NOTIFY privacyChanged)
     Q_PROPERTY(QStringList micApps READ micApps NOTIFY privacyChanged)
-    Q_PROPERTY(QStringList cameraDevices READ cameraDevices NOTIFY privacyChanged)
     Q_PROPERTY(QStringList micDevices READ micDevices NOTIFY privacyChanged)
     Q_PROPERTY(QVariantMap privacyData READ privacyData NOTIFY privacyChanged)
     Q_PROPERTY(bool running READ running WRITE setRunning NOTIFY runningChanged)
@@ -91,12 +80,9 @@ public:
     explicit PrivacyMonitor(QObject *parent = nullptr);
     ~PrivacyMonitor() override;
 
-    [[nodiscard]] bool cameraActive() const noexcept { return m_state.cameraActive; }
     [[nodiscard]] bool micActive() const noexcept { return m_state.micActive; }
     [[nodiscard]] bool hasActive() const noexcept { return m_state.hasActive(); }
-    [[nodiscard]] QStringList cameraApps() const { return m_state.cameraApps; }
     [[nodiscard]] QStringList micApps() const { return m_state.micApps; }
-    [[nodiscard]] QStringList cameraDevices() const { return m_state.cameraDevices; }
     [[nodiscard]] QStringList micDevices() const { return m_state.micDevices; }
     [[nodiscard]] QVariantMap privacyData() const { return m_cachedData; }
 

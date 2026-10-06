@@ -8,17 +8,13 @@ Item {
 
   property var privacy: null
   property var privacyData: (privacy && privacy.privacyData) ? privacy.privacyData : ({
-    camera: { active: false, apps: [], devices: [] },
     microphone: { active: false, apps: [], devices: [] }
   })
 
-  readonly property bool cameraActive: privacyData && privacyData.camera && privacyData.camera.active === true
   readonly property bool micActive: privacyData && privacyData.microphone && privacyData.microphone.active === true
-  readonly property bool hasActive: cameraActive || micActive
+  readonly property bool hasActive: micActive
 
-  readonly property var cameraApps: (privacyData && privacyData.camera && privacyData.camera.apps) ? privacyData.camera.apps : []
   readonly property var micApps: (privacyData && privacyData.microphone && privacyData.microphone.apps) ? privacyData.microphone.apps : []
-  readonly property var cameraDevices: (privacyData && privacyData.camera && privacyData.camera.devices) ? privacyData.camera.devices : []
   readonly property var micDevices: (privacyData && privacyData.microphone && privacyData.microphone.devices) ? privacyData.microphone.devices : []
 
   readonly property var t: Theme
@@ -72,91 +68,12 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         anchors.right: parent.right
         text: root.hasActive ? "In Use" : "Idle"
-        tone: root.hasActive ? (root.cameraActive ? "ok" : "warn") : "accent"
+        tone: root.hasActive ? "warn" : "accent"
       }
     }
 
     Hairline {
       width: parent.width
-    }
-
-    Rectangle {
-      visible: root.cameraActive
-      width: parent.width
-      height: camContentCol.height + 20
-      radius: Theme.radiusBase
-      color: Theme.tint(Theme.green, 0.12)
-      border.width: 0
-
-      Row {
-        id: camContentRow
-        anchors {
-          top: parent.top
-          left: parent.left
-          right: parent.right
-          margins: 10
-        }
-        spacing: 10
-
-        Text {
-          text: "󰄀"
-          font.family: root.monoFont
-          font.pixelSize: Theme.iconLg
-          color: Theme.ok
-          anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Column {
-          id: camContentCol
-          width: parent.width - 32
-          spacing: 3
-
-          Row {
-            spacing: 6
-            Text {
-              text: "Camera Active"
-              font.family: root.monoFont
-              font.pixelSize: Theme.fontBase
-              font.bold: true
-              color: Theme.ink1
-            }
-
-            Rectangle {
-              width: 6
-              height: 6
-              radius: 3
-              anchors.verticalCenter: parent.verticalCenter
-              color: Theme.ok
-
-              SequentialAnimation on opacity {
-                running: root.cameraActive
-                loops: Animation.Infinite
-                NumberAnimation { from: 1.0; to: 0.25; duration: Theme.durationPulse; easing.type: Easing.InOutQuad }
-                NumberAnimation { from: 0.25; to: 1.0; duration: Theme.durationPulse; easing.type: Easing.InOutQuad }
-              }
-            }
-          }
-
-          Text {
-            text: root.cameraDevices.length > 0 ? root.cameraDevices.join(", ") : "Lenovo FHD Webcam"
-            font.family: root.monoFont
-            font.pixelSize: Theme.fontXs
-            color: Theme.ink2
-            elide: Text.ElideRight
-            width: parent.width
-          }
-
-          Text {
-            text: "Application: " + (root.cameraApps.length > 0 ? root.cameraApps.join(", ") : "Active Stream")
-            font.family: root.monoFont
-            font.pixelSize: Theme.fontXs
-            font.bold: true
-            color: Theme.ok
-            elide: Text.ElideRight
-            width: parent.width
-          }
-        }
-      }
     }
 
     Rectangle {
@@ -258,7 +175,7 @@ Item {
         }
 
         Text {
-          text: "Camera and Microphone are idle"
+          text: "Microphone is idle"
           font.family: root.monoFont
           font.pixelSize: Theme.fontSm
           color: Theme.ink2
@@ -269,7 +186,7 @@ Item {
 
     Text {
       width: parent.width
-      text: "Indicators automatically display in the top bar when hardware is in use."
+      text: "Indicator automatically displays in the top bar when microphone is in use."
       font.family: root.monoFont
       font.pixelSize: 9
       color: Theme.ink3
