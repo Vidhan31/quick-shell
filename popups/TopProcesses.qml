@@ -17,8 +17,21 @@ Item {
   readonly property var t: Theme
   readonly property string monoFont: Theme.mono
 
-  implicitWidth: 412
-  implicitHeight: 442
+  implicitWidth: 430
+  readonly property int preferredHeight: Math.max(120, contentCol.height + (card.padding * 2))
+  property int popupHeight: 404
+
+  function syncHeight(): void {
+    if (contentCol.height > 0)
+      popupHeight = preferredHeight;
+  }
+
+  onPreferredHeightChanged: {
+    if (contentCol.height > 0)
+      popupHeight = preferredHeight;
+  }
+
+  implicitHeight: popupHeight
 
   function formatRss(kb: double): string {
     if (!isFinite(kb) || kb <= 0)
@@ -36,8 +49,75 @@ Item {
     padding: Theme.cardPaddingSm
 
     Column {
-      anchors.fill: parent
-      spacing: 6
+      id: contentCol
+      width: parent.width
+      spacing: 4
+
+      Item {
+        id: headerRow
+        width: parent.width
+        height: 22
+
+        Text {
+          id: colPidHeader
+          anchors.left: parent.left
+          anchors.leftMargin: 8
+          anchors.verticalCenter: parent.verticalCenter
+          width: 52
+          text: "PID"
+          color: Theme.ink3
+          font.family: root.monoFont
+          font.pixelSize: Theme.fontXs
+          font.weight: Font.DemiBold
+        }
+
+        Text {
+          id: colNameHeader
+          anchors.left: colPidHeader.right
+          anchors.leftMargin: 8
+          anchors.right: colMemHeader.left
+          anchors.rightMargin: 8
+          anchors.verticalCenter: parent.verticalCenter
+          text: "Name"
+          color: Theme.ink3
+          font.family: Theme.textFont
+          font.pixelSize: Theme.fontXs
+          font.weight: Font.DemiBold
+          elide: Text.ElideRight
+        }
+
+        Text {
+          id: colMemHeader
+          anchors.right: colKillHeader.left
+          anchors.rightMargin: 10
+          anchors.verticalCenter: parent.verticalCenter
+          width: 105
+          horizontalAlignment: Text.AlignRight
+          text: "Memory Usage"
+          color: Theme.ink3
+          font.family: Theme.textFont
+          font.pixelSize: Theme.fontXs
+          font.weight: Font.DemiBold
+        }
+
+        Text {
+          id: colKillHeader
+          anchors.right: parent.right
+          anchors.rightMargin: 4
+          anchors.verticalCenter: parent.verticalCenter
+          width: 32
+          horizontalAlignment: Text.AlignHCenter
+          text: "Kill"
+          color: Theme.ink3
+          font.family: Theme.textFont
+          font.pixelSize: Theme.fontXs
+          font.weight: Font.DemiBold
+        }
+      }
+
+      Hairline {
+        width: parent.width
+      }
 
       Repeater {
         model: ScriptModel {
@@ -52,22 +132,24 @@ Item {
 
           visible: rowDelegate.modelData !== null
           width: parent.width
-          height: 36
+          height: 32
           radius: Theme.radiusSm
           color: (rowMouse.containsMouse || rowDelegate.activeFocus) ? Theme.hoverFill : "transparent"
           border.width: rowDelegate.activeFocus ? Theme.focusRingWidth : 0
           border.color: Theme.focusRing
           activeFocusOnTab: true
 
-          readonly property string procName: rowDelegate.modelData ? (rowDelegate.modelData.name + (rowDelegate.modelData.count > 1 ? " ×" + rowDelegate.modelData.count : "")) : ""
-          readonly property string procPid: rowDelegate.modelData ? rowDelegate.modelData.mpid : ""
+          readonly property string procName: rowDelegate.modelData ? rowDelegate.modelData.name : ""
+          readonly property string procPid: rowDelegate.modelData ? String(rowDelegate.modelData.mpid || rowDelegate.modelData.pid || "") : ""
+          readonly property int procRootPid: rowDelegate.modelData ? (rowDelegate.modelData.rootPid || rowDelegate.modelData.mpid || 0) : 0
           readonly property string procRss: rowDelegate.modelData ? root.formatRss(rowDelegate.modelData.rss) : "0K"
           readonly property string procMemPct: rowDelegate.modelData ? (rowDelegate.modelData.mem ? rowDelegate.modelData.mem.toFixed(1) : "0") + "%" : "0%"
+          readonly property string procMemText: procRss + " (" + procMemPct + ")"
           readonly property string tipTitle: rowDelegate.modelData ? (rowDelegate.modelData.name + (rowDelegate.modelData.count > 1 ? (" (" + rowDelegate.modelData.count + " processes)") : "")) : ""
-          readonly property string tipSub: "PID: " + procPid + " · RSS: " + procRss + " (" + procMemPct + " RAM)"
+          readonly property string tipSub: ""
 
           Accessible.role: Accessible.ListItem
-          Accessible.name: tipTitle + ", " + tipSub
+          Accessible.name: tipTitle
 
           Behavior on color { ColorAnimation { duration: Theme.durationFast } }
           Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
@@ -109,108 +191,92 @@ Item {
             onContainsMouseChanged: rowDelegate.updateTip()
           }
 
-          Item {
-            id: leftCell
-            anchors {
-              left: parent.left
-              leftMargin: 6
-              top: parent.top
-              bottom: parent.bottom
-              topMargin: 2
-              bottomMargin: 2
-            }
-            width: 150
-            Text {
-              anchors {
-                left: parent.left
-                right: parent.right
-                top: parent.top
-              }
-              text: rowDelegate.modelData ? (rowDelegate.modelData.name + (rowDelegate.modelData.count > 1 ? " ×" + rowDelegate.modelData.count : "")) : ""
-              elide: Text.ElideRight
-              maximumLineCount: 1
-              color: rowDelegate.index === 0 ? Theme.err : Theme.ink1
-              font.family: Theme.textFont
-              font.pixelSize: Theme.fontBase
-            }
-            Text {
-              anchors {
-                left: parent.left
-                right: parent.right
-                bottom: parent.bottom
-              }
-              text: rowDelegate.modelData ? rowDelegate.modelData.mpid : ""
-              elide: Text.ElideRight
-              maximumLineCount: 1
-              color: Theme.ink3
-              font.family: root.monoFont
-              font.pixelSize: Theme.fontXs
-            }
+          Text {
+            id: cellPid
+            anchors.left: parent.left
+            anchors.leftMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            width: 52
+            text: rowDelegate.procPid
+            color: Theme.ink3
+            font.family: root.monoFont
+            font.pixelSize: Theme.fontXs
+            elide: Text.ElideRight
+          }
+
+          Text {
+            id: cellName
+            anchors.left: cellPid.right
+            anchors.leftMargin: 8
+            anchors.right: cellMem.left
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            text: rowDelegate.procName
+            color: rowDelegate.index === 0 ? Theme.err : Theme.ink1
+            font.family: Theme.textFont
+            font.pixelSize: Theme.fontBase
+            elide: Text.ElideRight
+            maximumLineCount: 1
+          }
+
+          Text {
+            id: cellMem
+            anchors.right: cellKill.left
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            width: 105
+            horizontalAlignment: Text.AlignRight
+            text: rowDelegate.procMemText
+            color: Theme.ink2
+            font.family: root.monoFont
+            font.pixelSize: Theme.fontSm
           }
 
           Item {
-            anchors {
-              left: leftCell.right
-              right: parent.right
-              rightMargin: 6
-              verticalCenter: parent.verticalCenter
-              leftMargin: 8
-            }
-            height: 18
-            readonly property string barLabel: (rowDelegate.modelData && rowDelegate.modelData.barLabel)
-              ? rowDelegate.modelData.barLabel
-              : (rowDelegate.modelData ? (root.formatRss(rowDelegate.modelData.rss) + " (" + (rowDelegate.modelData.mem ? rowDelegate.modelData.mem.toFixed(0) : "0") + "%)") : "")
-            readonly property double fillFrac: (rowDelegate.modelData && root.maxMem > 0) ? Math.min(1, rowDelegate.modelData.mem / root.maxMem) : 0
+            id: cellKill
+            anchors.right: parent.right
+            anchors.rightMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            width: 32
+            height: parent.height
 
-            Rectangle {
-              anchors.fill: parent
-              radius: Theme.radiusXs
-              color: Theme.inset
-            }
-            Rectangle {
-              height: parent.height
-              radius: Theme.radiusXs
-              width: parent.width * parent.fillFrac
-              color: rowDelegate.index === 0 ? Theme.err : Theme.accent
-              opacity: 0.85
-            }
-            // Dark label on the fill (only when it fits), else light label
-            // pinned to the empty track area — always exactly one is visible.
-            Text {
-              anchors.left: parent.left
-              anchors.leftMargin: 6
-              anchors.verticalCenter: parent.verticalCenter
-              text: parent.barLabel
-              color: Theme.darkInk
-              font.family: root.monoFont
-              font.pixelSize: Theme.fontSm
-              font.bold: true
-              visible: (parent.width * parent.fillFrac) > 92
-            }
-            Text {
-              anchors.right: parent.right
-              anchors.rightMargin: 6
-              anchors.verticalCenter: parent.verticalCenter
-              horizontalAlignment: Text.AlignRight
-              text: parent.barLabel
-              color: Theme.ink2
-              font.family: root.monoFont
-              font.pixelSize: Theme.fontSm
-              visible: (parent.width * parent.fillFrac) <= 92
+            IconBtn {
+              anchors.centerIn: parent
+              btnSize: 22
+              fs: Theme.iconXs
+              glyph: "󰅖"
+              fg: Theme.ink3
+              tooltip: "Kill " + (rowDelegate.modelData ? rowDelegate.modelData.name : "")
+              tooltipSub: "Topmost parent PID: " + rowDelegate.procRootPid
+              onClicked: {
+                if (root.monitor && rowDelegate.procRootPid > 1) {
+                  root.monitor.kill(rowDelegate.procRootPid);
+                }
+              }
             }
           }
         }
       }
 
-      Text {
+      Item {
         width: parent.width
-        horizontalAlignment: Text.AlignHCenter
+        height: 356
         visible: root.processes.length === 0
-        text: "󰑓 loading…"
-        color: Theme.ink3
-        font.family: root.monoFont
-        font.pixelSize: Theme.fontBase
+
+        Text {
+          anchors.centerIn: parent
+          text: "󰑓 loading…"
+          color: Theme.ink3
+          font.family: root.monoFont
+          font.pixelSize: Theme.fontBase
+        }
       }
+    }
+  }
+
+  Component.onCompleted: {
+    if (root.monitor && root.processes.length === 0) {
+      root.monitor.sampleSync();
     }
   }
 }

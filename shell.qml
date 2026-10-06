@@ -88,7 +88,7 @@ ShellRoot {
 
   readonly property bool anyEthPopupVisible: popupHost.visible && popupHost.currentPopup === "eth"
   readonly property bool anyMediaPopupVisible: popupHost.visible && popupHost.currentPopup === "media"
-  readonly property bool anyProcPopupVisible: popupHost.visible && popupHost.currentPopup === "proc"
+  readonly property bool anyProcPopupVisible: (popupHost.visible || popupHost.pendingOpen) && popupHost.currentPopup === "proc"
 
   readonly property var services: ({
     aiUsage: aiUsageService,
@@ -144,7 +144,12 @@ ShellRoot {
 
       function openPopup(name: string): void {
         let item = null;
-        if (name === "proc") item = sysStatsHit;
+        if (name === "proc") {
+          if (processMonitor.processes.length === 0) {
+            processMonitor.sampleSync();
+          }
+          item = sysStatsHit;
+        }
         else if (name === "ai") item = aiHit;
         else if (name === "cal") item = clockHit;
         else if (name === "media") item = mediaHit;
@@ -213,7 +218,12 @@ ShellRoot {
           id: sysStatsHit
           active: popupHost.isOpen(sysStatsHit, "proc")
           Accessible.name: "System stats"
-          onClicked: popupHost.toggle(sysStatsHit, "proc")
+          onClicked: {
+            if (processMonitor.processes.length === 0) {
+              processMonitor.sampleSync();
+            }
+            popupHost.toggle(sysStatsHit, "proc");
+          }
 
           SysStats {
             id: sysStats

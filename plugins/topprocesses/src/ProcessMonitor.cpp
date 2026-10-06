@@ -2,11 +2,13 @@
 
 #include <QTime>
 #include <QVariantMap>
+#include <QCoreApplication>
 
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <signal.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -586,6 +588,7 @@ void SamplerWorker::sample() {
         item.rss = g.actualMem;
         item.count = g.count;
         item.mpid = g.repPid;
+        item.rootPid = g.rootPid;
         m_items.push_back(std::move(item));
     }
 
@@ -600,7 +603,25 @@ void SamplerWorker::sample() {
     double maxMem = 1.0;
 
     for (size_t i = 0; i < topN; ++i) {
-        const auto &item = m_items[i];
+        auto &item = m_items[i];
+        if (item.name.size() == 15 && item.mpid > 0) {
+            char cmdBuf[64];
+            snprintf(cmdBuf, sizeof(cmdBuf), "/proc/%d/cmdline", item.mpid);
+            int fdCmd = open(cmdBuf, O_RDONLY | O_CLOEXEC);
+            if (fdCmd >= 0) {
+                char rawCmd[512];
+                ssize_t cn = read(fdCmd, rawCmd, sizeof(rawCmd) - 1);
+                close(fdCmd);
+                if (cn > 0) {
+                    rawCmd[cn] = '\0';
+                    const char *base = strrchr(rawCmd, '/');
+                    const char *candidate = base ? (base + 1) : rawCmd;
+                    if (strncmp(candidate, item.name.c_str(), 15) == 0) {
+                        item.name = candidate;
+                    }
+                }
+            }
+        }
         if (i == 0 && item.mem > 0) {
             maxMem = item.mem;
         }
@@ -616,6 +637,8 @@ void SamplerWorker::sample() {
         map[QStringLiteral("barLabel")] = barLabel;
         map[QStringLiteral("count")] = item.count;
         map[QStringLiteral("mpid")] = item.mpid;
+        map[QStringLiteral("pid")] = item.mpid;
+        map[QStringLiteral("rootPid")] = item.rootPid;
         outList.append(map);
     }
 
@@ -686,6 +709,22 @@ void ProcessMonitor::setCandidateCount(int candidateCount) {
 
 void ProcessMonitor::refresh() {
     emit requestSample();
+}
+
+void ProcessMonitor::sampleSync() {
+    if (!m_worker) return;
+    QMetaObject::invokeMethod(m_worker, "sample", Qt::BlockingQueuedConnection);
+    QCoreApplication::sendPostedEvents(this, QEvent::MetaCall);
+}
+
+bool ProcessMonitor::kill(int pid, int signal) {
+    if (pid <= 1) return false;
+    int res = ::kill(static_cast<pid_t>(pid), signal);
+    if (res == 0) {
+        QTimer::singleShot(150, this, &ProcessMonitor::refresh);
+        return true;
+    }
+    return false;
 }
 
 void ProcessMonitor::onDataReady(const QVariantList &processes, double maxMem, const QString &updatedAt) {

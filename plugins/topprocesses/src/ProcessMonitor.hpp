@@ -44,6 +44,7 @@ struct ProcessItem {
     unsigned long long rss{0};
     int count{0};
     int mpid{0};
+    int rootPid{0};
 };
 
 class SamplerWorker : public QObject {
@@ -129,6 +130,9 @@ public:
     void setCandidateCount(int candidateCount);
 
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void sampleSync();
+    Q_INVOKABLE bool kill(int pid, int signal = 15);
+    Q_INVOKABLE bool killProcess(int pid, int signal = 15) { return kill(pid, signal); }
 
 signals:
     void processesChanged();
