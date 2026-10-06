@@ -2,6 +2,7 @@
 
 #include "EthernetProbe.hpp"
 
+#include <QNetworkInformation>
 #include <QObject>
 #include <QProcess>
 #include <QStringList>
@@ -190,6 +191,7 @@ private slots:
     void onThroughputUpdated(quint64 rxBytes, quint64 txBytes, double rxBps, double txBps);
     void onPingFinished(bool ok, const QString &target, double latencyMs, const QString &output);
     void onReconnectFinished(bool ok, const QString &target, const QString &output);
+    void onReachabilityChanged(QNetworkInformation::Reachability reachability);
 
 private:
     EthernetState m_state;

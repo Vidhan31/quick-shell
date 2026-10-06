@@ -5,6 +5,7 @@
 #include <QDBusReply>
 #include <QDBusArgument>
 #include <QDBusMetaType>
+#include <QNetworkInformation>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QDir>
@@ -572,6 +573,10 @@ PingResult EthernetProbe::pingHost(const QString &host, int timeoutMs) {
 }
 
 bool EthernetProbe::checkConnectivity() {
+    if (auto *info = QNetworkInformation::instance()) {
+        return info->reachability() == QNetworkInformation::Reachability::Online;
+    }
+
     auto bus = QDBusConnection::systemBus();
     if (bus.isConnected()) {
         QDBusInterface nm(QStringLiteral("org.freedesktop.NetworkManager"),

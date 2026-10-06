@@ -13,6 +13,8 @@ class QJsonDocument;
 class QJsonObject;
 class QNetworkAccessManager;
 class QNetworkReply;
+class QRestAccessManager;
+class QRestReply;
 
 namespace qs::plugins {
 
@@ -107,9 +109,10 @@ signals:
     void fetched(const PricingFetchResult &result);
 
 private:
-    void onReplyFinished();
+    void onReplyFinished(QRestReply &reply);
 
     ::QNetworkAccessManager *m_nam{nullptr};
+    ::QRestAccessManager *m_restMgr{nullptr};
     ::QNetworkReply *m_reply{nullptr};
     PricingSettings m_settings;
 };

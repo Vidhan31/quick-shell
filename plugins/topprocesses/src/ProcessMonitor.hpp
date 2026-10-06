@@ -59,18 +59,23 @@ public slots:
     void setInterval(int intervalMs);
     void setCandidateCount(int candidateCount);
     void sample();
+    void sampleSysStats();
 
 signals:
     void dataReady(const QVariantList &processes, double maxMem, const QString &updatedAt);
+    void sysStatsReady(double cpuPercent, double memPercent, double gpuPercent, bool gpuAvailable);
 
 private:
     int m_intervalMs;
     int m_candidateCount{24};
     QTimer *m_timer{nullptr};
+    QTimer *m_sysStatsTimer{nullptr};
     long m_pageSizeKb{4};
     long m_nCpu{1};
     long m_memTotalKb{1};
     unsigned long long m_prevTotalJiffies{0};
+    unsigned long long m_prevSysTotalJiffies{0};
+    unsigned long long m_prevSysIdleJiffies{0};
 
     std::unique_ptr<SimpleThreadPool> m_pool;
 
@@ -99,6 +104,10 @@ class ProcessMonitor : public QObject {
     Q_PROPERTY(bool running READ running WRITE setRunning NOTIFY runningChanged)
     Q_PROPERTY(int interval READ interval WRITE setInterval NOTIFY intervalChanged)
     Q_PROPERTY(int candidateCount READ candidateCount WRITE setCandidateCount NOTIFY candidateCountChanged)
+    Q_PROPERTY(double cpuPercent READ cpuPercent NOTIFY sysStatsChanged)
+    Q_PROPERTY(double memPercent READ memPercent NOTIFY sysStatsChanged)
+    Q_PROPERTY(double gpuPercent READ gpuPercent NOTIFY sysStatsChanged)
+    Q_PROPERTY(bool gpuAvailable READ gpuAvailable NOTIFY sysStatsChanged)
 
 public:
     explicit ProcessMonitor(QObject *parent = nullptr);
@@ -110,6 +119,10 @@ public:
     bool running() const { return m_running; }
     int interval() const { return m_interval; }
     int candidateCount() const { return m_candidateCount; }
+    double cpuPercent() const { return m_cpuPercent; }
+    double memPercent() const { return m_memPercent; }
+    double gpuPercent() const { return m_gpuPercent; }
+    bool gpuAvailable() const { return m_gpuAvailable; }
 
     void setRunning(bool running);
     void setInterval(int interval);
@@ -122,6 +135,7 @@ signals:
     void runningChanged();
     void intervalChanged();
     void candidateCountChanged();
+    void sysStatsChanged();
 
     // Internal signals to worker thread
     void requestStart();
@@ -129,9 +143,11 @@ signals:
     void requestSetInterval(int interval);
     void requestSetCandidateCount(int candidateCount);
     void requestSample();
+    void requestStartSysStats();
 
 private slots:
     void onDataReady(const QVariantList &processes, double maxMem, const QString &updatedAt);
+    void onSysStatsReady(double cpuPercent, double memPercent, double gpuPercent, bool gpuAvailable);
 
 private:
     QVariantList m_processes;
@@ -140,6 +156,10 @@ private:
     bool m_running{false};
     int m_interval{2000};
     int m_candidateCount{24};
+    double m_cpuPercent{0.0};
+    double m_memPercent{0.0};
+    double m_gpuPercent{0.0};
+    bool m_gpuAvailable{false};
 
     QThread m_workerThread;
     SamplerWorker *m_worker{nullptr};

@@ -217,6 +217,7 @@ ShellRoot {
 
           SysStats {
             id: sysStats
+            processMonitor: root.services.processMonitor
           }
         }
 

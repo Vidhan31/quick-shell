@@ -7,9 +7,13 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QHttpHeaders>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QNetworkRequestFactory>
+#include <QRestAccessManager>
+#include <QRestReply>
 #include <QSaveFile>
 #include <QSet>
 #include <QTimer>
@@ -309,37 +313,39 @@ void PricingWorker::fetch(const PricingSettings &settings, const QString &etag) 
     if (m_nam == nullptr) {
         m_nam = new QNetworkAccessManager(this);
         m_nam->setTransferTimeout(kTransferTimeoutMs);
+        m_restMgr = new QRestAccessManager(m_nam, this);
     }
-    QNetworkRequest request(settings.endpoint);
-    request.setHeader(QNetworkRequest::UserAgentHeader,
-                      QStringLiteral("quick-shell-modelpricing/1.0"));
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                         QNetworkRequest::NoLessSafeRedirectPolicy);
+
+    QNetworkRequestFactory factory{QUrl(settings.endpoint)};
+    QHttpHeaders headers;
+    headers.append(QHttpHeaders::WellKnownHeader::UserAgent, "quick-shell-modelpricing/1.0");
     if (!etag.isEmpty()) {
-        request.setRawHeader("If-None-Match", etag.toLatin1());
+        headers.append(QHttpHeaders::WellKnownHeader::IfNoneMatch, etag.toUtf8());
     }
-    m_reply = m_nam->get(request);
-    connect(m_reply, &QNetworkReply::finished, this, &PricingWorker::onReplyFinished);
+    factory.setCommonHeaders(headers);
+    factory.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::NoLessSafeRedirectPolicy);
+
+    const QNetworkRequest request = factory.createRequest();
+    m_reply = m_restMgr->get(request, this, [this](QRestReply &reply) {
+        onReplyFinished(reply);
+    });
 }
 
-void PricingWorker::onReplyFinished() {
-    QNetworkReply *reply = m_reply;
+void PricingWorker::onReplyFinished(QRestReply &reply) {
     m_reply = nullptr;
     PricingFetchResult result;
-    if (reply == nullptr) {
-        return;
-    }
-    reply->deleteLater();
-    if (reply->error() != QNetworkReply::NoError) {
-        result.error = reply->errorString();
-        emit fetched(result);
-        return;
-    }
-    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+    const int status = reply.httpStatus();
     if (status == 304) {
         result.ok = true;
         result.notModified = true;
         result.fetchedAtIso = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        emit fetched(result);
+        return;
+    }
+    if (reply.hasError()) {
+        result.error = reply.errorString();
         emit fetched(result);
         return;
     }
@@ -348,15 +354,20 @@ void PricingWorker::onReplyFinished() {
         emit fetched(result);
         return;
     }
-    const QByteArray payload = reply->readAll();
-    const QString newEtag =
-        QString::fromLatin1(reply->rawHeader("ETag")).trimmed().remove(u'"');
+
+    const QByteArray payload = reply.readBody();
     QJsonParseError parseError{};
-    const QJsonDocument document = QJsonDocument::fromJson(payload, &parseError);
-    if (parseError.error != QJsonParseError::NoError) {
+    const auto optDoc = reply.readJson(&parseError);
+    if (!optDoc.has_value()) {
         result.error = parseError.errorString();
         emit fetched(result);
         return;
+    }
+    const QJsonDocument &document = *optDoc;
+
+    QString newEtag;
+    if (auto *netReply = reply.networkReply()) {
+        newEtag = QString::fromLatin1(netReply->rawHeader("ETag")).trimmed().remove(u'"');
     }
     int providers = 0;
     const PriceIndex index = buildPriceIndex(document, m_settings.gatewayNpmMarkers, &providers);

@@ -323,6 +323,11 @@ EthernetMonitor::EthernetMonitor(QObject *parent)
     connect(m_worker, &EthernetWorker::pingFinished, this, &EthernetMonitor::onPingFinished);
     connect(m_worker, &EthernetWorker::reconnectFinished, this, &EthernetMonitor::onReconnectFinished);
 
+    QNetworkInformation::loadDefaultBackend();
+    if (auto *netInfo = QNetworkInformation::instance()) {
+        connect(netInfo, &QNetworkInformation::reachabilityChanged, this, &EthernetMonitor::onReachabilityChanged);
+    }
+
     m_workerThread.start();
     if (m_running) {
         emit requestStart();
@@ -425,6 +430,23 @@ void EthernetMonitor::onPingFinished(bool ok, const QString &target, double late
     }
     emit pingStatusChanged();
     emit pingCompleted(ok, latencyMs, output);
+}
+
+void EthernetMonitor::onReachabilityChanged(QNetworkInformation::Reachability reachability) {
+    const bool online = (reachability == QNetworkInformation::Reachability::Online);
+    if (m_state.hasInternet != online) {
+        m_state.hasInternet = online;
+        m_state.ok = m_state.carrier && online;
+        if (online) {
+            m_state.status = QStringLiteral("online");
+            m_state.statusDesc = QStringLiteral("Connected to Internet");
+        } else if (m_state.carrier) {
+            m_state.status = QStringLiteral("no-internet");
+            m_state.statusDesc = QStringLiteral("Connected, No Internet");
+        }
+        m_cachedMap = m_state.toMap();
+        emit stateChanged();
+    }
 }
 
 } // namespace qs::plugins

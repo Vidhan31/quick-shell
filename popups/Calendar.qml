@@ -21,11 +21,22 @@ Item {
 
   readonly property string monoFont: root.t.mono
 
-  readonly property var monthNames: [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-  ]
-  readonly property var weekDays: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+  readonly property var monthNames: {
+    const list = [];
+    for (let i = 0; i < 12; ++i) {
+      list.push(Qt.locale().standaloneMonthName(i, Locale.LongFormat));
+    }
+    return list;
+  }
+  readonly property int firstDayOfWeek: Qt.locale().firstDayOfWeek
+  readonly property var weekDays: {
+    const list = [];
+    for (let i = 0; i < 7; ++i) {
+      const day = (root.firstDayOfWeek + i) % 7;
+      list.push(Qt.locale().dayName(day, Locale.ShortFormat));
+    }
+    return list;
+  }
 
   implicitWidth: Theme.popupWidthSm
   implicitHeight: 388
@@ -66,8 +77,8 @@ Item {
   }
 
   function monthStartOffset(y: int, m: int): int {
-    // Monday-first: Mo=0 .. Su=6
-    return (new Date(y, m, 1).getDay() + 6) % 7;
+    const day = new Date(y, m, 1).getDay();
+    return (day - root.firstDayOfWeek + 7) % 7;
   }
 
   function sameDay(a: date, b: date): bool {
@@ -107,12 +118,13 @@ Item {
       }
 
       const evs = root.holidayProvider ? root.holidayProvider.eventsForDate(cellDate) : [];
+      const dayOfWeek = cellDate.getDay();
 
       arr.push({
         day: cellDay,
         date: cellDate,
         inMonth: inMonth,
-        isWeekend: (i % 7 === 5 || i % 7 === 6),
+        isWeekend: (dayOfWeek === 0 || dayOfWeek === 6),
         hasEvent: evs.length > 0,
         events: evs
       });

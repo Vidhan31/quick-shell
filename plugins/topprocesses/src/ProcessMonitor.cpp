@@ -155,6 +155,88 @@ void SamplerWorker::setCandidateCount(int candidateCount) {
     m_candidateCount = std::clamp(candidateCount, 16, 32);
 }
 
+void SamplerWorker::sampleSysStats() {
+    if (!m_sysStatsTimer) {
+        m_sysStatsTimer = new QTimer(this);
+        connect(m_sysStatsTimer, &QTimer::timeout, this, &SamplerWorker::sampleSysStats);
+        m_sysStatsTimer->start(1000);
+    }
+
+    double cpuPercent = 0.0;
+    double memPercent = 0.0;
+    double gpuPercent = 0.0;
+    bool gpuAvailable = false;
+
+    int fdStat = open("/proc/stat", O_RDONLY | O_CLOEXEC);
+    if (fdStat >= 0) {
+        char buf[256];
+        ssize_t n = read(fdStat, buf, sizeof(buf) - 1);
+        close(fdStat);
+        if (n > 4 && strncmp(buf, "cpu ", 4) == 0) {
+            buf[n] = '\0';
+            const char *p = skip_space(buf + 4);
+            unsigned long long u = parse_u64(p); p = skip_space(p);
+            unsigned long long ni = parse_u64(p); p = skip_space(p);
+            unsigned long long s = parse_u64(p); p = skip_space(p);
+            unsigned long long id = parse_u64(p); p = skip_space(p);
+            unsigned long long io = parse_u64(p); p = skip_space(p);
+            unsigned long long irq = parse_u64(p); p = skip_space(p);
+            unsigned long long sirq = parse_u64(p); p = skip_space(p);
+            unsigned long long st = parse_u64(p);
+
+            unsigned long long total = u + ni + s + id + io + irq + sirq + st;
+            unsigned long long idleTotal = id + io;
+            if (m_prevSysTotalJiffies > 0 && total > m_prevSysTotalJiffies) {
+                unsigned long long dTotal = total - m_prevSysTotalJiffies;
+                unsigned long long dIdle = (idleTotal >= m_prevSysIdleJiffies) ? (idleTotal - m_prevSysIdleJiffies) : 0;
+                if (dTotal > 0) {
+                    cpuPercent = std::clamp((1.0 - static_cast<double>(dIdle) / static_cast<double>(dTotal)) * 100.0, 0.0, 100.0);
+                }
+            }
+            m_prevSysTotalJiffies = total;
+            m_prevSysIdleJiffies = idleTotal;
+        }
+    }
+
+    int fdMem = open("/proc/meminfo", O_RDONLY | O_CLOEXEC);
+    if (fdMem >= 0) {
+        char buf[512];
+        ssize_t n = read(fdMem, buf, sizeof(buf) - 1);
+        close(fdMem);
+        if (n > 0) {
+            buf[n] = '\0';
+            const char *tPtr = strstr(buf, "MemTotal:");
+            const char *aPtr = strstr(buf, "MemAvailable:");
+            if (tPtr && aPtr) {
+                long totalKb = strtol(tPtr + 9, nullptr, 10);
+                long availKb = strtol(aPtr + 13, nullptr, 10);
+                if (totalKb > 0 && availKb >= 0) {
+                    m_memTotalKb = totalKb;
+                    memPercent = std::clamp((1.0 - static_cast<double>(availKb) / static_cast<double>(totalKb)) * 100.0, 0.0, 100.0);
+                }
+            }
+        }
+    }
+
+    int fdGpu = open("/sys/class/drm/card1/device/gpu_busy_percent", O_RDONLY | O_CLOEXEC);
+    if (fdGpu < 0) {
+        fdGpu = open("/sys/class/drm/card0/device/gpu_busy_percent", O_RDONLY | O_CLOEXEC);
+    }
+    if (fdGpu >= 0) {
+        char buf[16];
+        ssize_t n = read(fdGpu, buf, sizeof(buf) - 1);
+        close(fdGpu);
+        if (n > 0) {
+            buf[n] = '\0';
+            int v = atoi(buf);
+            gpuPercent = std::clamp(static_cast<double>(v), 0.0, 100.0);
+            gpuAvailable = true;
+        }
+    }
+
+    emit sysStatsReady(cpuPercent, memPercent, gpuPercent, gpuAvailable);
+}
+
 unsigned long long SamplerWorker::readTotalJiffies() {
     int fd = open("/proc/stat", O_RDONLY);
     if (fd < 0) return 0;
@@ -556,10 +638,13 @@ ProcessMonitor::ProcessMonitor(QObject *parent)
     connect(this, &ProcessMonitor::requestSetInterval, m_worker, &SamplerWorker::setInterval);
     connect(this, &ProcessMonitor::requestSetCandidateCount, m_worker, &SamplerWorker::setCandidateCount);
     connect(this, &ProcessMonitor::requestSample, m_worker, &SamplerWorker::sample);
+    connect(this, &ProcessMonitor::requestStartSysStats, m_worker, &SamplerWorker::sampleSysStats);
 
     connect(m_worker, &SamplerWorker::dataReady, this, &ProcessMonitor::onDataReady, Qt::QueuedConnection);
+    connect(m_worker, &SamplerWorker::sysStatsReady, this, &ProcessMonitor::onSysStatsReady, Qt::QueuedConnection);
 
     m_workerThread.start();
+    emit requestStartSysStats();
 
     if (m_running) {
         emit requestStart();
@@ -608,6 +693,29 @@ void ProcessMonitor::onDataReady(const QVariantList &processes, double maxMem, c
     m_maxMem = maxMem;
     m_updatedAt = updatedAt;
     emit processesChanged();
+}
+
+void ProcessMonitor::onSysStatsReady(double cpuPercent, double memPercent, double gpuPercent, bool gpuAvailable) {
+    bool changed = false;
+    if (std::abs(m_cpuPercent - cpuPercent) > 0.01) {
+        m_cpuPercent = cpuPercent;
+        changed = true;
+    }
+    if (std::abs(m_memPercent - memPercent) > 0.01) {
+        m_memPercent = memPercent;
+        changed = true;
+    }
+    if (std::abs(m_gpuPercent - gpuPercent) > 0.01) {
+        m_gpuPercent = gpuPercent;
+        changed = true;
+    }
+    if (m_gpuAvailable != gpuAvailable) {
+        m_gpuAvailable = gpuAvailable;
+        changed = true;
+    }
+    if (changed) {
+        emit sysStatsChanged();
+    }
 }
 
 } // namespace qs::plugins
