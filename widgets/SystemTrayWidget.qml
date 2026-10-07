@@ -54,6 +54,8 @@ Item {
   property var activeMenu: null
   property Item activeMenuTarget: null
   property bool pendingMenuOpen: false
+  property int menuPopupX: 0
+  property int menuPopupY: 0
 
   QsMenuOpener {
     id: menuOpener
@@ -138,8 +140,8 @@ Item {
         IconImage {
           id: iconImg
           anchors.centerIn: parent
-          width: 20
-          height: 20
+          width: 16
+          height: 16
           asynchronous: true
           source: delegateItem.item ? delegateItem.item.icon : ""
         }
@@ -271,6 +273,16 @@ Item {
     root.requestClosePopups();
 
     if (trayItem.hasMenu && trayItem.menu) {
+      if (isInsidePassivePopup) {
+        const pt = targetItem.mapToItem(passiveCard, 0, 0);
+        root.menuPopupX = passivePopup.anchor.rect.x + pt.x + targetItem.width / 2;
+        root.menuPopupY = passivePopup.anchor.rect.y + pt.y + targetItem.height + 4;
+      } else {
+        const pt = targetItem.mapToItem(null, 0, 0);
+        root.menuPopupX = pt.x + targetItem.width / 2;
+        root.menuPopupY = root.barWindow ? (root.barWindow.implicitHeight + 6) : 38;
+      }
+
       root.activeMenuTarget = targetItem;
 
       if (root.activeMenu === trayItem.menu && menuOpener.children && menuOpener.children.values.length > 0) {
@@ -344,10 +356,9 @@ Item {
 
   PopupWindow {
     id: contextMenuPopup
-    anchor.item: root.activeMenuTarget
-    anchor.gravity: Edges.Bottom
-    anchor.margins.top: 4
-    anchor.adjustment: PopupAdjustment.SlideX | PopupAdjustment.FlipY
+    anchor.window: root.barWindow
+    anchor.rect.x: root.barWindow ? Math.max(8, Math.min(root.menuPopupX - contextMenuCard.implicitWidth / 2, root.barWindow.width - contextMenuCard.implicitWidth - 12)) : 0
+    anchor.rect.y: root.menuPopupY
     visible: false
     grabFocus: true
     implicitWidth: contextMenuCard.implicitWidth
@@ -359,12 +370,14 @@ Item {
         root.pendingMenuOpen = false;
         menuFallbackTimer.stop();
         root.activeMenuTarget = null;
+        contextMenuCard.maxItemWidth = 0;
       }
     }
 
     Rectangle {
       id: contextMenuCard
-      implicitWidth: Math.max(160, menuCol.implicitWidth + 16)
+      property real maxItemWidth: 0
+      implicitWidth: Math.max(160, maxItemWidth + 16)
       implicitHeight: menuCol.implicitHeight + 16
       width: implicitWidth
       height: implicitHeight
@@ -393,12 +406,34 @@ Item {
 
             readonly property QsMenuEntry entry: menuItem.modelData
             readonly property bool isSep: entry ? entry.isSeparator : false
+            readonly property real contentWidth: visible ? (isSep ? 80 : (itemRow.implicitWidth + (entry && entry.hasChildren ? 36 : 24))) : 0
 
             visible: entry ? (entry.text !== "" || isSep) : false
             implicitHeight: visible ? (isSep ? 7 : 26) : 0
-            implicitWidth: visible ? (isSep ? 80 : (itemRow.implicitWidth + (entry && entry.hasChildren ? 36 : 24))) : 0
+            implicitWidth: contentWidth
             width: parent ? parent.width : implicitWidth
             height: implicitHeight
+
+            onContentWidthChanged: {
+              if (contentWidth > contextMenuCard.maxItemWidth)
+                contextMenuCard.maxItemWidth = contentWidth;
+            }
+
+            Component.onCompleted: {
+              if (contentWidth > contextMenuCard.maxItemWidth)
+                contextMenuCard.maxItemWidth = contentWidth;
+            }
+
+            Component.onDestruction: {
+              Qt.callLater(() => {
+                let max = 0;
+                for (let i = 0; i < menuCol.children.length; i++) {
+                  const c = menuCol.children[i];
+                  if (c && c.contentWidth) max = Math.max(max, c.contentWidth);
+                }
+                contextMenuCard.maxItemWidth = max;
+              });
+            }
 
             Item {
               anchors.fill: parent
@@ -486,10 +521,14 @@ Item {
 
   PopupWindow {
     id: passivePopup
-    anchor.item: chevronButton
-    anchor.gravity: Edges.Bottom
-    anchor.margins.top: 4
-    anchor.adjustment: PopupAdjustment.SlideX | PopupAdjustment.FlipY
+    anchor.window: root.barWindow
+    anchor.rect.x: {
+      if (!chevronButton.visible || !root.barWindow) return 0;
+      const targetX = chevronButton.mapToItem(null, 0, 0).x;
+      const idealX = targetX + chevronButton.width / 2 - passiveCard.implicitWidth / 2;
+      return Math.max(8, Math.min(idealX, root.barWindow.width - passiveCard.implicitWidth - 12));
+    }
+    anchor.rect.y: root.barWindow ? (root.barWindow.implicitHeight + 6) : 38
     visible: false
     grabFocus: true
     implicitWidth: passiveCard.implicitWidth

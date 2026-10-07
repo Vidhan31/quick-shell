@@ -6,9 +6,10 @@ Item {
   id: root
 
   property bool segment: false
+  property bool flat: false
   property bool active: false
   property bool hoverable: true
-  property real horizontalPadding: 8
+  property real horizontalPadding: root.flat ? 6 : 8
   property real radius: root.segment ? (Theme.radiusSm - 2) : Theme.radiusSm
   property var acceptedButtons: Qt.LeftButton
 
@@ -78,7 +79,7 @@ Item {
     anchors.fill: parent
     anchors.margins: root.segment ? 1 : 0
     radius: root.radius
-    color: root.active ? Theme.selected : (ma.containsMouse || root.activeFocus) ? Theme.hoverFill : Theme.surface
+    color: root.active ? Theme.selected : (ma.containsMouse || root.activeFocus) ? Theme.hoverFill : (root.flat || root.segment ? "transparent" : Theme.surface)
     border.color: root.activeFocus ? Theme.focusRing : "transparent"
     border.width: root.activeFocus ? Theme.focusRingWidth : 0
 

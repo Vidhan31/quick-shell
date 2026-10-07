@@ -22,7 +22,7 @@ import "theme"
 ShellRoot {
   id: root
 
-  readonly property string time: Qt.formatTime(sysClock.date, "hh:mm")
+  readonly property string time: Qt.formatTime(sysClock.date, "h:mm AP")
   readonly property string date: Qt.formatDate(sysClock.date, "ddd, MMM d")
   property var primaryBar: null
 
@@ -201,15 +201,26 @@ ShellRoot {
 
         RowLayout {
           id: leftBarRow
-        anchors {
-          left: parent.left
-          leftMargin: 12
-          verticalCenter: parent.verticalCenter
-        }
-        spacing: 8
+          anchors {
+            left: parent.left
+            leftMargin: 12
+            verticalCenter: parent.verticalCenter
+          }
+          spacing: 8
 
-        BarItem {
-          id: sysStatsHit
+          BarCapsule {
+            id: trayCapsule
+            visible: trayWidget.width > 0
+
+            SystemTrayWidget {
+              id: trayWidget
+              barWindow: bar
+              onRequestClosePopups: bar.closeAllPopups()
+            }
+          }
+
+          BarItem {
+            id: sysStatsHit
           active: popupHost.isOpen(sysStatsHit, "proc")
           Accessible.name: "System stats"
           onClicked: {
@@ -324,124 +335,99 @@ ShellRoot {
           }
         }
 
-        BarCapsule {
-          id: serviceCapsule
+        BarItem {
+          id: dockerHit
+          flat: true
+          active: popupHost.isOpen(dockerHit, "docker")
+          tooltip: "Docker: " + (dockerService.connected ? (dockerService.runningCount + " running · " + dockerService.totalCount + " total") : "Daemon unreachable")
+          tooltipSub: "Click for containers & logs"
+          onClicked: popupHost.toggle(dockerHit, "docker")
 
-          BarItem {
-            id: dockerHit
-            segment: true
-            active: popupHost.isOpen(dockerHit, "docker")
-            tooltip: "Docker: " + (dockerService.connected ? (dockerService.runningCount + " running · " + dockerService.totalCount + " total") : "Daemon unreachable")
-            tooltipSub: "Click for containers & logs"
-            onClicked: popupHost.toggle(dockerHit, "docker")
-
-            DockerWidget {
-              id: dockerBarWidget
-              docker: dockerService
-            }
-          }
-
-          BarDivider {}
-
-          BarItem {
-            id: tsHit
-            segment: true
-            active: popupHost.isOpen(tsHit, "ts")
-            tooltip: "Tailscale: " + (!tailscaleService.connected ? "Disconnected" : (tailscaleService.hasFunnel ? "Connected · Funnel active" : (tailscaleService.serveCount > 0 ? ("Connected · " + tailscaleService.serveCount + " shared") : "Connected")))
-            tooltipSub: "Click for peers & funnel"
-            onClicked: popupHost.toggle(tsHit, "ts")
-
-            TailscaleWidget {
-              id: tsBarWidget
-              tailscale: tailscaleService
-            }
-          }
-
-          BarDivider {}
-
-          BarItem {
-            id: updateHit
-            segment: true
-            active: popupHost.isOpen(updateHit, "update")
-            tooltip: "System Updates: " + (updateService.hasUpdates ? (updateService.updateCount + " available") : "Up to date")
-            tooltipSub: "Click for update manager"
-            onClicked: popupHost.toggle(updateHit, "update")
-
-            UpdateWidget {
-              id: updateBarWidget
-              service: updateService
-            }
+          DockerWidget {
+            id: dockerBarWidget
+            docker: dockerService
           }
         }
 
-        BarCapsule {
-          id: mediaCapsule
+        BarItem {
+          id: tsHit
+          flat: true
+          active: popupHost.isOpen(tsHit, "ts")
+          tooltip: "Tailscale: " + (!tailscaleService.connected ? "Disconnected" : (tailscaleService.hasFunnel ? "Connected · Funnel active" : (tailscaleService.serveCount > 0 ? ("Connected · " + tailscaleService.serveCount + " shared") : "Connected")))
+          tooltipSub: "Click for peers & funnel"
+          onClicked: popupHost.toggle(tsHit, "ts")
 
-          BarItem {
-            id: ethHit
-            segment: true
-            active: popupHost.isOpen(ethHit, "eth")
-            Accessible.name: "Ethernet network"
-            onClicked: popupHost.toggle(ethHit, "eth")
-
-            EthernetWidget {
-              id: ethBarWidget
-              ethernet: ethernetService
-            }
-          }
-
-          BarDivider {}
-
-          BarItem {
-            id: bluetoothHit
-            segment: true
-            active: popupHost.isOpen(bluetoothHit, "bluetooth")
-            Accessible.name: "Bluetooth"
-            onClicked: popupHost.toggle(bluetoothHit, "bluetooth")
-
-            BluetoothWidget {
-              id: bluetoothBarWidget
-            }
-          }
-
-          BarDivider {}
-
-          BarItem {
-            id: volHit
-            segment: true
-            active: popupHost.isOpen(volHit, "vol")
-            Accessible.name: "Audio volume"
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onClicked: popupHost.toggle(volHit, "vol")
-            onRightClicked: volBarWidget.toggleMute()
-
-            VolumeBarWidget {
-              id: volBarWidget
-              audio: audioService
-            }
-          }
-
-          BarDivider {}
-
-          BarItem {
-            id: notifSeg
-            segment: true
-            active: popupHost.isOpen(notifSeg, "notif")
-            Accessible.name: "Notifications"
-            onClicked: popupHost.toggle(notifSeg, "notif")
-
-            NotificationWidget {
-              id: notifBarWidget
-              service: notifService
-            }
+          TailscaleWidget {
+            id: tsBarWidget
+            tailscale: tailscaleService
           }
         }
 
-        SystemTrayWidget {
-          id: trayWidget
-          barWindow: bar
-          visible: trayWidget.width > 0
-          onRequestClosePopups: bar.closeAllPopups()
+        BarItem {
+          id: updateHit
+          flat: true
+          active: popupHost.isOpen(updateHit, "update")
+          tooltip: "System Updates: " + (updateService.hasUpdates ? (updateService.updateCount + " available") : "Up to date")
+          tooltipSub: "Click for update manager"
+          onClicked: popupHost.toggle(updateHit, "update")
+
+          UpdateWidget {
+            id: updateBarWidget
+            service: updateService
+          }
+        }
+
+        BarItem {
+          id: ethHit
+          flat: true
+          active: popupHost.isOpen(ethHit, "eth")
+          Accessible.name: "Ethernet network"
+          onClicked: popupHost.toggle(ethHit, "eth")
+
+          EthernetWidget {
+            id: ethBarWidget
+            ethernet: ethernetService
+          }
+        }
+
+        BarItem {
+          id: bluetoothHit
+          flat: true
+          active: popupHost.isOpen(bluetoothHit, "bluetooth")
+          Accessible.name: "Bluetooth"
+          onClicked: popupHost.toggle(bluetoothHit, "bluetooth")
+
+          BluetoothWidget {
+            id: bluetoothBarWidget
+          }
+        }
+
+        BarItem {
+          id: volHit
+          flat: true
+          active: popupHost.isOpen(volHit, "vol")
+          Accessible.name: "Audio volume"
+          acceptedButtons: Qt.LeftButton | Qt.RightButton
+          onClicked: popupHost.toggle(volHit, "vol")
+          onRightClicked: volBarWidget.toggleMute()
+
+          VolumeBarWidget {
+            id: volBarWidget
+            audio: audioService
+          }
+        }
+
+        BarItem {
+          id: notifSeg
+          flat: true
+          active: popupHost.isOpen(notifSeg, "notif")
+          Accessible.name: "Notifications"
+          onClicked: popupHost.toggle(notifSeg, "notif")
+
+          NotificationWidget {
+            id: notifBarWidget
+            service: notifService
+          }
         }
       }
     }

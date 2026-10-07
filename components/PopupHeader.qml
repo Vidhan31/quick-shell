@@ -17,16 +17,6 @@ RowLayout {
   Layout.preferredHeight: 36
   spacing: 8
 
-  Text {
-    visible: root.glyph.length > 0
-    Layout.alignment: Qt.AlignVCenter
-    text: root.glyph
-    font.family: Theme.mono
-    font.pixelSize: Theme.iconLg
-    color: root.glyphColor
-    Behavior on color { ColorAnimation { duration: Theme.durationFast } }
-  }
-
   Column {
     Layout.fillWidth: true
     Layout.alignment: Qt.AlignVCenter

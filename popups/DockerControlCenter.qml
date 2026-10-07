@@ -127,15 +127,6 @@ Item {
       Layout.preferredHeight: 36
       spacing: 8
 
-      Text {
-        Layout.alignment: Qt.AlignVCenter
-        text: ""
-        font.family: Theme.mono
-        font.pixelSize: Theme.iconLg
-        color: root.connected ? Theme.accent : Theme.ink3
-        Behavior on color { ColorAnimation { duration: Theme.durationFast } }
-      }
-
       Column {
         Layout.fillWidth: true
         Layout.alignment: Qt.AlignVCenter

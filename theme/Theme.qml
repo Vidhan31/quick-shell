@@ -102,6 +102,7 @@ Singleton {
   readonly property int iconLg: 18
   readonly property int iconXl: 22
   readonly property int iconDisplay: 28
+  readonly property int barIconSize: 20
 
   readonly property int durationFast: 90
   readonly property int durationNormal: 140

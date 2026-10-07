@@ -47,7 +47,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: root.iconGlyph
       font.family: root.monoFont
-      font.pixelSize: Theme.fontGlyphMd
+      font.pixelSize: 18
       color: root.iconColor
 
       Behavior on color {

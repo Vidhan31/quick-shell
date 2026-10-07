@@ -12,8 +12,8 @@ Item {
   property string tooltipSub: ""
   property string accessibleName: tooltip.length > 0 ? tooltip : "Toggle"
 
-  implicitWidth: 42
-  implicitHeight: 24
+  implicitWidth: 38
+  implicitHeight: 22
   opacity: root.enabledSwitch ? 1.0 : 0.35
   activeFocusOnTab: root.enabledSwitch
 
@@ -80,21 +80,26 @@ Item {
 
   Rectangle {
     anchors.fill: parent
-    radius: Theme.radiusSection
-    color: root.on ? root.onColor : Theme.switchOff
-    border.color: root.activeFocus ? Theme.focusRing : "transparent"
-    border.width: root.activeFocus ? Theme.focusRingWidth : 0
+    radius: height / 2
+    color: root.on ? root.onColor : (ma.containsMouse ? Theme.hoverFill : Theme.switchOff)
+    border.color: root.activeFocus ? Theme.focusRing : (root.on ? Qt.rgba(0, 0, 0, 0.15) : Theme.cardBorder)
+    border.width: root.activeFocus ? Theme.focusRingWidth : 1
     Behavior on color { ColorAnimation { duration: Theme.durationNormal } }
     Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
 
     Rectangle {
-      width: 20
-      height: 20
-      radius: Theme.radiusChip
-      y: 2
-      x: root.on ? parent.width - width - 2 : 2
-      color: Theme.ink1
+      id: knob
+      width: 16
+      height: 16
+      radius: width / 2
+      anchors.verticalCenter: parent.verticalCenter
+      x: root.on ? parent.width - width - 3 : 3
+      color: root.on ? "#ffffff" : Theme.ink2
+      scale: ma.pressed && root.enabledSwitch ? 0.92 : 1.0
+
       Behavior on x { NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.OutCubic } }
+      Behavior on color { ColorAnimation { duration: Theme.durationNormal } }
+      Behavior on scale { NumberAnimation { duration: Theme.durationFast } }
     }
   }
 

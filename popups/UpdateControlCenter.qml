@@ -94,14 +94,6 @@ Item {
           anchors.leftMargin: Theme.spaceLg
           anchors.rightMargin: Theme.spaceLg
           spacing: Theme.spaceMd
-          Text {
-            Layout.alignment: Qt.AlignVCenter
-            text: "󰚰"
-            font.family: Theme.mono
-            font.pixelSize: Theme.iconLg
-            color: root.hasUpdates ? (root.securityCount > 0 ? Theme.warn : Theme.accent) : Theme.ok
-            Behavior on color { ColorAnimation { duration: Theme.durationFast } }
-          }
 
           Column {
             Layout.fillWidth: true

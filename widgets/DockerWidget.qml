@@ -35,7 +35,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: ""
       font.family: Theme.mono
-      font.pixelSize: Theme.iconMd
+      font.pixelSize: 24
       color: root.iconColor
 
       Behavior on color { ColorAnimation { duration: Theme.durationFast } }

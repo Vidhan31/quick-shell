@@ -333,7 +333,7 @@ Item {
 
       PopupHeader {
         Layout.fillWidth: true
-        glyph: "󰦝"
+        glyph: "󱗼"
         glyphColor: root.connected ? root.t.accent : root.t.ink3
         title: "Tailscale"
         subtitle: {

@@ -41,7 +41,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: root.muted ? "󰝟" : root.glyph
       font.family: root.monoFont
-      font.pixelSize: Theme.iconMd
+      font.pixelSize: Theme.iconSm
       color: root.muted ? Theme.err : (root.volumePercent > 100 ? Theme.warn : Theme.ink1)
 
       Behavior on color { ColorAnimation { duration: Theme.durationFast } }
@@ -66,7 +66,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: "󰍭"
       font.family: root.monoFont
-      font.pixelSize: Theme.iconMd
+      font.pixelSize: Theme.iconSm
       color: Theme.err
     }
   }

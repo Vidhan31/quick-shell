@@ -47,13 +47,6 @@ Item {
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         spacing: 8
-        Text {
-          anchors.verticalCenter: parent.verticalCenter
-          text: "󰒃"
-          font.family: root.monoFont
-          font.pixelSize: Theme.iconLg
-          color: root.hasActive ? Theme.ok : Theme.ink2
-        }
 
         Text {
           anchors.verticalCenter: parent.verticalCenter

@@ -53,7 +53,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: root.iconGlyph
       font.family: root.monoFont
-      font.pixelSize: Theme.iconMd
+      font.pixelSize: Theme.fontGlyphMd
       color: root.statusColor
 
       Behavior on color {

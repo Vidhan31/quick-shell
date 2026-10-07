@@ -54,6 +54,11 @@ private slots:
                             qint64 totalToDownload, qint64 downloaded);
     void onDownloadEnd(const QDBusObjectPath &session, const QString &downloadId,
                        uint transferStatus, const QString &message);
+    void onDownloadMirrorFailure(const QDBusObjectPath &session, const QString &downloadId,
+                                 const QString &message, const QString &url, const QString &metadata);
+    void onRepoKeyImportRequest(const QDBusObjectPath &session, const QString &keyId,
+                                const QStringList &userIds, const QString &keyFingerprint,
+                                const QString &keyUrl, qint64 timestamp);
     void onTransactionBeforeBegin(const QDBusObjectPath &session, qulonglong total);
     void onTransactionTransactionStart(const QDBusObjectPath &session, qulonglong total);
     void onTransactionTransactionProgress(const QDBusObjectPath &session, qulonglong processed, qulonglong total);
@@ -75,6 +80,7 @@ private slots:
                                  uint scriptletType, qulonglong returnCode);
     void onTransactionScriptError(const QDBusObjectPath &session, const QString &nevra,
                                   uint scriptletType, qulonglong returnCode);
+    void onTransactionUnpackError(const QDBusObjectPath &session, const QString &nevra);
     void onTransactionAfterComplete(const QDBusObjectPath &session, bool success);
 
 private:

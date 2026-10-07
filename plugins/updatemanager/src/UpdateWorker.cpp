@@ -127,6 +127,16 @@ void UpdateWorker::connectTransactionSignals() {
         SLOT(onDownloadEnd(QDBusObjectPath,QString,uint,QString)));
 
     QDBusConnection::systemBus().connect(
+        QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.Base"),
+        QStringLiteral("download_mirror_failure"), this,
+        SLOT(onDownloadMirrorFailure(QDBusObjectPath,QString,QString,QString,QString)));
+
+    QDBusConnection::systemBus().connect(
+        QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.Base"),
+        QStringLiteral("repo_key_import_request"), this,
+        SLOT(onRepoKeyImportRequest(QDBusObjectPath,QString,QStringList,QString,QString,qint64)));
+
+    QDBusConnection::systemBus().connect(
         QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"),
         QStringLiteral("transaction_before_begin"), this,
         SLOT(onTransactionBeforeBegin(QDBusObjectPath,qulonglong)));
@@ -195,6 +205,11 @@ void UpdateWorker::connectTransactionSignals() {
         QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"),
         QStringLiteral("transaction_script_error"), this,
         SLOT(onTransactionScriptError(QDBusObjectPath,QString,uint,qulonglong)));
+
+    QDBusConnection::systemBus().connect(
+        QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"),
+        QStringLiteral("transaction_unpack_error"), this,
+        SLOT(onTransactionUnpackError(QDBusObjectPath,QString)));
 
     QDBusConnection::systemBus().connect(
         QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"),
@@ -225,6 +240,16 @@ void UpdateWorker::disconnectTransactionSignals() {
         SLOT(onDownloadEnd(QDBusObjectPath,QString,uint,QString)));
 
     QDBusConnection::systemBus().disconnect(
+        QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.Base"),
+        QStringLiteral("download_mirror_failure"), this,
+        SLOT(onDownloadMirrorFailure(QDBusObjectPath,QString,QString,QString,QString)));
+
+    QDBusConnection::systemBus().disconnect(
+        QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.Base"),
+        QStringLiteral("repo_key_import_request"), this,
+        SLOT(onRepoKeyImportRequest(QDBusObjectPath,QString,QStringList,QString,QString,qint64)));
+
+    QDBusConnection::systemBus().disconnect(
         QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"),
         QStringLiteral("transaction_before_begin"), this,
         SLOT(onTransactionBeforeBegin(QDBusObjectPath,qulonglong)));
@@ -293,6 +318,11 @@ void UpdateWorker::disconnectTransactionSignals() {
         QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"),
         QStringLiteral("transaction_script_error"), this,
         SLOT(onTransactionScriptError(QDBusObjectPath,QString,uint,qulonglong)));
+
+    QDBusConnection::systemBus().disconnect(
+        QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"),
+        QStringLiteral("transaction_unpack_error"), this,
+        SLOT(onTransactionUnpackError(QDBusObjectPath,QString)));
 
     QDBusConnection::systemBus().disconnect(
         QStringLiteral("org.rpm.dnf.v0"), m_sessionPath, QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"),
@@ -607,6 +637,23 @@ void UpdateWorker::checkForUpdates(bool refresh) {
             QDBusMessage statusReply = offIface.call(QStringLiteral("get_status"));
             if (statusReply.type() != QDBusMessage::ErrorMessage && !statusReply.arguments().isEmpty()) {
                 bool pending = statusReply.arguments().at(0).toBool();
+                if (!pending && statusReply.arguments().size() > 1) {
+                    const auto stateArg = statusReply.arguments().at(1);
+                    if (stateArg.canConvert<QDBusArgument>()) {
+                        QVariantMap stateMap;
+                        stateArg.value<QDBusArgument>() >> stateMap;
+                        QString st = stateMap.value(QStringLiteral("status")).toString();
+                        if (st == QLatin1String("download-complete") || st == QLatin1String("ready")) {
+                            pending = true;
+                        }
+                    } else if (stateArg.canConvert<QVariantMap>()) {
+                        QVariantMap stateMap = stateArg.toMap();
+                        QString st = stateMap.value(QStringLiteral("status")).toString();
+                        if (st == QLatin1String("download-complete") || st == QLatin1String("ready")) {
+                            pending = true;
+                        }
+                    }
+                }
                 emit offlineStagedReady(pending);
             }
         }
@@ -705,20 +752,6 @@ void UpdateWorker::stageOfflineUpgrade() {
         return;
     }
 
-    // Discard any previously staged offline data within the same session.
-    // This avoids the extra open/close round-trip that used to race with a
-    // cold-starting daemon right before staging.
-    {
-        QDBusInterface offIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
-                                QStringLiteral("org.rpm.dnf.v0.Offline"),
-                                QDBusConnection::systemBus());
-        offIface.setTimeout(120000);
-        if (offIface.isValid()) {
-            offIface.call(QStringLiteral("clean"));
-        }
-    }
-    emit offlineStagedReady(false);
-
     connectTransactionSignals();
 
     QDBusInterface rpmIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
@@ -734,12 +767,32 @@ void UpdateWorker::stageOfflineUpgrade() {
     emit progressStageUpdated(QStringLiteral("resolving"), QStringLiteral("Resolving"), QString(), 0, 0, 0.0);
     QVariantMap resOpts;
     resOpts[QStringLiteral("allow_erasing")] = false;
+    resOpts[QStringLiteral("interactive")] = false;
     QDBusMessage resReply = goalIface.call(QStringLiteral("resolve"), resOpts);
     if (resReply.type() == QDBusMessage::ErrorMessage) {
         QString errMsg = QStringLiteral("Resolution error: ") + resReply.errorMessage();
         closeSession();
         emit operationFinished(false, errMsg);
         return;
+    }
+    if (resReply.arguments().size() >= 2) {
+        uint resCode = resReply.arguments().at(1).toUInt();
+        if (resCode == 2) {
+            QDBusMessage probMsg = goalIface.call(QStringLiteral("get_transaction_problems_string"));
+            QString errMsg;
+            if (probMsg.type() != QDBusMessage::ErrorMessage && !probMsg.arguments().isEmpty()) {
+                QStringList problems = probMsg.arguments().at(0).toStringList();
+                if (!problems.isEmpty()) {
+                    errMsg = QStringLiteral("Dependency resolution failed:\n") + problems.join(QLatin1Char('\n'));
+                }
+            }
+            if (errMsg.isEmpty()) {
+                errMsg = QStringLiteral("Dependency resolution failed (broken dependencies or conflicts).");
+            }
+            closeSession();
+            emit operationFinished(false, errMsg);
+            return;
+        }
     }
 
     m_downloadedPerId.clear();
@@ -812,12 +865,32 @@ void UpdateWorker::startInPlaceUpgrade() {
     emit progressStageUpdated(QStringLiteral("resolving"), QStringLiteral("Resolving"), QString(), 0, 0, 0.0);
     QVariantMap resOpts;
     resOpts[QStringLiteral("allow_erasing")] = false;
+    resOpts[QStringLiteral("interactive")] = true;
     QDBusMessage resReply = goalIface.call(QStringLiteral("resolve"), resOpts);
     if (resReply.type() == QDBusMessage::ErrorMessage) {
         QString errMsg = QStringLiteral("Resolution error: ") + resReply.errorMessage();
         closeSession();
         emit operationFinished(false, errMsg);
         return;
+    }
+    if (resReply.arguments().size() >= 2) {
+        uint resCode = resReply.arguments().at(1).toUInt();
+        if (resCode == 2) {
+            QDBusMessage probMsg = goalIface.call(QStringLiteral("get_transaction_problems_string"));
+            QString errMsg;
+            if (probMsg.type() != QDBusMessage::ErrorMessage && !probMsg.arguments().isEmpty()) {
+                QStringList problems = probMsg.arguments().at(0).toStringList();
+                if (!problems.isEmpty()) {
+                    errMsg = QStringLiteral("Dependency resolution failed:\n") + problems.join(QLatin1Char('\n'));
+                }
+            }
+            if (errMsg.isEmpty()) {
+                errMsg = QStringLiteral("Dependency resolution failed (broken dependencies or conflicts).");
+            }
+            closeSession();
+            emit operationFinished(false, errMsg);
+            return;
+        }
     }
 
     m_downloadedPerId.clear();
@@ -892,13 +965,22 @@ void UpdateWorker::rebootAndApply() {
 
         QVariantMap schedOpts;
         schedOpts[QStringLiteral("interactive")] = true;
-        QDBusReply<bool> schedReply = offIface.call(QStringLiteral("schedule_for_next_boot"), schedOpts);
-        if (!schedReply.isValid() || !schedReply.value()) {
-            err = schedReply.isValid() ? QStringLiteral("Failed to schedule offline update.")
-                                       : schedReply.error().message();
-        } else {
-            offIface.call(QStringLiteral("set_finish_action"), QStringLiteral("reboot"));
-            schedOk = true;
+        QDBusMessage schedReply = offIface.call(QStringLiteral("schedule_for_next_boot"), schedOpts);
+        if (schedReply.type() == QDBusMessage::ErrorMessage) {
+            err = schedReply.errorMessage();
+        } else if (!schedReply.arguments().isEmpty()) {
+            bool success = schedReply.arguments().at(0).toBool();
+            if (!success) {
+                if (schedReply.arguments().size() > 1) {
+                    err = schedReply.arguments().at(1).toString();
+                }
+                if (err.isEmpty()) {
+                    err = QStringLiteral("Failed to schedule offline update.");
+                }
+            } else {
+                offIface.call(QStringLiteral("set_finish_action"), QStringLiteral("reboot"));
+                schedOk = true;
+            }
         }
     }
     closeSession();
@@ -923,7 +1005,13 @@ void UpdateWorker::cancelOperation() {
         QDBusInterface goalIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
                                  QStringLiteral("org.rpm.dnf.v0.Goal"), QDBusConnection::systemBus());
         if (goalIface.isValid()) {
-            goalIface.call(QStringLiteral("cancel"));
+            QDBusMessage rep = goalIface.call(QStringLiteral("cancel"));
+            if (rep.type() == QDBusMessage::ReplyMessage && !rep.arguments().isEmpty()) {
+                bool ok = rep.arguments().at(0).toBool();
+                if (!ok && rep.arguments().size() > 1) {
+                    qWarning() << "UpdateWorker: Cancel rejected:" << rep.arguments().at(1).toString();
+                }
+            }
         }
     }
 }
@@ -936,7 +1024,9 @@ void UpdateWorker::cleanOffline() {
         QDBusInterface offIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
                                 QStringLiteral("org.rpm.dnf.v0.Offline"), QDBusConnection::systemBus());
         if (offIface.isValid()) {
-            offIface.call(QStringLiteral("clean"));
+            QVariantMap cleanOpts;
+            cleanOpts[QStringLiteral("interactive")] = true;
+            offIface.call(QStringLiteral("clean_with_options"), cleanOpts);
         }
     }
     closeSession();
@@ -1072,10 +1162,46 @@ void UpdateWorker::onDownloadProgress(const QDBusObjectPath &session, const QStr
 void UpdateWorker::onDownloadEnd(const QDBusObjectPath &session, const QString &downloadId,
                                  uint transferStatus, const QString &message) {
     Q_UNUSED(session);
-    Q_UNUSED(transferStatus);
-    Q_UNUSED(message);
+    if (transferStatus == 2) { // 2 = ERROR
+        qWarning() << "UpdateWorker: Download error for" << downloadId << ":" << message;
+        if (!message.isEmpty()) {
+            emit statusMessageChanged(QStringLiteral("Download failed for %1: %2").arg(downloadId, message));
+        }
+        return;
+    }
     if (m_totalPerId.contains(downloadId)) {
         m_downloadedPerId[downloadId] = m_totalPerId[downloadId];
+    }
+}
+
+void UpdateWorker::onDownloadMirrorFailure(const QDBusObjectPath &session, const QString &downloadId,
+                                           const QString &message, const QString &url, const QString &metadata) {
+    Q_UNUSED(session);
+    Q_UNUSED(downloadId);
+    Q_UNUSED(url);
+    Q_UNUSED(metadata);
+    if (!message.isEmpty()) {
+        emit statusMessageChanged(QStringLiteral("Mirror failover: %1").arg(message));
+    }
+}
+
+void UpdateWorker::onRepoKeyImportRequest(const QDBusObjectPath &session, const QString &keyId,
+                                          const QStringList &userIds, const QString &keyFingerprint,
+                                          const QString &keyUrl, qint64 timestamp) {
+    Q_UNUSED(session);
+    Q_UNUSED(userIds);
+    Q_UNUSED(keyFingerprint);
+    Q_UNUSED(keyUrl);
+    Q_UNUSED(timestamp);
+    emit statusMessageChanged(QStringLiteral("Confirming repository GPG key: %1...").arg(keyId));
+    if (!m_sessionPath.isEmpty()) {
+        QDBusInterface repoIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
+                                 QStringLiteral("org.rpm.dnf.v0.rpm.Repo"), QDBusConnection::systemBus());
+        if (repoIface.isValid()) {
+            QVariantMap opts;
+            opts[QStringLiteral("interactive")] = true;
+            repoIface.call(QStringLiteral("confirm_key_with_options"), keyId, true, opts);
+        }
     }
 }
 
@@ -1292,6 +1418,13 @@ void UpdateWorker::onTransactionScriptError(const QDBusObjectPath &session, cons
     Q_UNUSED(scriptletType);
     if (!nevra.isEmpty()) {
         emit statusMessageChanged(QStringLiteral("Scriptlet error in %1 (code %2)").arg(nevra).arg(returnCode));
+    }
+}
+
+void UpdateWorker::onTransactionUnpackError(const QDBusObjectPath &session, const QString &nevra) {
+    Q_UNUSED(session);
+    if (!nevra.isEmpty()) {
+        emit statusMessageChanged(QStringLiteral("Unpack error in %1").arg(nevra));
     }
 }
 
