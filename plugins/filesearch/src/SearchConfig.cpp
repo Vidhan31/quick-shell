@@ -134,89 +134,6 @@ QStringList parseSearchRoots(const QString &input) {
     return parseSearchRoots(QStringList{input});
 }
 
-QString SearchConfig::defaultUserConfigPath() {
-    QString configDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-    if (configDir.isEmpty()) {
-        configDir = QDir::homePath() + QStringLiteral("/.config");
-    }
-    return configDir + QStringLiteral("/kseek/kseek.conf");
-}
-
-bool SearchConfig::loadFromFile(const QString &filePath) {
-    const QString targetPath = filePath.trimmed().isEmpty()
-        ? defaultUserConfigPath()
-        : filePath.trimmed();
-
-    QFile file(targetPath);
-    if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return false;
-    }
-
-    const QString home = QDir::homePath();
-    QTextStream in(&file);
-    while (!in.atEnd()) {
-        const QString line = in.readLine().trimmed();
-        if (line.isEmpty() || line.startsWith(u'#') || line.startsWith(u';')) {
-            continue;
-        }
-        if (line.startsWith(u'[') && line.endsWith(u']')) {
-            continue;
-        }
-
-        qsizetype sepIdx = line.indexOf(u'=');
-        if (sepIdx == -1) {
-            sepIdx = line.indexOf(u':');
-        }
-        if (sepIdx == -1) {
-            continue;
-        }
-
-        const QString key = line.left(sepIdx).trimmed().toLower();
-        QString val = line.mid(sepIdx + 1).trimmed();
-
-        if ((val.startsWith(u'"') && val.endsWith(u'"') && val.size() >= 2) ||
-            (val.startsWith(u'\'') && val.endsWith(u'\'') && val.size() >= 2)) {
-            val = val.mid(1, val.size() - 2);
-        }
-
-        if (val.contains(QLatin1StringView("$HOME"))) {
-            val.replace(QStringLiteral("$HOME"), home);
-        }
-
-        bool ok = false;
-        if (key == u"prefix" || key == u"trigger" || key == u"kseek_prefix" || key == u"kseek_trigger") {
-            prefix = val;
-        } else if (key == u"root" || key == u"roots" || key == u"kseek_root") {
-            searchRoots = parseSearchRoots(val);
-        } else if (key == u"max_results" || key == u"max-results" || key == u"maxresults" || key == u"kseek_max_results") {
-            const int maxR = val.toInt(&ok);
-            if (ok && maxR > 0) {
-                maxResults = maxR;
-            }
-        } else if (key == u"timeout" || key == u"kseek_timeout") {
-            const double timeoutSec = val.toDouble(&ok);
-            if (ok && timeoutSec > 0.0) {
-                timeoutMs = static_cast<int>(timeoutSec * 1000.0);
-            }
-        } else if (key == u"debounce" || key == u"kseek_debounce") {
-            const int deb = val.toInt(&ok);
-            if (ok && deb >= 0) {
-                debounceMs = deb;
-            }
-        } else if (key == u"fd_args" || key == u"fd-args" || key == u"fdargs" || key == u"kseek_fd_args") {
-            extraFdArgs = splitArgs(val);
-        } else if (key == u"fzf_args" || key == u"fzf-args" || key == u"fzfargs" || key == u"kseek_fzf_args") {
-            extraFzfArgs = splitArgs(val);
-        } else if (key == u"fd_bin" || key == u"fd-bin" || key == u"fdbin" || key == u"kseek_fd_bin") {
-            fdBin = val;
-        } else if (key == u"fzf_bin" || key == u"fzf-bin" || key == u"fzfbin" || key == u"kseek_fzf_bin") {
-            fzfBin = val;
-        }
-    }
-
-    return true;
-}
-
 void SearchConfig::loadEnvironment() {
     const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
 
@@ -291,9 +208,8 @@ void SearchConfig::loadEnvironment() {
     }
 }
 
-SearchConfig SearchConfig::load(const QString &configFilePath) {
+SearchConfig SearchConfig::load() {
     SearchConfig cfg;
-    cfg.loadFromFile(configFilePath);
     cfg.loadEnvironment();
     if (cfg.searchRoots.isEmpty()) {
         cfg.searchRoots = parseSearchRoots(QStringList{});

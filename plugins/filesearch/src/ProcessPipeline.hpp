@@ -38,8 +38,8 @@ public:
                      const QString &query,
                      const QStringList &extraFdArgs = {},
                      const QStringList &extraFzfArgs = {},
-                     int maxResults = 20,
-                     int timeoutMs = 2500);
+                     int maxResults = 10,
+                     int timeoutMs = 5000);
 
     void cancel();
 
@@ -48,6 +48,7 @@ signals:
     void searchError(quint64 requestId, const QString &errorMessage);
 
 private slots:
+    void onFzfReadyRead();
     void onFzfFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void onTimeout();
 
@@ -63,8 +64,11 @@ private:
     FzfFeatures m_features;
 
     quint64 m_activeRequestId = 0;
-    int m_maxResults = 20;
+    int m_maxResults = 10;
     bool m_useNullIo = false;
+
+    QByteArray m_outputBuffer;
+    QStringList m_accumulatedPaths;
 
     std::unique_ptr<QProcess> m_fdProc;
     std::unique_ptr<QProcess> m_fzfProc;

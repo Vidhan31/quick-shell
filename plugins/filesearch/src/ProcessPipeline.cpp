@@ -141,6 +141,8 @@ void ProcessPipeline::startSearch(quint64 requestId,
     m_activeRequestId = requestId;
     m_maxResults = maxResults;
     m_useNullIo = m_features.read0 && m_features.print0;
+    m_outputBuffer.clear();
+    m_accumulatedPaths.clear();
 
     const QStringList validRoots = searchRoots.isEmpty() ? QStringList{QDir::homePath()} : searchRoots;
 
@@ -194,17 +196,20 @@ void ProcessPipeline::startSearch(quint64 requestId,
 
     m_fdProc->setStandardOutputProcess(m_fzfProc.get());
 
+    connect(m_fzfProc.get(), &QProcess::readyReadStandardOutput, this, &ProcessPipeline::onFzfReadyRead);
     connect(m_fzfProc.get(), &QProcess::finished, this, &ProcessPipeline::onFzfFinished);
 
     auto errorHandler = [this, requestId](QProcess::ProcessError error) {
         qCWarning(lcPipeline) << "Subprocess error occurred for requestId:" << requestId << "error:" << error;
+        m_accumulatedPaths.clear();
+        m_outputBuffer.clear();
         killProcesses();
         emit searchError(requestId, QStringLiteral("Process execution failed"));
     };
     connect(m_fdProc.get(), &QProcess::errorOccurred, this, errorHandler);
     connect(m_fzfProc.get(), &QProcess::errorOccurred, this, errorHandler);
 
-    m_timer->start(timeoutMs > 0 ? timeoutMs : 2500);
+    m_timer->start(timeoutMs > 0 ? timeoutMs : 5000);
 
     qCInfo(lcPipeline) << "Running:" << m_fdBin << fdArgs.join(u' ') << "|" << m_fzfBin << fzfArgs.join(u' ');
     m_fdProc->start(m_fdBin, fdArgs, QIODevice::ReadOnly);
@@ -212,6 +217,8 @@ void ProcessPipeline::startSearch(quint64 requestId,
 }
 
 void ProcessPipeline::cancel() {
+    m_accumulatedPaths.clear();
+    m_outputBuffer.clear();
     killProcesses();
 }
 
@@ -220,30 +227,61 @@ void ProcessPipeline::killProcesses() {
         m_timer->stop();
     }
 
-    if (m_fdProc) {
-        m_fdProc->disconnect(this);
-        if (m_fdProc->state() != QProcess::NotRunning) {
-            qint64 pid = m_fdProc->processId();
+    auto reap = [this](std::unique_ptr<QProcess> &proc) {
+        if (!proc) return;
+        proc->disconnect(this);
+        if (proc->state() != QProcess::NotRunning) {
+            const qint64 pid = proc->processId();
             if (pid > 0) {
                 ::kill(-static_cast<pid_t>(pid), SIGKILL);
             }
-            m_fdProc->kill();
-            m_fdProc->waitForFinished(50);
+            auto *raw = proc.release();
+            connect(raw, &QProcess::finished, raw, &QObject::deleteLater);
+            return;
         }
-        m_fdProc.reset();
+        proc.reset();
+    };
+
+    reap(m_fdProc);
+    reap(m_fzfProc);
+}
+
+void ProcessPipeline::onFzfReadyRead() {
+    if (!m_fzfProc) {
+        return;
     }
 
-    if (m_fzfProc) {
-        m_fzfProc->disconnect(this);
-        if (m_fzfProc->state() != QProcess::NotRunning) {
-            qint64 pid = m_fzfProc->processId();
-            if (pid > 0) {
-                ::kill(-static_cast<pid_t>(pid), SIGKILL);
-            }
-            m_fzfProc->kill();
-            m_fzfProc->waitForFinished(50);
+    m_outputBuffer.append(m_fzfProc->readAllStandardOutput());
+    const char delimiter = m_useNullIo ? '\0' : '\n';
+
+    int start = 0;
+    while (true) {
+        int idx = m_outputBuffer.indexOf(delimiter, start);
+        if (idx == -1) {
+            break;
         }
-        m_fzfProc.reset();
+
+        QByteArray token = m_outputBuffer.mid(start, idx - start);
+        if (!m_useNullIo && token.endsWith('\r')) {
+            token.chop(1);
+        }
+        if (!token.isEmpty()) {
+            m_accumulatedPaths.append(QString::fromUtf8(token));
+            if (m_accumulatedPaths.size() >= m_maxResults) {
+                const quint64 reqId = m_activeRequestId;
+                const QStringList results = m_accumulatedPaths;
+                m_accumulatedPaths.clear();
+                m_outputBuffer.clear();
+                killProcesses();
+                emit searchFinished(reqId, results);
+                return;
+            }
+        }
+        start = idx + 1;
+    }
+
+    if (start > 0) {
+        m_outputBuffer.remove(0, start);
     }
 }
 
@@ -258,47 +296,60 @@ void ProcessPipeline::onFzfFinished(int exitCode, QProcess::ExitStatus /*exitSta
         return;
     }
 
-    const QByteArray rawOutput = m_fzfProc->readAllStandardOutput();
+    m_outputBuffer.append(m_fzfProc->readAllStandardOutput());
     const QByteArray rawStderr = m_fzfProc->readAllStandardError();
-
-    qCInfo(lcPipeline) << "fzf finished exitCode:" << exitCode << "output bytes:" << rawOutput.size();
 
     if (exitCode != 0 && exitCode != 1) {
         const QString err = QString::fromUtf8(rawStderr).trimmed();
         qCWarning(lcPipeline) << "fzf exited with code" << exitCode << ":" << err;
+        m_accumulatedPaths.clear();
+        m_outputBuffer.clear();
         killProcesses();
         emit searchError(reqId, QStringLiteral("fzf error: ") + err.left(120));
         return;
     }
 
-    QStringList paths;
-    if (!rawOutput.isEmpty()) {
-        paths.reserve(std::min(m_maxResults, 128));
-        const char delimiter = m_useNullIo ? '\0' : '\n';
-        const std::string_view rawView(rawOutput.constData(), static_cast<size_t>(rawOutput.size()));
-
-        for (auto chunk : rawView | std::views::split(delimiter)) {
-            if (paths.size() >= m_maxResults) {
-                break;
+    const char delimiter = m_useNullIo ? '\0' : '\n';
+    int start = 0;
+    while (m_accumulatedPaths.size() < m_maxResults) {
+        int idx = m_outputBuffer.indexOf(delimiter, start);
+        if (idx == -1) {
+            if (start < m_outputBuffer.size()) {
+                QByteArray token = m_outputBuffer.mid(start);
+                if (!m_useNullIo && token.endsWith('\r')) {
+                    token.chop(1);
+                }
+                if (!token.isEmpty()) {
+                    m_accumulatedPaths.append(QString::fromUtf8(token));
+                }
             }
-            std::string_view token(chunk.begin(), chunk.end());
-            if (!m_useNullIo && !token.empty() && token.back() == '\r') {
-                token.remove_suffix(1);
-            }
-            if (!token.empty()) {
-                paths.append(QString::fromUtf8(token.data(), static_cast<qsizetype>(token.size())));
-            }
+            break;
         }
+
+        QByteArray token = m_outputBuffer.mid(start, idx - start);
+        if (!m_useNullIo && token.endsWith('\r')) {
+            token.chop(1);
+        }
+        if (!token.isEmpty()) {
+            m_accumulatedPaths.append(QString::fromUtf8(token));
+        }
+        start = idx + 1;
     }
 
-    qCInfo(lcPipeline) << "Parsed" << paths.size() << "paths from fzf output";
+    const QStringList results = m_accumulatedPaths;
+    m_accumulatedPaths.clear();
+    m_outputBuffer.clear();
+
+    qCInfo(lcPipeline) << "Parsed" << results.size() << "paths from fzf output";
     killProcesses();
-    emit searchFinished(reqId, paths);
+    emit searchFinished(reqId, results);
 }
 
 void ProcessPipeline::onTimeout() {
     qCWarning(lcPipeline) << "Search request" << m_activeRequestId << "timed out";
     const quint64 reqId = m_activeRequestId;
+    m_accumulatedPaths.clear();
+    m_outputBuffer.clear();
     killProcesses();
     emit searchFinished(reqId, QStringList());
 }

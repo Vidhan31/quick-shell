@@ -33,8 +33,8 @@ PopupWindow {
   grabFocus: true
   color: "transparent"
 
-  implicitWidth: viewLoader.item ? viewLoader.item.implicitWidth : 440
-  implicitHeight: viewLoader.item ? viewLoader.item.implicitHeight : 320
+  implicitWidth: (viewLoader.item && viewLoader.item.implicitWidth > 0) ? viewLoader.item.implicitWidth : 440
+  implicitHeight: (viewLoader.item && viewLoader.item.implicitHeight > 0) ? viewLoader.item.implicitHeight : 320
 
   signal popupOpened()
   signal popupClosed()
@@ -180,6 +180,7 @@ PopupWindow {
       case "update": return updateComp;
       case "docker": return dockerComp;
       case "cal": return calComp;
+      case "power": return powerComp;
       default: return null;
     }
   }
@@ -343,6 +344,15 @@ PopupWindow {
       anchors.fill: parent
       today: new Date()
       holidayProvider: host.services ? host.services.holidayProvider : null
+    }
+  }
+
+  Component {
+    id: powerComp
+    PowerControlCenter {
+      anchors.fill: parent
+      power: host.services ? host.services.power : null
+      onCloseRequested: host.close()
     }
   }
 }

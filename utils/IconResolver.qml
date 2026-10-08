@@ -18,6 +18,7 @@ QtObject {
 
   property var _iconCache: ({})
   property var _namedCache: ({})
+  property var _stockCache: ({})
 
   function resolveIcon(appId: string, title: string): string {
     const key = (appId || "") + "::" + (title || "");
@@ -110,8 +111,12 @@ QtObject {
 
   function resolveStockIcon(iconName: string): string {
     if (!iconName) return "";
+    const cached = resolver._stockCache[iconName];
+    if (cached !== undefined) return cached;
     // check=true returns empty string if the icon does not exist in the theme
-    return Quickshell.iconPath(iconName, true) || "";
+    const resolved = Quickshell.iconPath(iconName, true) || "";
+    resolver._stockCache[iconName] = resolved;
+    return resolved;
   }
 
   function resolveNamedOrPath(iconNameOrPath: string): string {

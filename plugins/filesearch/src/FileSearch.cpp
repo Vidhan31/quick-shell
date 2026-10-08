@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QStringView>
+#include <QThreadPool>
 
 namespace qs::plugins {
 
@@ -78,6 +79,92 @@ QString FileSearch::searchTerm(const QString &raw) const {
     return rem.toString().trimmed();
 }
 
+void FileSearch::setPrefix(const QString &p) {
+    if (m_config.prefix != p) {
+        m_config.prefix = p;
+        emit prefixChanged();
+    }
+}
+
+void FileSearch::setSearchRoots(const QStringList &r) {
+    if (m_config.searchRoots != r) {
+        m_config.searchRoots = parseSearchRoots(r);
+        emit searchRootsChanged();
+    }
+}
+
+void FileSearch::setMaxResults(int m) {
+    if (m_config.maxResults != m && m > 0) {
+        m_config.maxResults = m;
+        emit maxResultsChanged();
+    }
+}
+
+void FileSearch::setTimeoutMs(int t) {
+    if (m_config.timeoutMs != t && t > 0) {
+        m_config.timeoutMs = t;
+        emit timeoutMsChanged();
+    }
+}
+
+void FileSearch::setDebounceMs(int d) {
+    if (m_config.debounceMs != d && d >= 0) {
+        m_config.debounceMs = d;
+        emit debounceMsChanged();
+    }
+}
+
+void FileSearch::setExtraFdArgs(const QStringList &a) {
+    if (m_config.extraFdArgs != a) {
+        m_config.extraFdArgs = a;
+        emit extraFdArgsChanged();
+    }
+}
+
+void FileSearch::setExtraFzfArgs(const QStringList &a) {
+    if (m_config.extraFzfArgs != a) {
+        m_config.extraFzfArgs = a;
+        emit extraFzfArgsChanged();
+    }
+}
+
+int FileSearch::computeDebounceMs(const QString &term, const QString &prevTerm) const {
+    const qsizetype len = term.size();
+    if (len >= 3 && (len - prevTerm.size() >= 3)) {
+        return 0;
+    }
+    if (len <= 1) {
+        return 250;
+    }
+    if (len == 2) {
+        return 120;
+    }
+    if (len == 3) {
+        return m_config.debounceMs;
+    }
+    return std::max(25, m_config.debounceMs / 2);
+}
+
+bool FileSearch::tryInMemoryNarrowing(const QString &term) {
+    QVariantList filtered;
+    filtered.reserve(m_results.size());
+    for (const QVariant &itemVar : m_results) {
+        const QVariantMap item = itemVar.toMap();
+        const QString name = item.value(QStringLiteral("name")).toString();
+        const QString generic = item.value(QStringLiteral("generic")).toString();
+        if (name.contains(term, Qt::CaseInsensitive) || generic.contains(term, Qt::CaseInsensitive)) {
+            filtered.append(itemVar);
+        }
+    }
+    m_results = filtered;
+    m_lastCompletedTerm = term;
+    m_lastCompletedCount = filtered.size();
+    m_searching = false;
+    emit searchingChanged();
+    emit resultsChanged();
+    return true;
+}
+
 void FileSearch::setQuery(const QString &query) {
     if (m_query == query) {
         return;
@@ -85,11 +172,11 @@ void FileSearch::setQuery(const QString &query) {
     m_query = query;
     emit queryChanged();
 
-    m_debounceTimer.stop();
-    m_pipeline.cancel();
-
     const QString term = m_query.trimmed();
     if (term.isEmpty()) {
+        m_debounceTimer.stop();
+        m_pipeline.cancel();
+        m_pendingTerm.clear();
         m_searching = false;
         emit searchingChanged();
         if (!m_results.isEmpty()) {
@@ -99,16 +186,36 @@ void FileSearch::setQuery(const QString &query) {
         return;
     }
 
+    if (term == m_pendingTerm && m_searching) {
+        return;
+    }
+
+    if (m_lastCompletedCount > 0 && m_lastCompletedCount < m_config.maxResults &&
+        !m_lastCompletedTerm.isEmpty() && term.startsWith(m_lastCompletedTerm, Qt::CaseInsensitive))
+    {
+        m_debounceTimer.stop();
+        m_pipeline.cancel();
+        m_pendingTerm = term;
+        if (tryInMemoryNarrowing(term)) {
+            return;
+        }
+    }
+
+    m_debounceTimer.stop();
+    m_pipeline.cancel();
+
     const quint64 reqId = ++m_currentRequestId;
     m_pendingRequestId = reqId;
+    const QString prevTerm = m_pendingTerm;
     m_pendingTerm = term;
 
-    if (m_config.debounceMs <= 0) {
+    const int delay = computeDebounceMs(term, prevTerm);
+    if (delay <= 0) {
         m_searching = true;
         emit searchingChanged();
         m_pipeline.startSearch(reqId, m_config.searchRoots, term, m_config.extraFdArgs, m_config.extraFzfArgs, m_config.maxResults, m_config.timeoutMs);
     } else {
-        m_debounceTimer.start(m_config.debounceMs);
+        m_debounceTimer.start(delay);
     }
 }
 
@@ -134,21 +241,31 @@ void FileSearch::onPipelineFinished(quint64 requestId, const QStringList &paths)
     if (requestId != m_currentRequestId) {
         return;
     }
-    m_searching = false;
-    emit searchingChanged();
 
-    QVariantList list;
-    list.reserve(paths.size());
+    const QString term = m_pendingTerm;
+    QThreadPool::globalInstance()->start([this, requestId, paths, term]() {
+        QVariantList list;
+        list.reserve(paths.size());
 
-    for (const QString &p : paths) {
-        QVariantMap item = buildResult(p);
-        if (!item.isEmpty()) {
-            list.append(item);
+        for (const QString &p : paths) {
+            QVariantMap item = buildResult(p);
+            if (!item.isEmpty()) {
+                list.append(item);
+            }
         }
-    }
 
-    m_results = list;
-    emit resultsChanged();
+        QMetaObject::invokeMethod(this, [this, requestId, term, list = std::move(list)]() mutable {
+            if (requestId != m_currentRequestId) {
+                return;
+            }
+            m_searching = false;
+            emit searchingChanged();
+            m_results = list;
+            m_lastCompletedTerm = term;
+            m_lastCompletedCount = list.size();
+            emit resultsChanged();
+        });
+    });
 }
 
 void FileSearch::onPipelineError(quint64 requestId, const QString &/*errorMessage*/) {
@@ -214,7 +331,8 @@ QVariantMap FileSearch::buildResult(const QString &relPath) {
         name = toDisplayPath(fullPath);
     }
 
-    const QString parent = fi.absolutePath();
+    const qsizetype fullLastSlash = fullPath.lastIndexOf(u'/');
+    const QString parent = (fullLastSlash > 0) ? fullPath.left(fullLastSlash) : QStringLiteral("/");
     const QString displayPath = toDisplayPath(fullPath);
     const QString iconName = m_iconResolver.resolve(fullPath, isDir);
 

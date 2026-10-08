@@ -12,18 +12,23 @@ QStringList parseSearchRoots(const QString &input);
 struct SearchConfig {
     QString prefix = QStringLiteral("f");
     QStringList searchRoots;
-    int maxResults = 20;
-    int timeoutMs = 2500;
+    int maxResults = 10;
+    int timeoutMs = 5000;
     int debounceMs = 75;
-    QStringList extraFdArgs;
-    QStringList extraFzfArgs;
+    QStringList extraFdArgs = {
+        QStringLiteral("--hidden"),
+        QStringLiteral("--no-ignore-vcs"),
+        QStringLiteral("--one-file-system"),
+        QStringLiteral("--strip-cwd-prefix=always")
+    };
+    QStringList extraFzfArgs = {
+        QStringLiteral("--scheme=path")
+    };
     QString fdBin;
     QString fzfBin;
 
-    static QString defaultUserConfigPath();
-    bool loadFromFile(const QString &filePath = QString());
     void loadEnvironment();
-    static SearchConfig load(const QString &configFilePath = QString());
+    static SearchConfig load();
 };
 
 } // namespace qs::plugins

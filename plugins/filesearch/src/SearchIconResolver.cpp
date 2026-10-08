@@ -6,6 +6,52 @@ namespace qs::plugins {
 
 SearchIconResolver::SearchIconResolver() {
     m_cache.reserve(512);
+
+    static const struct { const char *ext; const char *icon; } s_commonIcons[] = {
+        {".pdf", "application-pdf"},
+        {".png", "image-png"},
+        {".jpg", "image-jpeg"},
+        {".jpeg", "image-jpeg"},
+        {".svg", "image-svg+xml"},
+        {".webp", "image-webp"},
+        {".gif", "image-gif"},
+        {".mp4", "video-mp4"},
+        {".mkv", "video-x-matroska"},
+        {".webm", "video-webm"},
+        {".mp3", "audio-mpeg"},
+        {".flac", "audio-flac"},
+        {".wav", "audio-wav"},
+        {".zip", "application-zip"},
+        {".tar", "application-x-tar"},
+        {".gz", "application-gzip"},
+        {".xz", "application-x-xz"},
+        {".7z", "application-x-7z-compressed"},
+        {".txt", "text-plain"},
+        {".md", "text-markdown"},
+        {".json", "application-json"},
+        {".yaml", "application-yaml"},
+        {".yml", "application-yaml"},
+        {".xml", "application-xml"},
+        {".html", "text-html"},
+        {".css", "text-css"},
+        {".js", "text-javascript"},
+        {".ts", "application-typescript"},
+        {".rs", "text-rust"},
+        {".py", "text-x-python"},
+        {".cpp", "text-x-c++src"},
+        {".c", "text-x-csrc"},
+        {".h", "text-x-chdr"},
+        {".hpp", "text-x-c++hdr"},
+        {".qml", "text-x-qml"},
+        {".sh", "text-x-script"},
+        {".zsh", "text-x-script"},
+        {".bash", "text-x-script"},
+        {".desktop", "application-x-desktop"}
+    };
+
+    for (const auto &item : s_commonIcons) {
+        m_cache.insert(QString::fromUtf8(item.ext), QString::fromUtf8(item.icon));
+    }
 }
 
 QString SearchIconResolver::resolve(const QString &filePath, bool isDir) {

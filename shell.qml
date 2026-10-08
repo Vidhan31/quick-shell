@@ -82,6 +82,10 @@ ShellRoot {
     enabledService: false
   }
 
+  PowerService {
+    id: powerService
+  }
+
   ProcessMonitor {
     id: processMonitor
     running: root.anyProcPopupVisible
@@ -99,6 +103,7 @@ ShellRoot {
     holidayProvider: holidayProvider,
     media: mediaService,
     notification: notifService,
+    power: powerService,
     privacy: privacyService,
     processMonitor: processMonitor,
     tailscale: tailscaleService,
@@ -154,6 +159,7 @@ ShellRoot {
         else if (name === "bluetooth") item = bluetoothHit;
         else if (name === "vol") item = volHit;
         else if (name === "notif") item = notifSeg;
+        else if (name === "power") item = powerHit;
         if (item) popupHost.open(item, name);
       }
 
@@ -427,6 +433,21 @@ ShellRoot {
           NotificationWidget {
             id: notifBarWidget
             service: notifService
+          }
+        }
+
+        BarItem {
+          id: powerHit
+          flat: true
+          active: popupHost.isOpen(powerHit, "power")
+          Accessible.name: "Power & session"
+          tooltip: "Session & Power"
+          tooltipSub: "Click for power actions"
+          onClicked: popupHost.toggle(powerHit, "power")
+
+          PowerWidget {
+            id: powerBarWidget
+            power: powerService
           }
         }
       }
