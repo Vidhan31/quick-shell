@@ -55,6 +55,7 @@ Item {
   }
 
   readonly property var dockItems: {
+    const _wins = root.openWindows;
     const raw = kwinManager.mergeDockItems(root.pinnedApps, iconResolver.appAliases);
     for (let i = 0; i < raw.length; i++) {
       const it = raw[i];

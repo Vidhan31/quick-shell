@@ -43,17 +43,20 @@ function sendWindows() {
     callDBus(service, path, iface, "updateWindowsPacked", out);
 }
 
-for (var i = 0; i < workspace.windowList().length; i++) {
-    var win = workspace.windowList()[i];
-    if (win.captionChanged) win.captionChanged.connect(sendWindows);
-    if (win.minimizedChanged) win.minimizedChanged.connect(sendWindows);
-    if (win.activeChanged) win.activeChanged.connect(sendWindows);
-}
-
-workspace.windowAdded.connect(function(w) {
+function hookWindow(w) {
     if (w.captionChanged) w.captionChanged.connect(sendWindows);
     if (w.minimizedChanged) w.minimizedChanged.connect(sendWindows);
     if (w.activeChanged) w.activeChanged.connect(sendWindows);
+    if (w.desktopFileNameChanged) w.desktopFileNameChanged.connect(sendWindows);
+    if (w.windowClassChanged) w.windowClassChanged.connect(sendWindows);
+}
+
+for (var i = 0; i < workspace.windowList().length; i++) {
+    hookWindow(workspace.windowList()[i]);
+}
+
+workspace.windowAdded.connect(function(w) {
+    hookWindow(w);
     sendWindows();
 });
 workspace.windowRemoved.connect(sendWindows);
@@ -373,8 +376,10 @@ QVariantList KWinManager::mergeDockItems(const QVariantList &pinnedApps, const Q
     }
 
     const QList<WindowRecord> &wins = s_sharedModel->windows();
-    QVariantList items;
-    items.reserve(pinnedApps.size() + wins.size());
+    QVariantList closedPins;
+    QVariantList openedPins;
+    closedPins.reserve(pinnedApps.size());
+    openedPins.reserve(pinnedApps.size());
     QSet<QString> claimedWinIds;
 
     for (const QVariant &pinVar : pinnedApps) {
@@ -385,10 +390,16 @@ QVariantList KWinManager::mergeDockItems(const QVariantList &pinnedApps, const Q
         const WindowRecord *matchedWin = nullptr;
         for (const WindowRecord &w : wins) {
             if (!claimedWinIds.contains(w.id) && matchesApp(w.appId, pId, pName, appAliases)) {
-                matchedWin = &w;
-                claimedWinIds.insert(w.id);
-                break;
+                if (w.active) {
+                    matchedWin = &w;
+                    break;
+                } else if (!matchedWin) {
+                    matchedWin = &w;
+                }
             }
+        }
+        if (matchedWin) {
+            claimedWinIds.insert(matchedWin->id);
         }
 
         QVariantMap item;
@@ -402,8 +413,18 @@ QVariantList KWinManager::mergeDockItems(const QVariantList &pinnedApps, const Q
         item.insert(QStringLiteral("windowId"), matchedWin ? matchedWin->id : QString());
         item.insert(QStringLiteral("windowTitle"), matchedWin ? (matchedWin->title.isEmpty() ? pName : matchedWin->title) : pName);
         item.insert(QStringLiteral("entry"), p.value(QStringLiteral("entry")));
-        items.append(item);
+
+        if (matchedWin) {
+            openedPins.append(item);
+        } else {
+            closedPins.append(item);
+        }
     }
+
+    QVariantList items;
+    items.reserve(pinnedApps.size() + wins.size());
+    items.append(closedPins);
+    items.append(openedPins);
 
     for (const WindowRecord &w : wins) {
         if (claimedWinIds.contains(w.id)) {

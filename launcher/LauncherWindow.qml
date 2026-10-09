@@ -408,7 +408,7 @@ PanelWindow {
         anchors.right: parent.right
         anchors.leftMargin: Theme.launcherContentInset
         anchors.rightMargin: Theme.launcherContentInset
-        height: 40
+        height: 44
         visible: win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0 && field.text.length === 0
 
         Row {
@@ -425,17 +425,24 @@ PanelWindow {
               required property var modelData
               required property int index
 
-              width: 36
-              height: 36
+              width: 38
+              height: 38
               radius: Theme.radiusBase
               anchors.verticalCenter: parent.verticalCenter
 
               readonly property bool isSelected: win.pinnedIndex === pinTile.index
-              readonly property bool isHovered: tileMa.containsMouse
+              readonly property bool isHovered: tileMa.containsMouse || unpinMa.containsMouse
 
-              color: pinTile.isSelected ? Theme.selected : (pinTile.isHovered ? Theme.hoverFill : "transparent")
+              color: pinTile.isSelected ? Theme.selected : "transparent"
 
-              Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+              Rectangle {
+                id: hoverBg
+                anchors.fill: parent
+                radius: pinTile.radius
+                color: Theme.hoverFill
+                opacity: (!pinTile.isSelected && pinTile.isHovered) ? 1.0 : 0.0
+                Behavior on opacity { OpacityAnimator { duration: Theme.durationFast } }
+              }
 
               MouseArea {
                 id: tileMa
@@ -461,8 +468,12 @@ PanelWindow {
 
               IconImage {
                 id: pinIcon
+                property real yOffset: pinTile.modelData.isRunning ? -2 : 0
+                Behavior on yOffset { NumberAnimation { duration: Theme.durationFast } }
+
                 anchors.centerIn: parent
-                implicitSize: Theme.launcherIconSize
+                anchors.verticalCenterOffset: pinIcon.yOffset
+                implicitSize: 24
                 asynchronous: true
                 source: pinTile.modelData.iconSrc || ""
                 opacity: pinTile.modelData.isMinimized ? 0.75 : 1.0
@@ -470,6 +481,7 @@ PanelWindow {
 
               Text {
                 anchors.centerIn: parent
+                anchors.verticalCenterOffset: pinIcon.yOffset
                 visible: pinIcon.status === Image.Error || !pinTile.modelData.iconSrc
                 text: (pinTile.modelData.name || "?").charAt(0).toUpperCase()
                 color: Theme.ink1
@@ -480,7 +492,7 @@ PanelWindow {
 
               Rectangle {
                 anchors.bottom: parent.bottom
-                anchors.bottomMargin: 2
+                anchors.bottomMargin: 3
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: pinTile.modelData.isActive ? 14 : 4
                 height: pinTile.modelData.isActive ? 3 : 4
@@ -489,29 +501,31 @@ PanelWindow {
                 visible: !!pinTile.modelData.isRunning
 
                 Behavior on width { NumberAnimation { duration: Theme.durationFast } }
+                Behavior on height { NumberAnimation { duration: Theme.durationFast } }
+                Behavior on radius { NumberAnimation { duration: Theme.durationFast } }
                 Behavior on color { ColorAnimation { duration: Theme.durationFast } }
               }
 
               Rectangle {
                 id: unpinBadge
                 z: 10
-                width: 16
-                height: 16
-                radius: 8
+                width: 14
+                height: 14
+                radius: 7
                 anchors.top: parent.top
-                anchors.topMargin: -3
+                anchors.topMargin: 1
                 anchors.right: parent.right
-                anchors.rightMargin: -3
+                anchors.rightMargin: 1
                 color: unpinMa.containsMouse ? Theme.red : Theme.surfaceElevated
                 border.color: Theme.line
                 border.width: 1
-                visible: pinTile.modelData.isPinned && (pinTile.isHovered || unpinMa.containsMouse)
+                visible: pinTile.modelData.isPinned && pinTile.isHovered
 
                 Text {
                   anchors.centerIn: parent
                   text: "×"
                   font.family: Theme.displayFont
-                  font.pixelSize: 12
+                  font.pixelSize: 10
                   font.bold: true
                   color: unpinMa.containsMouse ? Theme.ink1 : Theme.ink2
                 }
