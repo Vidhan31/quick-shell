@@ -1,8 +1,8 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
-import Quickshell.Io
 import Quickshell.Widgets
+import Quickshell.Plugins.KWin
 import qs.utils
 import "../theme"
 
@@ -13,47 +13,17 @@ Item {
   property PanelWindow barWindow: null
   property bool filterByScreen: false
 
-  property var rawWindows: []
+  property int windowCount: kwinManager.count
 
   implicitHeight: 26
-  implicitWidth: root.rawWindows.length > 0 ? (root.rawWindows.length * 28 + (root.rawWindows.length - 1) * 4) : 0
+  implicitWidth: root.windowCount > 0 ? (root.windowCount * 28 + (root.windowCount - 1) * 4) : 0
 
   IconResolver {
     id: iconResolver
   }
 
-  Process {
-    id: bridgeProcess
-    command: ["python3", "-u", Quickshell.shellPath("bridges/kwin-taskbar-bridge.py")]
-    running: true
-    stdinEnabled: true
-
-    stdout: SplitParser {
-      splitMarker: "\n"
-      onRead: data => {
-        let trimmed = data.trim();
-        if (!trimmed || !trimmed.startsWith("[")) return;
-        try {
-          let list = JSON.parse(trimmed);
-          root.rawWindows = Array.isArray(list) ? list : [];
-        } catch (e) {
-          console.warn("Taskbar: Failed to parse KWin window list:", e);
-        }
-      }
-    }
-
-    onRunningChanged: {
-      if (!running) {
-        restartTimer.start();
-      }
-    }
-  }
-
-  Timer {
-    id: restartTimer
-    interval: 2000
-    repeat: false
-    onTriggered: bridgeProcess.running = true
+  KWinManager {
+    id: kwinManager
   }
 
   ListView {
@@ -64,10 +34,7 @@ Item {
     spacing: 4
     boundsBehavior: Flickable.StopAtBounds
 
-    model: ScriptModel {
-      values: root.rawWindows
-      comparisonMode: ObjectComparison.Structure
-    }
+    model: kwinManager.model
 
     delegate: Item {
       id: windowDelegate
@@ -152,25 +119,11 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+        acceptedButtons: Qt.LeftButton
 
         onClicked: mouse => {
-          if (mouse.button === Qt.LeftButton) {
-            if (windowDelegate.windowId) {
-              if (windowDelegate.isActivated) {
-                bridgeProcess.write("MINIMIZE " + windowDelegate.windowId + "\n");
-              } else {
-                bridgeProcess.write("ACTIVATE " + windowDelegate.windowId + "\n");
-              }
-            }
-          } else if (mouse.button === Qt.MiddleButton) {
-            if (windowDelegate.windowId) {
-              bridgeProcess.write("CLOSE " + windowDelegate.windowId + "\n");
-            }
-          } else if (mouse.button === Qt.RightButton) {
-            if (windowDelegate.windowId) {
-              bridgeProcess.write("MAXIMIZE " + windowDelegate.windowId + "\n");
-            }
+          if (mouse.button === Qt.LeftButton && windowDelegate.windowId) {
+            kwinManager.toggleWindow(windowDelegate.windowId);
           }
         }
       }

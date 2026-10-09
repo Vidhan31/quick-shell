@@ -18,11 +18,20 @@ PanelWindow {
 
   readonly property var shortcuts: {
     const l = win.launcher;
-    if (win.pinnedIndex >= 0 && l && l.pinnedApps && win.pinnedIndex < l.pinnedApps.length) {
+    if (win.pinnedIndex >= 0 && l && l.dockItems && win.pinnedIndex < l.dockItems.length) {
+      const item = l.dockItems[win.pinnedIndex];
+      if (item && item.isRunning) {
+        return [
+          { key: "↵", label: "switch" },
+          { key: "←→", label: "cycle" },
+          { key: "↓", label: "list" },
+          { key: "Esc", label: "close" }
+        ];
+      }
       return [
         { key: "↵", label: "open" },
         { key: "⇧↵", label: "terminal" },
-        { key: "←→", label: "cycle pins" },
+        { key: "←→", label: "cycle" },
         { key: "↓", label: "list" },
         { key: "Esc", label: "close" }
       ];
@@ -102,7 +111,7 @@ PanelWindow {
       field.text = "";
       if (win.launcher) {
         win.launcher.setQuery("");
-        win.pinnedIndex = win.launcher.pinnedApps.length > 0 ? 0 : -1;
+        win.pinnedIndex = (win.launcher.dockItems && win.launcher.dockItems.length > 0) ? 0 : -1;
       } else {
         win.pinnedIndex = -1;
       }
@@ -142,20 +151,11 @@ PanelWindow {
         list.positionViewAtIndex(win.launcher.selectedIndex, ListView.Contain);
       }
     }
-    function onPinnedIdsChanged(): void {
+    function onDockItemsChanged(): void {
       if (field.text.length === 0 && win.launcher) {
-        if (win.launcher.pinnedApps.length === 0) {
+        if (!win.launcher.dockItems || win.launcher.dockItems.length === 0) {
           win.pinnedIndex = -1;
-        } else if (win.pinnedIndex < 0 || win.pinnedIndex >= win.launcher.pinnedApps.length) {
-          win.pinnedIndex = 0;
-        }
-      }
-    }
-    function onPinnedAppsChanged(): void {
-      if (field.text.length === 0 && win.launcher) {
-        if (win.launcher.pinnedApps.length === 0) {
-          win.pinnedIndex = -1;
-        } else if (win.pinnedIndex < 0 || win.pinnedIndex >= win.launcher.pinnedApps.length) {
+        } else if (win.pinnedIndex < 0 || win.pinnedIndex >= win.launcher.dockItems.length) {
           win.pinnedIndex = 0;
         }
       }
@@ -223,7 +223,7 @@ PanelWindow {
             if (field.text.length > 0) {
               win.pinnedIndex = -1;
             } else {
-              win.pinnedIndex = (win.launcher && win.launcher.pinnedApps.length > 0) ? 0 : -1;
+              win.pinnedIndex = (win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0) ? 0 : -1;
             }
             if (win.launcher) {
               win.launcher.setQuery(field.text);
@@ -240,21 +240,21 @@ PanelWindow {
             if (!win.launcher || field.inputMethodComposing) return;
             switch (event.key) {
             case Qt.Key_Right:
-              if (field.text.length === 0 && win.launcher && win.launcher.pinnedApps.length > 0) {
+              if (field.text.length === 0 && win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0) {
                 if (win.pinnedIndex < 0) {
                   win.pinnedIndex = 0;
                 } else {
-                  win.pinnedIndex = (win.pinnedIndex + 1) % win.launcher.pinnedApps.length;
+                  win.pinnedIndex = (win.pinnedIndex + 1) % win.launcher.dockItems.length;
                 }
                 event.accepted = true;
               }
               break;
             case Qt.Key_Left:
-              if (field.text.length === 0 && win.launcher && win.launcher.pinnedApps.length > 0) {
+              if (field.text.length === 0 && win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0) {
                 if (win.pinnedIndex < 0) {
-                  win.pinnedIndex = win.launcher.pinnedApps.length - 1;
+                  win.pinnedIndex = win.launcher.dockItems.length - 1;
                 } else {
-                  win.pinnedIndex = (win.pinnedIndex - 1 + win.launcher.pinnedApps.length) % win.launcher.pinnedApps.length;
+                  win.pinnedIndex = (win.pinnedIndex - 1 + win.launcher.dockItems.length) % win.launcher.dockItems.length;
                 }
                 event.accepted = true;
               }
@@ -262,7 +262,7 @@ PanelWindow {
             case Qt.Key_Up:
               if (win.pinnedIndex >= 0) {
                 event.accepted = true;
-              } else if (win.launcher && win.launcher.selectedIndex === 0 && field.text.length === 0 && win.launcher.pinnedApps.length > 0) {
+              } else if (win.launcher && win.launcher.selectedIndex === 0 && field.text.length === 0 && win.launcher.dockItems && win.launcher.dockItems.length > 0) {
                 win.pinnedIndex = 0;
                 event.accepted = true;
               } else {
@@ -306,8 +306,8 @@ PanelWindow {
               }
               break;
             case Qt.Key_End:
-              if (win.pinnedIndex >= 0 && win.launcher) {
-                win.pinnedIndex = Math.max(0, win.launcher.pinnedApps.length - 1);
+              if (win.pinnedIndex >= 0 && win.launcher && win.launcher.dockItems) {
+                win.pinnedIndex = Math.max(0, win.launcher.dockItems.length - 1);
                 event.accepted = true;
               } else {
                 win.launcher.goLast();
@@ -319,7 +319,7 @@ PanelWindow {
               {
                 const isCtrl = (event.modifiers & Qt.ControlModifier) !== 0;
                 const isShift = (event.modifiers & Qt.ShiftModifier) !== 0;
-                if (win.pinnedIndex >= 0 && win.launcher && win.pinnedIndex < win.launcher.pinnedApps.length) {
+                if (win.pinnedIndex >= 0 && win.launcher && win.launcher.dockItems && win.pinnedIndex < win.launcher.dockItems.length) {
                   win.launcher.launchPinned(win.pinnedIndex, (isCtrl && isShift) ? "terminal" : (isShift ? "shift" : "default"));
                   event.accepted = true;
                   break;
@@ -357,12 +357,15 @@ PanelWindow {
               break;
             case Qt.Key_P:
               if ((event.modifiers & Qt.ControlModifier) && win.launcher) {
-                if (win.pinnedIndex >= 0 && win.pinnedIndex < win.launcher.pinnedApps.length) {
-                  win.launcher.unpinApp(win.launcher.pinnedApps[win.pinnedIndex].id);
-                  if (win.launcher.pinnedApps.length === 0) {
-                    win.pinnedIndex = -1;
-                  } else if (win.pinnedIndex >= win.launcher.pinnedApps.length) {
-                    win.pinnedIndex = win.launcher.pinnedApps.length - 1;
+                if (win.pinnedIndex >= 0 && win.launcher.dockItems && win.pinnedIndex < win.launcher.dockItems.length) {
+                  const targetItem = win.launcher.dockItems[win.pinnedIndex];
+                  if (targetItem && targetItem.isPinned) {
+                    win.launcher.unpinApp(targetItem.id);
+                    if (win.launcher.dockItems.length === 0) {
+                      win.pinnedIndex = -1;
+                    } else if (win.pinnedIndex >= win.launcher.dockItems.length) {
+                      win.pinnedIndex = win.launcher.dockItems.length - 1;
+                    }
                   }
                 } else {
                   win.launcher.toggleSelectedPin();
@@ -406,7 +409,7 @@ PanelWindow {
         anchors.leftMargin: Theme.launcherContentInset
         anchors.rightMargin: Theme.launcherContentInset
         height: 40
-        visible: win.launcher && win.launcher.pinnedApps.length > 0 && field.text.length === 0
+        visible: win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0 && field.text.length === 0
 
         Row {
           id: pinnedRow
@@ -415,7 +418,7 @@ PanelWindow {
           spacing: Theme.spaceSm
 
           Repeater {
-            model: win.launcher ? win.launcher.pinnedApps : []
+            model: win.launcher ? win.launcher.dockItems : []
 
             Rectangle {
               id: pinTile
@@ -442,12 +445,12 @@ PanelWindow {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: mouse => {
                   if (!win.launcher) return;
-                  if (mouse.button === Qt.RightButton) {
+                  if (mouse.button === Qt.RightButton && pinTile.modelData.isPinned) {
                     win.launcher.unpinApp(pinTile.modelData.id);
-                    if (win.launcher.pinnedApps.length === 0) {
+                    if (win.launcher.dockItems.length === 0) {
                       win.pinnedIndex = -1;
-                    } else if (win.pinnedIndex >= win.launcher.pinnedApps.length) {
-                      win.pinnedIndex = win.launcher.pinnedApps.length - 1;
+                    } else if (win.pinnedIndex >= win.launcher.dockItems.length) {
+                      win.pinnedIndex = win.launcher.dockItems.length - 1;
                     }
                     field.forceActiveFocus();
                     return;
@@ -462,6 +465,7 @@ PanelWindow {
                 implicitSize: Theme.launcherIconSize
                 asynchronous: true
                 source: pinTile.modelData.iconSrc || ""
+                opacity: pinTile.modelData.isMinimized ? 0.75 : 1.0
               }
 
               Text {
@@ -472,6 +476,20 @@ PanelWindow {
                 font.family: Theme.roundedFont
                 font.pixelSize: Theme.fontSm
                 font.bold: true
+              }
+
+              Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: pinTile.modelData.isActive ? 14 : 4
+                height: pinTile.modelData.isActive ? 3 : 4
+                radius: pinTile.modelData.isActive ? 1.5 : 2
+                color: pinTile.modelData.isActive ? Theme.accent : Theme.ink2
+                visible: !!pinTile.modelData.isRunning
+
+                Behavior on width { NumberAnimation { duration: Theme.durationFast } }
+                Behavior on color { ColorAnimation { duration: Theme.durationFast } }
               }
 
               Rectangle {
@@ -487,7 +505,7 @@ PanelWindow {
                 color: unpinMa.containsMouse ? Theme.red : Theme.surfaceElevated
                 border.color: Theme.line
                 border.width: 1
-                visible: pinTile.isHovered || unpinMa.containsMouse
+                visible: pinTile.modelData.isPinned && (pinTile.isHovered || unpinMa.containsMouse)
 
                 Text {
                   anchors.centerIn: parent
@@ -506,12 +524,12 @@ PanelWindow {
                   preventStealing: true
                   onClicked: mouse => {
                     mouse.accepted = true;
-                    if (win.launcher) {
+                    if (win.launcher && pinTile.modelData.isPinned) {
                       win.launcher.unpinApp(pinTile.modelData.id);
-                      if (win.launcher.pinnedApps.length === 0) {
+                      if (win.launcher.dockItems.length === 0) {
                         win.pinnedIndex = -1;
-                      } else if (win.pinnedIndex >= win.launcher.pinnedApps.length) {
-                        win.pinnedIndex = win.launcher.pinnedApps.length - 1;
+                      } else if (win.pinnedIndex >= win.launcher.dockItems.length) {
+                        win.pinnedIndex = win.launcher.dockItems.length - 1;
                       }
                     }
                     field.forceActiveFocus();

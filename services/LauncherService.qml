@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Plugins.PathProbe
 import Quickshell.Plugins.FileSearch
+import Quickshell.Plugins.KWin
 import qs.utils
 
 /* Domain state for the application launcher.
@@ -41,6 +42,27 @@ Item {
       }
     }
     return result;
+  }
+
+  KWinManager {
+    id: kwinManager
+  }
+
+  readonly property var openWindows: kwinManager.windows
+
+  function toggleWindow(winId: string): void {
+    if (winId) kwinManager.toggleWindow(winId);
+  }
+
+  readonly property var dockItems: {
+    const raw = kwinManager.mergeDockItems(root.pinnedApps, iconResolver.appAliases);
+    for (let i = 0; i < raw.length; i++) {
+      const it = raw[i];
+      if (!it.iconSrc) {
+        it.iconSrc = iconResolver.resolveIcon(it.appId || it.name, it.windowTitle);
+      }
+    }
+    return raw;
   }
 
   PersistentProperties {
@@ -135,10 +157,15 @@ Item {
   }
 
   function launchPinned(index: int, mode: var): void {
-    if (index < 0 || index >= root.pinnedApps.length) return;
-    const p = root.pinnedApps[index];
-    if (!p || !p.entry) return;
-    launchEntry(p.entry, p.name, mode === "terminal" || mode === "shift");
+    if (index < 0 || index >= root.dockItems.length) return;
+    const item = root.dockItems[index];
+    if (item.isRunning && item.windowId) {
+      root.toggleWindow(item.windowId);
+      close();
+      return;
+    }
+    if (!item || !item.entry) return;
+    launchEntry(item.entry, item.name, mode === "terminal" || mode === "shift");
     close();
   }
 
