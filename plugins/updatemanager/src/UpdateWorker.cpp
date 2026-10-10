@@ -9,6 +9,9 @@
 #include <QDBusReply>
 #include <QDateTime>
 #include <QDebug>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QThread>
 #include <QTimer>
@@ -1034,20 +1037,99 @@ void UpdateWorker::cleanOffline() {
 }
 
 void UpdateWorker::cleanAll() {
-    emit statusMessageChanged(QStringLiteral("Cleaning package and metadata cache..."));
-    if (openSession(false, false)) {
-        QDBusInterface baseIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
-                                 QStringLiteral("org.rpm.dnf.v0.Base"), QDBusConnection::systemBus());
-        if (baseIface.isValid()) {
-            baseIface.setTimeout(60000);
-            baseIface.call(QStringLiteral("clean"), QStringLiteral("all"));
-        }
-        closeSession();
+    cleanCache(QStringLiteral("all"));
+}
+
+void UpdateWorker::cleanCache(const QString &cacheType) {
+    const QString type = cacheType.trimmed().toLower();
+    static const QStringList validTypes = {
+        QStringLiteral("all"),
+        QStringLiteral("packages"),
+        QStringLiteral("metadata"),
+        QStringLiteral("dbcache"),
+        QStringLiteral("expire-cache")
+    };
+
+    if (!validTypes.contains(type)) {
+        const QString err = QStringLiteral("Unsupported cache type: %1").arg(cacheType);
+        emit statusMessageChanged(err);
+        emit cleanFinished(false, err);
+        emit operationFinished(false, err);
+        return;
     }
 
+    emit statusMessageChanged(QStringLiteral("Cleaning cache (%1)...").arg(type));
+
+    QString sessErr;
+    if (!openSession(false, false, &sessErr)) {
+        const QString detail = sessErr.isEmpty()
+            ? QStringLiteral("Failed to connect to DNF5 daemon service.")
+            : QStringLiteral("Failed to connect to DNF5 daemon service: %1").arg(sessErr);
+        emit statusMessageChanged(detail);
+        emit cleanFinished(false, detail);
+        emit operationFinished(false, detail);
+        return;
+    }
+
+    QDBusInterface baseIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
+                             QStringLiteral("org.rpm.dnf.v0.Base"), QDBusConnection::systemBus());
+    baseIface.setTimeout(60000);
+
+    QVariantMap cleanOpts;
+    cleanOpts[QStringLiteral("interactive")] = true;
+
+    QDBusMessage reply = baseIface.call(QStringLiteral("clean_with_options"), type, cleanOpts);
+    if (reply.type() == QDBusMessage::ErrorMessage &&
+        reply.errorName() == QStringLiteral("org.freedesktop.DBus.Error.UnknownMethod")) {
+        reply = baseIface.call(QStringLiteral("clean"), type);
+    }
+
+    closeSession();
+
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        const QString errStr = reply.errorMessage();
+        QString errMsg;
+        if (errStr.contains(QStringLiteral("Not authorized"), Qt::CaseInsensitive) ||
+            reply.errorName().contains(QStringLiteral("PolicyKit"), Qt::CaseInsensitive)) {
+            errMsg = QStringLiteral("Authentication cancelled.");
+        } else {
+            errMsg = QStringLiteral("Failed to clean cache: ") + errStr;
+        }
+        emit statusMessageChanged(errMsg);
+        emit cleanFinished(false, errMsg);
+        emit operationFinished(false, errMsg);
+        return;
+    }
+
+    bool success = false;
+    QString errorMsg;
+    if (!reply.arguments().isEmpty()) {
+        success = reply.arguments().at(0).toBool();
+        if (reply.arguments().size() > 1) {
+            errorMsg = reply.arguments().at(1).toString();
+        }
+    }
+
+    // dnf5daemon reports missing cache directory as failure; for clean operation a nonexistent directory is already clean.
+    if (!success && errorMsg.contains(QStringLiteral("Cannot iterate the cache directory"), Qt::CaseInsensitive)) {
+        success = true;
+        errorMsg.clear();
+    }
+
+    if (!success) {
+        if (errorMsg.isEmpty()) {
+            errorMsg = QStringLiteral("Failed to clean cache.");
+        }
+        emit statusMessageChanged(errorMsg);
+        emit cleanFinished(false, errorMsg);
+        emit operationFinished(false, errorMsg);
+        return;
+    }
+
+    // Best-effort cleanup of unprivileged user cache (~/.cache/libdnf5)
     QProcess proc;
-    proc.start(QStringLiteral("dnf5"), {QStringLiteral("clean"), QStringLiteral("all")});
-    proc.waitForFinished(10000);
+    proc.start(QStringLiteral("dnf5"), {QStringLiteral("clean"), type});
+    proc.waitForFinished(5000);
 
     emit statusMessageChanged(QStringLiteral("Cache cleaned."));
     emit cleanFinished(true, QStringLiteral("Cache successfully cleaned."));
@@ -1059,48 +1141,170 @@ void UpdateWorker::cleanAll() {
 void UpdateWorker::autoremove() {
     emit statusMessageChanged(QStringLiteral("Checking for unused packages..."));
 
-    // Check with --assumeno first so we don't trigger Polkit if nothing to remove
+    // Fast, locale-independent query using libdnf5's filter_unneeded via JSON output
     QProcess checkProc;
-    checkProc.start(QStringLiteral("dnf5"), {QStringLiteral("autoremove"), QStringLiteral("--assumeno")});
-    checkProc.waitForFinished(15000);
-    QString out = QString::fromUtf8(checkProc.readAllStandardOutput());
+    checkProc.start(QStringLiteral("dnf5"), {QStringLiteral("list"), QStringLiteral("--autoremove"), QStringLiteral("--json")});
+    if (!checkProc.waitForFinished(10000)) {
+        checkProc.kill();
+        const QString err = QStringLiteral("Failed to query unused packages (timeout).");
+        emit statusMessageChanged(err);
+        emit autoremoveFinished(false, err);
+        emit operationFinished(false, err);
+        return;
+    }
 
-    if (out.contains(QStringLiteral("Nothing to do"), Qt::CaseInsensitive) ||
-        out.contains(QStringLiteral("no packages to remove"), Qt::CaseInsensitive)) {
+    if (checkProc.exitStatus() != QProcess::NormalExit || checkProc.exitCode() != 0) {
+        const QString err = QStringLiteral("Failed to query unused packages (dnf5 exit code %1).").arg(checkProc.exitCode());
+        emit statusMessageChanged(err);
+        emit autoremoveFinished(false, err);
+        emit operationFinished(false, err);
+        return;
+    }
+
+    const QByteArray jsonOut = checkProc.readAllStandardOutput();
+    QJsonParseError parseErr;
+    const QJsonDocument doc = QJsonDocument::fromJson(jsonOut, &parseErr);
+    QStringList specs;
+    if (doc.isObject()) {
+        const QJsonObject rootObj = doc.object();
+        const QJsonArray pkgs = rootObj.value(QStringLiteral("autoremove_packages")).toArray();
+        specs.reserve(pkgs.size());
+        for (const auto &val : pkgs) {
+            const QJsonObject pObj = val.toObject();
+            const QString name = pObj.value(QStringLiteral("name")).toString();
+            const QString evr = pObj.value(QStringLiteral("evr")).toString();
+            const QString arch = pObj.value(QStringLiteral("arch")).toString();
+            if (!name.isEmpty()) {
+                if (!evr.isEmpty() && !arch.isEmpty()) {
+                    specs.append(QStringLiteral("%1-%2.%3").arg(name, evr, arch));
+                } else {
+                    specs.append(name);
+                }
+            }
+        }
+    }
+
+    if (specs.isEmpty()) {
         emit statusMessageChanged(QStringLiteral("No unused packages found."));
         emit autoremoveFinished(true, QStringLiteral("No unused packages found."));
         emit operationFinished(true, QStringLiteral("No unused packages found."));
         return;
     }
 
-    emit statusMessageChanged(QStringLiteral("Removing unused packages (requires authentication)..."));
-    auto *runProc = new QProcess(this);
-    connect(runProc, &QProcess::readyReadStandardOutput, this, [this, runProc]() {
-        QString line = QString::fromUtf8(runProc->readAllStandardOutput()).trimmed();
-        if (!line.isEmpty()) {
-            QStringList lines = line.split('\n', Qt::SkipEmptyParts);
-            if (!lines.isEmpty()) {
-                emit statusMessageChanged(lines.last().trimmed());
+    emit statusMessageChanged(QStringLiteral("Preparing removal of %1 unused package(s)...").arg(specs.size()));
+    m_downloadedPerId.clear();
+    m_totalPerId.clear();
+    m_totalBytesToDownload = 0;
+    m_pkgTotalCount = specs.size();
+    m_currentPkgIndex = 0;
+    m_pkgItemProcessed = 0;
+    m_pkgItemTotal = 0;
+    m_currentNevra.clear();
+
+    emit inPlaceProgress(QString(), 0, 0, specs.size(), 0.0);
+    emit progressStageUpdated(QStringLiteral("preparing"), QStringLiteral("Preparing"), QString(), 0, specs.size(), 0.0);
+
+    QString sessErr;
+    if (!openSession(true, false, &sessErr)) {
+        const QString detail = sessErr.isEmpty()
+            ? QStringLiteral("Failed to open DNF5 session for autoremove.")
+            : QStringLiteral("Failed to open DNF5 session for autoremove: %1").arg(sessErr);
+        emit statusMessageChanged(detail);
+        emit autoremoveFinished(false, detail);
+        emit operationFinished(false, detail);
+        return;
+    }
+
+    connectTransactionSignals();
+
+    QDBusInterface rpmIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
+                            QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"), QDBusConnection::systemBus());
+    rpmIface.setTimeout(120000);
+    QDBusMessage removeReply = rpmIface.call(QStringLiteral("remove"), specs, QVariantMap());
+    if (removeReply.type() == QDBusMessage::ErrorMessage) {
+        QString errMsg = QStringLiteral("Failed to stage package removal: ") + removeReply.errorMessage();
+        closeSession();
+        emit statusMessageChanged(errMsg);
+        emit autoremoveFinished(false, errMsg);
+        emit operationFinished(false, errMsg);
+        return;
+    }
+
+    QDBusInterface goalIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
+                             QStringLiteral("org.rpm.dnf.v0.Goal"), QDBusConnection::systemBus());
+    goalIface.setTimeout(300000);
+
+    emit statusMessageChanged(QStringLiteral("Resolving dependencies..."));
+    emit progressStageUpdated(QStringLiteral("resolving"), QStringLiteral("Resolving"), QString(), 0, specs.size(), 0.0);
+    QVariantMap resOpts;
+    resOpts[QStringLiteral("allow_erasing")] = false;
+    resOpts[QStringLiteral("interactive")] = true;
+    QDBusMessage resReply = goalIface.call(QStringLiteral("resolve"), resOpts);
+    if (resReply.type() == QDBusMessage::ErrorMessage) {
+        QString errMsg = QStringLiteral("Resolution error: ") + resReply.errorMessage();
+        closeSession();
+        emit statusMessageChanged(errMsg);
+        emit autoremoveFinished(false, errMsg);
+        emit operationFinished(false, errMsg);
+        return;
+    }
+    if (resReply.arguments().size() >= 2) {
+        uint resCode = resReply.arguments().at(1).toUInt();
+        if (resCode == 2) {
+            QDBusMessage probMsg = goalIface.call(QStringLiteral("get_transaction_problems_string"));
+            QString errMsg;
+            if (probMsg.type() != QDBusMessage::ErrorMessage && !probMsg.arguments().isEmpty()) {
+                QStringList problems = probMsg.arguments().at(0).toStringList();
+                if (!problems.isEmpty()) {
+                    errMsg = QStringLiteral("Dependency resolution failed:\n") + problems.join(QLatin1Char('\n'));
+                }
+            }
+            if (errMsg.isEmpty()) {
+                errMsg = QStringLiteral("Dependency resolution failed (broken dependencies or conflicts).");
+            }
+            closeSession();
+            emit statusMessageChanged(errMsg);
+            emit autoremoveFinished(false, errMsg);
+            emit operationFinished(false, errMsg);
+            return;
+        }
+    }
+
+    emit progressStageUpdated(QStringLiteral("authenticating"), QStringLiteral("Authenticating"), QString(), 0, specs.size(), 0.0);
+    emit statusMessageChanged(QStringLiteral("Waiting for authentication (Polkit prompt)..."));
+    QVariantMap transOpts;
+    transOpts[QStringLiteral("offline")] = false;
+    transOpts[QStringLiteral("interactive")] = true;
+
+    goalIface.setTimeout(7200000);
+    QDBusPendingCall pcall = goalIface.asyncCall(QStringLiteral("do_transaction"), transOpts);
+    auto *watcher = new QDBusPendingCallWatcher(pcall, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        bool success = !w->isError();
+        QString errMsg;
+        if (!success) {
+            const QString errStr = w->error().message();
+            if (errStr.contains(QStringLiteral("Not authorized"), Qt::CaseInsensitive) ||
+                w->error().name().contains(QStringLiteral("PolicyKit"), Qt::CaseInsensitive)) {
+                errMsg = QStringLiteral("Authentication cancelled.");
+            } else {
+                errMsg = QStringLiteral("Transaction failed: ") + errStr;
             }
         }
-    });
-
-    connect(runProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, runProc](int exitCode, QProcess::ExitStatus exitStatus) {
-        runProc->deleteLater();
-        if (exitCode == 0 && exitStatus == QProcess::NormalExit) {
+        closeSession();
+        if (!success) {
+            emit statusMessageChanged(errMsg);
+            emit autoremoveFinished(false, errMsg);
+            emit operationFinished(false, errMsg);
+        } else {
+            emit inPlaceProgress(QString(), 0, 1, 1, 1.0);
             emit statusMessageChanged(QStringLiteral("Unused packages removed."));
             emit autoremoveFinished(true, QStringLiteral("Unused packages removed."));
             emit operationFinished(true, QStringLiteral("Unused packages removed."));
-            checkForUpdates(false);
-        } else {
-            emit statusMessageChanged(QStringLiteral("Autoremove cancelled or failed."));
-            emit autoremoveFinished(false, QStringLiteral("Autoremove was cancelled or failed."));
-            emit operationFinished(false, QStringLiteral("Autoremove was cancelled or failed."));
+            QMetaObject::invokeMethod(this, &UpdateWorker::checkForUpdates, Qt::QueuedConnection, false);
         }
     });
-
-    runProc->start(QStringLiteral("pkexec"), {QStringLiteral("/usr/bin/dnf5"), QStringLiteral("autoremove"), QStringLiteral("-y")});
 }
 
 void UpdateWorker::onDownloadAddNew(const QDBusObjectPath &session, const QString &downloadId,

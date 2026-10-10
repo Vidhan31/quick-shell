@@ -108,6 +108,7 @@ public:
     Q_INVOKABLE void cancelOperation();
     Q_INVOKABLE void cleanOffline();
     Q_INVOKABLE void cleanAll();
+    Q_INVOKABLE void cleanCache(const QString &cacheType = QStringLiteral("all"));
     Q_INVOKABLE void autoremove();
 
 signals:

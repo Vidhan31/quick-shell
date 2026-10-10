@@ -305,6 +305,10 @@ void UpdateManager::cleanOffline() {
 }
 
 void UpdateManager::cleanAll() {
+    cleanCache(QStringLiteral("all"));
+}
+
+void UpdateManager::cleanCache(const QString &cacheType) {
     if (isBusy()) return;
     m_isCleaning = true;
     m_progressStage = QStringLiteral("cleaning");
@@ -316,7 +320,9 @@ void UpdateManager::cleanAll() {
     emit progressStageChanged();
     emit summaryChanged();
 
-    QMetaObject::invokeMethod(m_worker, &UpdateWorker::cleanAll, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(m_worker, [this, cacheType]() {
+        m_worker->cleanCache(cacheType);
+    }, Qt::QueuedConnection);
 }
 
 void UpdateManager::autoremove() {

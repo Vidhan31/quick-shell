@@ -30,6 +30,7 @@ public slots:
     void cancelOperation();
     void cleanOffline();
     void cleanAll();
+    void cleanCache(const QString &cacheType = QStringLiteral("all"));
     void autoremove();
 
 signals:
