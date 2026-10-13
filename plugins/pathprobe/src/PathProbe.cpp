@@ -1,0 +1,280 @@
+#include "PathProbe.hpp"
+
+#include <QClipboard>
+#include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QGuiApplication>
+#include <QMimeData>
+#include <QDBusMessage>
+#include <QDBusPendingCall>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
+#include <QDBusUnixFileDescriptor>
+#include <QDir>
+#include <fcntl.h>
+#include <unistd.h>
+#include <QFileInfo>
+#include <QMimeDatabase>
+#include <QProcess>
+#include <QThreadPool>
+#include <QUrl>
+
+namespace qs::plugins {
+
+namespace {
+
+// QMimeDatabase initializes lazily behind a process-wide guard. Measured cold
+// on this box at well under a millisecond, because Qt 6 parses glob data up
+// front and loads type definitions on demand. Nothing worth warming.
+QMimeDatabase &mimeDatabase() {
+    static QMimeDatabase db;
+    return db;
+}
+
+// Short enough that a wedged file manager is abandoned quickly, long enough
+// to cover a cold Dolphin daemon answering on the bus.
+constexpr int REVEAL_TIMEOUT_MS = 1500;
+
+constexpr auto FILEMANAGER_BUS = "org.freedesktop.FileManager1";
+constexpr auto FILEMANAGER_PATH = "/org/freedesktop/FileManager1";
+constexpr auto FILEMANAGER_IFACE = "org.freedesktop.FileManager1";
+
+// Leading '/' is absolute, '~' is home-relative; './' and '../' are the only
+// relative forms worth honouring, because a bare "Downloads" has to stay an
+// application search.
+bool looksLikePath(const QString &text) {
+    if (text.isEmpty()) {
+        return false;
+    }
+    if (text.startsWith(QLatin1Char('/')) || text.startsWith(QLatin1Char('~'))) {
+        return true;
+    }
+    return text.startsWith(QLatin1String("./")) || text.startsWith(QLatin1String("../"));
+}
+
+QString expandHome(const QString &text) {
+    const QString home = QDir::homePath();
+    if (text == QLatin1String("~") || text.startsWith(QLatin1String("~/"))) {
+        return home + text.mid(1);
+    }
+    // "~user" is deliberately left unexpanded: resolving another account's
+    // home needs a passwd lookup, and a half-expanded path is worse than no
+    // row at all.
+    return text;
+}
+
+QString iconNameFor(const QFileInfo &info) {
+    if (info.isDir()) {
+        // "system-folder" is a KDE 3 name that neither Breeze nor Adwaita
+        // ships, so it always missed and the launcher fell back to the
+        // name-initial glyph. "folder" exists in both.
+        return QStringLiteral("folder");
+    }
+    const QMimeType type = mimeDatabase().mimeTypeForFile(info);
+    QString name = type.iconName();
+    if (name.isEmpty()) {
+        name = type.genericIconName();
+    }
+    return name.isEmpty() ? QStringLiteral("text-x-generic") : name;
+}
+
+} // namespace
+
+PathProbe::PathProbe(QObject *parent)
+    : QObject(parent) {
+}
+
+PathProbe::~PathProbe() = default;
+
+bool PathProbe::looksLikePath(const QString &text) const {
+    return ::qs::plugins::looksLikePath(text.trimmed());
+}
+
+QVariantMap PathProbe::classify(const QString &text) const {
+    QVariantMap out;
+    const QString trimmed = text.trimmed();
+    if (!looksLikePath(trimmed)) {
+        return out;
+    }
+    out.insert(QStringLiteral("pathShape"), true);
+
+    // Relative forms are anchored at $HOME, not at the shell's own cwd: the
+    // shell may have been autostarted with an arbitrary working directory, and
+    // "./x" has to resolve to the same place on every launch.
+    QString expanded = expandHome(trimmed);
+    if (!expanded.startsWith(QLatin1Char('/'))) {
+        expanded = QDir::homePath() + QLatin1Char('/') + expanded;
+    }
+    // cleanPath collapses "//", resolves "a/b/../c" and drops a trailing slash.
+    // Anchoring first also means the value handed to dolphin can never begin
+    // with '-', so a file literally named "-rf" cannot be read as a flag.
+    const QString abs = QDir::cleanPath(expanded);
+
+    // A fresh QFileInfo per call on purpose: it memoizes its stat, so a
+    // long-lived instance would answer with the state of the path as it was
+    // half-typed several keystrokes ago.
+    const QFileInfo info(abs);
+    const bool exists = info.exists();
+    out.insert(QStringLiteral("abs"), abs);
+    out.insert(QStringLiteral("exists"), exists);
+    if (exists) {
+        out.insert(QStringLiteral("isDir"), info.isDir());
+        out.insert(QStringLiteral("isFile"), info.isFile());
+        out.insert(QStringLiteral("parent"), info.absolutePath());
+        out.insert(QStringLiteral("iconName"), iconNameFor(info));
+    }
+    return out;
+}
+
+void PathProbe::classifyAsync(const QString &text) {
+    const QString trimmed = text.trimmed();
+    if (m_query != text) {
+        m_query = text;
+        emit queryChanged();
+    }
+
+    if (!::qs::plugins::looksLikePath(trimmed)) {
+        if (!m_result.isEmpty()) {
+            m_result.clear();
+            emit resultChanged();
+        }
+        if (m_busy) {
+            m_busy = false;
+            emit busyChanged();
+        }
+        return;
+    }
+
+    const quint64 id = ++m_requestId;
+    if (!m_busy) {
+        m_busy = true;
+        emit busyChanged();
+    }
+
+    QThreadPool::globalInstance()->start([this, trimmed, id]() {
+        const QVariantMap res = classify(trimmed);
+        QMetaObject::invokeMethod(this, [this, id, res]() {
+            if (id != m_requestId) {
+                return;
+            }
+            m_result = res;
+            m_busy = false;
+            emit busyChanged();
+            emit resultChanged();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void PathProbe::reveal(const QString &absPath, bool isDir) {
+    if (absPath.isEmpty()) {
+        return;
+    }
+    if (!QCoreApplication::instance() || !QDBusConnection::sessionBus().isConnected()) {
+        _fallbackToCli(absPath, isDir);
+        return;
+    }
+
+    QDBusInterface iface(QLatin1String(FILEMANAGER_BUS),
+                         QLatin1String(FILEMANAGER_PATH),
+                         QLatin1String(FILEMANAGER_IFACE),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid()) {
+        _fallbackToCli(absPath, isDir);
+        return;
+    }
+    iface.setTimeout(REVEAL_TIMEOUT_MS);
+
+    // ShowFolders opens a directory; ShowItems selects the items inside their
+    // own parent folder, which is what "dolphin --select" does.
+    const QDBusPendingCall call =
+        iface.asyncCall(isDir ? QStringLiteral("ShowFolders") : QStringLiteral("ShowItems"),
+                        QVariant::fromValue(QStringList{QUrl::fromLocalFile(absPath).toString()}));
+    auto *watcher = new QDBusPendingCallWatcher(call, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, absPath, isDir]() {
+        watcher->deleteLater();
+        const QDBusPendingReply<void> reply = *watcher;
+        // Any non-success outcome, timeout included, falls back to the CLI.
+        // A duplicate reveal is harmless: the daemon simply navigates again.
+        if (reply.isError()) {
+            _fallbackToCli(absPath, isDir);
+        }
+    });
+}
+
+bool PathProbe::copyFile(const QString &absPath) {
+    if (absPath.isEmpty()) {
+        return false;
+    }
+    const QFileInfo fi(absPath);
+    if (!fi.exists()) {
+        return false;
+    }
+    const QString canonical = fi.absoluteFilePath();
+    const QUrl url = QUrl::fromLocalFile(canonical);
+
+    if (auto *clipboard = QGuiApplication::clipboard()) {
+        auto *mime = new QMimeData();
+        mime->setUrls({url});
+        mime->setText(canonical);
+        mime->setData(QStringLiteral("application/x-kde-cutselection"), QByteArray("0"));
+        mime->setData(QStringLiteral("x-special/gnome-copied-files"),
+                      QByteArray("copy\n") + url.toEncoded() + '\n');
+        clipboard->setMimeData(mime);
+        return true;
+    }
+    return false;
+}
+
+bool PathProbe::openWith(const QString &absPath) {
+    if (absPath.isEmpty()) {
+        return false;
+    }
+    const QFileInfo fi(absPath);
+    if (!fi.exists()) {
+        return false;
+    }
+    const int fd = ::open(QFile::encodeName(fi.absoluteFilePath()).constData(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return false;
+    }
+
+    if (!QCoreApplication::instance() || !QDBusConnection::sessionBus().isConnected()) {
+        ::close(fd);
+        return false;
+    }
+
+    QDBusInterface portal(QStringLiteral("org.freedesktop.portal.Desktop"),
+                          QStringLiteral("/org/freedesktop/portal/desktop"),
+                          QStringLiteral("org.freedesktop.portal.OpenURI"),
+                          QDBusConnection::sessionBus());
+    if (!portal.isValid()) {
+        ::close(fd);
+        return false;
+    }
+
+    QVariantMap options;
+    options.insert(QStringLiteral("ask"), true);
+
+    const QDBusUnixFileDescriptor qfd(fd);
+    ::close(fd);
+
+    const QDBusPendingCall call = portal.asyncCall(
+        QStringLiteral("OpenFile"),
+        QStringLiteral(""),
+        QVariant::fromValue(qfd),
+        options);
+    auto *watcher = new QDBusPendingCallWatcher(call, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [watcher]() {
+        watcher->deleteLater();
+    });
+    return true;
+}
+
+void PathProbe::_fallbackToCli(const QString &absPath, bool isDir) const {
+    const QStringList args =
+        isDir ? QStringList{absPath} : QStringList{QStringLiteral("--select"), absPath};
+    QProcess::startDetached(QStringLiteral("dolphin"), args);
+}
+
+} // namespace qs::plugins

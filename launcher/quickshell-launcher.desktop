@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Quickshell Launcher
+Comment=Toggle the Quickshell application launcher
+Exec=qs -p /home/dev/Projects/quick-shell ipc call launcher toggle
+Terminal=false
+NoDisplay=true
+X-KDE-Shortcuts=Meta+Space

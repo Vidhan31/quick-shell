@@ -1,0 +1,36 @@
+#pragma once
+
+#include "EthernetState.hpp"
+#include <QString>
+#include <QStringList>
+
+namespace qs::plugins {
+
+struct PingResult {
+    bool ok{false};
+    QString target;
+    double latencyMs{-1.0};
+    QString output;
+};
+
+class EthernetProbe {
+public:
+    static EthernetState probe(bool checkInternet = true);
+    static QStringList findEthernetInterfaces();
+    static bool readRxTxBytes(const QString &iface, quint64 &rx, quint64 &tx);
+    static PingResult pingHost(const QString &host = QStringLiteral("1.1.1.1"), int timeoutMs = 1500);
+    static bool testInternetSocket(const QString &ipAddress = QString(), int timeoutMs = 800);
+    static bool checkConnectivity();
+    // Interface nmcli should act on: the given one, else the first detected.
+    // Empty when nothing is present. The actual reconnect is driven
+    // asynchronously by EthernetWorker so the caller learns the real outcome.
+    static QString reconnectTarget(const QString &iface = QString());
+    static bool openSettings();
+
+    static bool queryNetlinkAndEthtool(EthernetState &state);
+    static bool queryNetworkManagerFast(EthernetState &state);
+    static bool queryNetworkManager(EthernetState &state);
+    static void querySysfsAndPosixFallback(EthernetState &state);
+};
+
+} // namespace qs::plugins

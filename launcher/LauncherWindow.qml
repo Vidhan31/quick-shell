@@ -1,0 +1,914 @@
+pragma ComponentBehavior: Bound
+import QtQuick
+import Quickshell
+import Quickshell.Wayland
+import Quickshell.Widgets
+import "../theme"
+import "../components"
+
+/* A layer-shell surface on the Top layer: KWin keeps it out of the taskbar,
+   pager and Alt-Tab, and activates it when keyboardFocus flips None->OnDemand.
+   Quickshell deletes layer windows on hide, so the surface is rebuilt on every
+   show and focus must be re-earned each time via the arm timer. */
+PanelWindow {
+  id: win
+
+  property var launcher: null
+  property int pinnedIndex: -1
+  property real openedAt: 0
+  readonly property int focusGraceMs: 250
+  property bool isDragging: false
+
+  readonly property var shortcuts: {
+    const l = win.launcher;
+    if (win.pinnedIndex >= 0 && l && l.dockItems && win.pinnedIndex < l.dockItems.length) {
+      const item = l.dockItems[win.pinnedIndex];
+      if (item && item.isRunning) {
+        return [
+          { key: "↵", label: "switch" },
+          { key: "←→", label: "cycle" },
+          { key: "↓", label: "list" },
+          { key: "Esc", label: "close" }
+        ];
+      }
+      return [
+        { key: "↵", label: "open" },
+        { key: "⇧↵", label: "terminal" },
+        { key: "←→", label: "cycle" },
+        { key: "↓", label: "list" },
+        { key: "Esc", label: "close" }
+      ];
+    }
+    const sel = l && l.selectedIndex >= 0 && l.rows && l.selectedIndex < l.rows.length
+      ? l.rows[l.selectedIndex]
+      : null;
+    if (!sel) {
+      return [
+        { key: "↑↓", label: "navigate" },
+        { key: "Esc", label: "close" }
+      ];
+    }
+    if (sel.kind && sel.kind.startsWith("kill_")) {
+      if (sel.kind === "kill_service") {
+        return [
+          { key: "↵", label: "stop service" },
+          { key: "⇧↵", label: "force kill (SIGKILL)" },
+          { key: "Ctrl+↵", label: "restart service" },
+          { key: "Esc", label: "close" }
+        ];
+      }
+      return [
+        { key: "↵", label: (sel.defaultSignal === 9) ? "force kill (SIGKILL)" : "terminate (SIGTERM)" },
+        { key: "⇧↵", label: "force kill (SIGKILL)" },
+        { key: "Ctrl+↵", label: "reload (SIGHUP)" },
+        { key: "Ctrl+P", label: sel.isPaused ? "resume (SIGCONT)" : "freeze (SIGSTOP)" },
+        { key: "Esc", label: "close" }
+      ];
+    }
+    if (sel.kind === "command") {
+      return [
+        { key: "↵", label: "run in terminal" },
+        { key: "⇧↵", label: "run in background" },
+        { key: "Esc", label: "close" }
+      ];
+    }
+    if (sel.kind === "setting") {
+      return [
+        { key: "↵", label: "system settings" },
+        { key: "⇧↵", label: "standalone" },
+        { key: "↑↓", label: "navigate" },
+        { key: "Esc", label: "close" }
+      ];
+    }
+    if (sel.kind === "file" || sel.kind === "path") {
+      return [
+        { key: "↵", label: sel.isDir ? "open folder" : "open file" },
+        { key: "⇧↵", label: "dolphin" },
+        { key: "Ctrl+⇧+↵", label: "terminal" },
+        { key: "Ctrl+C", label: "copy" },
+        { key: "Ctrl+⇧+C", label: "open with" },
+        { key: "Esc", label: "close" }
+      ];
+    }
+    return [
+      { key: "↵", label: "open" },
+      { key: "⇧↵", label: "terminal" },
+      { key: "↑↓", label: "navigate" },
+      { key: "Esc", label: "close" }
+    ];
+  }
+
+  readonly property int screenW: Quickshell.screens.length > 0 ? Quickshell.screens[0].width : 1920
+  readonly property int screenH: Quickshell.screens.length > 0 ? Quickshell.screens[0].height : 1080
+  readonly property real sideMargin: Math.max(24, (screenW - Theme.launcherWidth) / 2)
+  readonly property real topMargin: Math.round(screenH * 0.14)
+
+  visible: win.launcher !== null && win.launcher.isOpen
+  color: "transparent"
+  exclusionMode: ExclusionMode.Ignore
+
+  anchors {
+    left: true
+    right: true
+    top: true
+  }
+  margins { // qmllint disable unqualified
+    left: sideMargin
+    right: sideMargin
+    top: topMargin
+  }
+
+  WlrLayershell.layer: WlrLayer.Top
+  WlrLayershell.namespace: "quickshell-launcher"
+  WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+  BackgroundEffect.blurRegion: Region {
+    item: card // qmllint disable unqualified
+    radius: Theme.radiusCard
+  }
+
+  implicitHeight: card.implicitHeight
+
+  function refocus(): void {
+    win.WlrLayershell.keyboardFocus = WlrKeyboardFocus.None;
+    armTimer.restart();
+  }
+
+  function handleFocusLost(): void {
+    if (!win.visible || win.isDragging || armTimer.running) return;
+    if (Date.now() - win.openedAt < win.focusGraceMs) {
+      win.refocus();
+    } else {
+      if (win.launcher) win.launcher.close();
+    }
+  }
+
+  onPinnedIndexChanged: {
+    if (pinnedSection.visible && win.pinnedIndex >= 0) {
+      pinnedSection.ensureVisible(win.pinnedIndex);
+    }
+  }
+
+  onVisibleChanged: {
+    if (visible) {
+      win.openedAt = Date.now();
+      field.text = "";
+      pinnedSection.resetScroll();
+      if (win.launcher) {
+        win.launcher.setQuery("");
+        win.pinnedIndex = (win.launcher.dockItems && win.launcher.dockItems.length > 0) ? 0 : -1;
+      } else {
+        win.pinnedIndex = -1;
+      }
+      armTimer.restart();
+    } else {
+      armTimer.stop();
+      pinnedSection.resetScroll();
+      win.pinnedIndex = -1;
+      win.isDragging = false;
+      win.WlrLayershell.keyboardFocus = WlrKeyboardFocus.None;
+    }
+  }
+
+  // Flip to OnDemand one frame after show so KWin evaluates the transition
+  // with a buffer already attached. Reused for the re-arm path.
+  Timer {
+    id: armTimer
+    interval: 50
+    repeat: false
+    onTriggered: {
+      win.WlrLayershell.keyboardFocus = WlrKeyboardFocus.OnDemand;
+      field.forceActiveFocus();
+    }
+  }
+
+  Connections {
+    target: win.launcher
+    function onSelectedIndexChanged(): void {
+      if (win.launcher && list.count > 0) {
+        list.positionViewAtIndex(win.launcher.selectedIndex, ListView.Contain);
+      }
+    }
+    function onRowsChanged(): void {
+      if (win.launcher && list.count > 0) {
+        list.positionViewAtIndex(win.launcher.selectedIndex, ListView.Contain);
+      }
+    }
+    function onDockItemsChanged(): void {
+      if (field.text.length === 0 && win.launcher) {
+        if (!win.launcher.dockItems || win.launcher.dockItems.length === 0) {
+          win.pinnedIndex = -1;
+        } else if (win.pinnedIndex < 0 || win.pinnedIndex >= win.launcher.dockItems.length) {
+          win.pinnedIndex = 0;
+        }
+      }
+    }
+  }
+
+  /* NOTE: Keys must live on an Item, not on the PanelWindow root.
+     Attaching Keys to the window logs "Could not attach Keys property
+     ... is not an Item" and silently drops every shortcut. The real
+     handler is on the search field below. */
+
+  Rectangle {
+    id: card
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+    implicitHeight: col.implicitHeight + Theme.launcherCardPadY * 2 + 2
+
+    color: Theme.tint(Theme.surface, 0.75)
+    border.color: Theme.cardBorder
+    border.width: 1
+    radius: Theme.radiusCard
+
+    Column {
+      id: col
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      anchors.leftMargin: Theme.cardPadding
+      anchors.rightMargin: Theme.cardPadding
+      anchors.topMargin: Theme.launcherCardPadY
+      spacing: Theme.spaceSm
+
+      Item {
+        id: searchRow
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: Theme.launcherContentInset - Theme.fieldPadX
+        anchors.rightMargin: Theme.launcherContentInset - Theme.fieldPadX
+        height: 40
+
+        // Behind the field: clicks on empty padding focus it.
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.IBeamCursor
+          onClicked: field.forceActiveFocus()
+        }
+
+        TextInput {
+          id: field
+          anchors.fill: parent
+          anchors.leftMargin: Theme.fieldPadX
+          anchors.rightMargin: Theme.fieldPadX
+          verticalAlignment: TextInput.AlignVCenter
+          font.family: field.text.trim().startsWith(">") ? Theme.mono : Theme.displayFont
+          font.pixelSize: Theme.fontXl
+          color: Theme.ink1
+          selectionColor: Theme.accent
+          selectedTextColor: Theme.ink1
+          selectByMouse: true
+          maximumLength: 256
+          focus: true
+          clip: true
+          inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
+          onTextEdited: {
+            if (field.text.length > 0) {
+              win.pinnedIndex = -1;
+            } else {
+              pinnedSection.resetScroll();
+              win.pinnedIndex = (win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0) ? 0 : -1;
+            }
+            if (win.launcher) {
+              win.launcher.setQuery(field.text);
+              if (field.text.length > 0) {
+                win.launcher.selectedIndex = 0;
+              }
+            }
+          }
+          onActiveFocusChanged: {
+            if (!field.activeFocus) win.handleFocusLost();
+          }
+
+          Keys.onPressed: event => {
+            if (!win.launcher || field.inputMethodComposing) return;
+            switch (event.key) {
+            case Qt.Key_Right:
+              if (field.text.length === 0 && win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0) {
+                if (win.pinnedIndex < 0) {
+                  win.pinnedIndex = 0;
+                } else {
+                  win.pinnedIndex = (win.pinnedIndex + 1) % win.launcher.dockItems.length;
+                }
+                event.accepted = true;
+              }
+              break;
+            case Qt.Key_Left:
+              if (field.text.length === 0 && win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0) {
+                if (win.pinnedIndex < 0) {
+                  win.pinnedIndex = win.launcher.dockItems.length - 1;
+                } else {
+                  win.pinnedIndex = (win.pinnedIndex - 1 + win.launcher.dockItems.length) % win.launcher.dockItems.length;
+                }
+                event.accepted = true;
+              }
+              break;
+            case Qt.Key_Up:
+              if (win.pinnedIndex >= 0) {
+                event.accepted = true;
+              } else if (win.launcher && win.launcher.selectedIndex === 0 && field.text.length === 0 && win.launcher.dockItems && win.launcher.dockItems.length > 0) {
+                win.pinnedIndex = 0;
+                event.accepted = true;
+              } else {
+                win.launcher.moveSelection(-1);
+                event.accepted = true;
+              }
+              break;
+            case Qt.Key_Down:
+              if (win.pinnedIndex >= 0) {
+                win.pinnedIndex = -1;
+                if (win.launcher) win.launcher.selectedIndex = 0;
+                event.accepted = true;
+              } else {
+                win.launcher.moveSelection(1);
+                event.accepted = true;
+              }
+              break;
+            case Qt.Key_PageUp:
+              if (win.pinnedIndex >= 0) {
+                event.accepted = true;
+              } else {
+                win.launcher.movePage(-1);
+                event.accepted = true;
+              }
+              break;
+            case Qt.Key_PageDown:
+              if (win.pinnedIndex >= 0) {
+                event.accepted = true;
+              } else {
+                win.launcher.movePage(1);
+                event.accepted = true;
+              }
+              break;
+            case Qt.Key_Home:
+              if (win.pinnedIndex >= 0) {
+                win.pinnedIndex = 0;
+                event.accepted = true;
+              } else {
+                win.launcher.goFirst();
+                event.accepted = true;
+              }
+              break;
+            case Qt.Key_End:
+              if (win.pinnedIndex >= 0 && win.launcher && win.launcher.dockItems) {
+                win.pinnedIndex = Math.max(0, win.launcher.dockItems.length - 1);
+                event.accepted = true;
+              } else {
+                win.launcher.goLast();
+                event.accepted = true;
+              }
+              break;
+            case Qt.Key_Return:
+            case Qt.Key_Enter:
+              {
+                const isCtrl = (event.modifiers & Qt.ControlModifier) !== 0;
+                const isShift = (event.modifiers & Qt.ShiftModifier) !== 0;
+                if (win.pinnedIndex >= 0 && win.launcher && win.launcher.dockItems && win.pinnedIndex < win.launcher.dockItems.length) {
+                  win.launcher.launchPinned(win.pinnedIndex, (isCtrl && isShift) ? "terminal" : (isShift ? "shift" : "default"));
+                  event.accepted = true;
+                  break;
+                }
+                if (isCtrl && isShift) {
+                  win.launcher.activateSelected("terminal");
+                } else if (isCtrl) {
+                  win.launcher.activateSelected("reload");
+                } else if (isShift) {
+                  win.launcher.activateSelected("shift");
+                } else {
+                  win.launcher.activateSelected("default");
+                }
+                event.accepted = true;
+              }
+              break;
+            case Qt.Key_Escape:
+              win.launcher.close();
+              event.accepted = true;
+              break;
+            case Qt.Key_Tab:
+              // Reserved for the action panel.
+              event.accepted = true;
+              break;
+            case Qt.Key_C:
+              if ((event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
+                if (win.launcher && win.launcher.openWithSelected()) {
+                  win.launcher.close();
+                  event.accepted = true;
+                }
+              } else if ((event.modifiers & Qt.ControlModifier) && field.selectedText.length === 0) {
+                if (win.launcher && win.launcher.copySelectedFile()) {
+                  win.launcher.close();
+                  event.accepted = true;
+                }
+              }
+              break;
+            case Qt.Key_P:
+              if ((event.modifiers & Qt.ControlModifier) && win.launcher) {
+                const sel = (win.launcher.selectedIndex >= 0 && win.launcher.rows && win.launcher.selectedIndex < win.launcher.rows.length)
+                  ? win.launcher.rows[win.launcher.selectedIndex]
+                  : null;
+                if (win.pinnedIndex < 0 && sel && sel.kind && sel.kind.startsWith("kill_")) {
+                  win.launcher.activateSelected("pause");
+                  event.accepted = true;
+                  break;
+                }
+                if (win.pinnedIndex >= 0 && win.launcher.dockItems && win.pinnedIndex < win.launcher.dockItems.length) {
+                  const targetItem = win.launcher.dockItems[win.pinnedIndex];
+                  if (targetItem && targetItem.isPinned) {
+                    win.launcher.unpinApp(targetItem.id);
+                    if (win.launcher.dockItems.length === 0) {
+                      win.pinnedIndex = -1;
+                    } else if (win.pinnedIndex >= win.launcher.dockItems.length) {
+                      win.pinnedIndex = win.launcher.dockItems.length - 1;
+                    }
+                  }
+                } else {
+                  win.launcher.toggleSelectedPin();
+                }
+                event.accepted = true;
+              }
+              break;
+            default:
+              if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_K) {
+                // Reserved for the action panel.
+                event.accepted = true;
+              }
+              break;
+            }
+          }
+        }
+
+        Text {
+          anchors.fill: field
+          verticalAlignment: Text.AlignVCenter
+          visible: field.text.length === 0
+          text: "Search apps, k <proc>, s <setting>, f <file>, paths, or > command..."
+          font.family: Theme.displayFont
+          font.pixelSize: Theme.fontXl
+          color: Theme.ink3
+          elide: Text.ElideRight
+        }
+      }
+
+      Hairline {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: Theme.launcherContentInset
+        anchors.rightMargin: Theme.launcherContentInset
+      }
+
+      Item {
+        id: pinnedSection
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: Theme.launcherContentInset
+        anchors.rightMargin: Theme.launcherContentInset
+        height: 44
+        visible: win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0 && field.text.length === 0
+        clip: true
+
+        readonly property bool hasOverflow: pinnedFlickable.contentWidth > pinnedFlickable.width
+        readonly property bool canScrollLeft: hasOverflow && pinnedFlickable.contentX > 4
+        readonly property bool canScrollRight: hasOverflow && (pinnedFlickable.contentWidth - pinnedFlickable.width - pinnedFlickable.contentX) > 4
+
+        function scrollBy(deltaX: real): void {
+          if (pinnedFlickable.width <= 0) return;
+          const minX = 0;
+          const maxX = Math.max(0, pinnedFlickable.contentWidth - pinnedFlickable.width);
+          const current = scrollAnim.running ? scrollAnim.to : pinnedFlickable.contentX;
+          const target = Math.max(minX, Math.min(maxX, current + deltaX));
+          if (Math.abs(target - pinnedFlickable.contentX) < 0.5 && !scrollAnim.running) return;
+          scrollAnim.stop();
+          scrollAnim.from = pinnedFlickable.contentX;
+          scrollAnim.to = target;
+          scrollAnim.start();
+        }
+
+        function ensureVisible(index: int): void {
+          if (pinnedFlickable.width <= 0) return;
+          if (index < 0 || !win.launcher || !win.launcher.dockItems || index >= win.launcher.dockItems.length) return;
+          const itemWidth = 38;
+          const spacing = Theme.spaceSm;
+          const itemLeft = index * (itemWidth + spacing);
+          const itemRight = itemLeft + itemWidth;
+          const pad = 24;
+
+          const minX = 0;
+          const maxX = Math.max(0, pinnedFlickable.contentWidth - pinnedFlickable.width);
+          let target = pinnedFlickable.contentX;
+
+          if (itemLeft - pad < pinnedFlickable.contentX) {
+            target = Math.max(minX, itemLeft - pad);
+          } else if (itemRight + pad > pinnedFlickable.contentX + pinnedFlickable.width) {
+            target = Math.min(maxX, itemRight + pad - pinnedFlickable.width);
+          }
+
+          if (Math.abs(target - pinnedFlickable.contentX) > 0.5) {
+            scrollAnim.stop();
+            scrollAnim.from = pinnedFlickable.contentX;
+            scrollAnim.to = target;
+            scrollAnim.start();
+          }
+        }
+
+        function resetScroll(): void {
+          scrollAnim.stop();
+          pinnedFlickable.contentX = 0;
+        }
+
+        NumberAnimation {
+          id: scrollAnim
+          target: pinnedFlickable
+          property: "contentX"
+          duration: Theme.durationNormal
+          easing.type: Easing.OutQuad
+        }
+
+        WheelHandler {
+          id: pinnedWheel
+          target: pinnedFlickable
+          acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+          onWheel: event => {
+            const dy = event.angleDelta.y;
+            const dx = event.angleDelta.x;
+            const delta = (Math.abs(dx) > Math.abs(dy)) ? dx : dy;
+            if (delta === 0) return;
+            const step = 44;
+            const count = Math.abs(delta) >= 120 ? Math.round(Math.abs(delta) / 120) : 1;
+            const dir = delta > 0 ? -1 : 1;
+            pinnedSection.scrollBy(dir * count * step);
+          }
+        }
+
+        Flickable {
+          id: pinnedFlickable
+          anchors.fill: parent
+          contentWidth: pinnedRow.width
+          contentHeight: height
+          boundsBehavior: Flickable.StopAtBounds
+          flickableDirection: Flickable.HorizontalFlick
+          clip: true
+
+          onContentWidthChanged: {
+            returnToBounds();
+            if (contentWidth <= width) {
+              contentX = 0;
+            }
+          }
+
+          Row {
+            id: pinnedRow
+            height: 38
+            y: Math.round((pinnedFlickable.height - height) / 2)
+            spacing: Theme.spaceSm
+
+            Repeater {
+              model: win.launcher ? win.launcher.dockItems : []
+
+              Rectangle {
+                id: pinTile
+                required property var modelData
+                required property int index
+
+                width: 38
+                height: 38
+                radius: Theme.radiusBase
+                anchors.verticalCenter: parent.verticalCenter
+
+                readonly property bool isSelected: win.pinnedIndex === pinTile.index
+                readonly property bool isHovered: tileMa.containsMouse || unpinMa.containsMouse
+
+                color: pinTile.isSelected ? Theme.selected : "transparent"
+
+                Rectangle {
+                  id: hoverBg
+                  anchors.fill: parent
+                  radius: pinTile.radius
+                  color: Theme.hoverFill
+                  opacity: (!pinTile.isSelected && pinTile.isHovered) ? 1.0 : 0.0
+                  Behavior on opacity { OpacityAnimator { duration: Theme.durationFast } }
+                }
+
+                MouseArea {
+                  id: tileMa
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  acceptedButtons: Qt.LeftButton | Qt.RightButton
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: mouse => {
+                    if (!win.launcher) return;
+                    if (mouse.button === Qt.RightButton && pinTile.modelData.isPinned) {
+                      win.launcher.unpinApp(pinTile.modelData.id);
+                      if (win.launcher.dockItems.length === 0) {
+                        win.pinnedIndex = -1;
+                      } else if (win.pinnedIndex >= win.launcher.dockItems.length) {
+                        win.pinnedIndex = win.launcher.dockItems.length - 1;
+                      }
+                      field.forceActiveFocus();
+                      return;
+                    }
+                    win.launcher.launchPinned(pinTile.index, mouse.modifiers & Qt.ShiftModifier ? "shift" : "default");
+                  }
+                }
+
+                IconImage {
+                  id: pinIcon
+                  property real yOffset: pinTile.modelData.isRunning ? -2 : 0
+                  Behavior on yOffset { NumberAnimation { duration: Theme.durationFast } }
+
+                  anchors.centerIn: parent
+                  anchors.verticalCenterOffset: pinIcon.yOffset
+                  implicitSize: 24
+                  asynchronous: true
+                  source: pinTile.modelData.iconSrc || ""
+                  opacity: pinTile.modelData.isMinimized ? 0.75 : 1.0
+                }
+
+                Text {
+                  anchors.centerIn: parent
+                  anchors.verticalCenterOffset: pinIcon.yOffset
+                  visible: pinIcon.status === Image.Error || !pinTile.modelData.iconSrc
+                  text: (pinTile.modelData.name || "?").charAt(0).toUpperCase()
+                  color: Theme.ink1
+                  font.family: Theme.roundedFont
+                  font.pixelSize: Theme.fontSm
+                  font.bold: true
+                }
+
+                Rectangle {
+                  anchors.bottom: parent.bottom
+                  anchors.bottomMargin: 3
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  width: pinTile.modelData.isActive ? 14 : 4
+                  height: pinTile.modelData.isActive ? 3 : 4
+                  radius: pinTile.modelData.isActive ? 1.5 : 2
+                  color: pinTile.modelData.isActive ? Theme.accent : Theme.ink2
+                  visible: !!pinTile.modelData.isRunning
+
+                  Behavior on width { NumberAnimation { duration: Theme.durationFast } }
+                  Behavior on height { NumberAnimation { duration: Theme.durationFast } }
+                  Behavior on radius { NumberAnimation { duration: Theme.durationFast } }
+                  Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+                }
+
+                Rectangle {
+                  id: unpinBadge
+                  z: 10
+                  width: 14
+                  height: 14
+                  radius: 7
+                  anchors.top: parent.top
+                  anchors.topMargin: 1
+                  anchors.right: parent.right
+                  anchors.rightMargin: 1
+                  color: unpinMa.containsMouse ? Theme.red : Theme.surfaceElevated
+                  border.color: Theme.line
+                  border.width: 1
+                  visible: pinTile.modelData.isPinned && pinTile.isHovered
+
+                  Text {
+                    anchors.centerIn: parent
+                    text: "×"
+                    font.family: Theme.displayFont
+                    font.pixelSize: 10
+                    font.bold: true
+                    color: unpinMa.containsMouse ? Theme.ink1 : Theme.ink2
+                  }
+
+                  MouseArea {
+                    id: unpinMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    preventStealing: true
+                    onClicked: mouse => {
+                      mouse.accepted = true;
+                      if (win.launcher && pinTile.modelData.isPinned) {
+                        win.launcher.unpinApp(pinTile.modelData.id);
+                        if (win.launcher.dockItems.length === 0) {
+                          win.pinnedIndex = -1;
+                        } else if (win.pinnedIndex >= win.launcher.dockItems.length) {
+                          win.pinnedIndex = win.launcher.dockItems.length - 1;
+                        }
+                      }
+                      field.forceActiveFocus();
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        Rectangle {
+          id: leftFade
+          z: 20
+          anchors.left: parent.left
+          anchors.top: parent.top
+          anchors.bottom: parent.bottom
+          width: 36
+          visible: opacity > 0
+          opacity: pinnedSection.canScrollLeft ? 1.0 : 0.0
+          Behavior on opacity { OpacityAnimator { duration: Theme.durationFast } }
+          gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0; color: Theme.tint(Theme.surface, 0.95) }
+            GradientStop { position: 1.0; color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.0) }
+          }
+        }
+
+        Rectangle {
+          id: rightFade
+          z: 20
+          anchors.right: parent.right
+          anchors.top: parent.top
+          anchors.bottom: parent.bottom
+          width: 36
+          visible: opacity > 0
+          opacity: pinnedSection.canScrollRight ? 1.0 : 0.0
+          Behavior on opacity { OpacityAnimator { duration: Theme.durationFast } }
+          gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0; color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.0) }
+            GradientStop { position: 1.0; color: Theme.tint(Theme.surface, 0.95) }
+          }
+        }
+
+        Rectangle {
+          id: leftNavBtn
+          z: 30
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          width: 20
+          height: 28
+          radius: Theme.radiusSm
+          color: leftNavMa.containsMouse ? Theme.hoverFill : Theme.surfaceElevated
+          border.color: Theme.line
+          border.width: 1
+          visible: opacity > 0
+          opacity: pinnedSection.canScrollLeft ? (leftNavMa.containsMouse ? 1.0 : 0.8) : 0.0
+          Behavior on opacity { OpacityAnimator { duration: Theme.durationFast } }
+          Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+
+          Text {
+            anchors.centerIn: parent
+            text: "‹"
+            font.family: Theme.displayFont
+            font.pixelSize: Theme.fontBase
+            font.bold: true
+            color: leftNavMa.containsMouse ? Theme.ink1 : Theme.ink2
+          }
+
+          MouseArea {
+            id: leftNavMa
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            preventStealing: true
+            onClicked: mouse => {
+              mouse.accepted = true;
+              pinnedSection.scrollBy(-132);
+              field.forceActiveFocus();
+            }
+          }
+        }
+
+        Rectangle {
+          id: rightNavBtn
+          z: 30
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          width: 20
+          height: 28
+          radius: Theme.radiusSm
+          color: rightNavMa.containsMouse ? Theme.hoverFill : Theme.surfaceElevated
+          border.color: Theme.line
+          border.width: 1
+          visible: opacity > 0
+          opacity: pinnedSection.canScrollRight ? (rightNavMa.containsMouse ? 1.0 : 0.8) : 0.0
+          Behavior on opacity { OpacityAnimator { duration: Theme.durationFast } }
+          Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+
+          Text {
+            anchors.centerIn: parent
+            text: "›"
+            font.family: Theme.displayFont
+            font.pixelSize: Theme.fontBase
+            font.bold: true
+            color: rightNavMa.containsMouse ? Theme.ink1 : Theme.ink2
+          }
+
+          MouseArea {
+            id: rightNavMa
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            preventStealing: true
+            onClicked: mouse => {
+              mouse.accepted = true;
+              pinnedSection.scrollBy(132);
+              field.forceActiveFocus();
+            }
+          }
+        }
+      }
+
+      Hairline {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: Theme.launcherContentInset
+        anchors.rightMargin: Theme.launcherContentInset
+        visible: pinnedSection.visible
+      }
+
+      ListView {
+        id: list
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: Math.min(count, Theme.launcherMaxVisible) * Theme.launcherRowHeight
+        visible: count > 0
+        clip: true
+        reuseItems: true
+        boundsBehavior: Flickable.StopAtBounds
+
+        model: ScriptModel {
+          values: win.launcher ? win.launcher.rows : []
+          objectProp: "id"
+          comparisonMode: ObjectComparison.Identity
+        }
+
+        /* The highlight derives directly from the service's selectedIndex,
+           never from ListView.currentIndex, so it cannot desync from the
+           actual selection when the model is replaced each keystroke. */
+        delegate: LauncherRow {
+          isCurrent: win.launcher ? (win.pinnedIndex < 0 && index === win.launcher.selectedIndex) : false
+          launcher: win.launcher
+          onDragStarted: win.isDragging = true
+          onDragFinished: win.isDragging = false
+        }
+      }
+
+
+      Text {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: Theme.launcherContentInset
+        anchors.rightMargin: Theme.launcherContentInset
+        visible: list.count === 0
+        horizontalAlignment: Text.AlignHCenter
+        topPadding: Theme.spaceLg
+        bottomPadding: Theme.spaceLg
+        text: {
+          if (!win.launcher) return "No matching applications or paths";
+          const q = win.launcher.query.trim();
+          if (q.startsWith(">")) return "Type a shell command to execute...";
+          if (win.launcher.isKillActive) return "No matching processes, apps, or services";
+          if (win.launcher.isFileSearchActive) {
+            return win.launcher.isFileSearching ? "Searching files..." : "No matching files or folders";
+          }
+          return "No matching applications or paths";
+        }
+        font.family: Theme.textFont
+        font.pixelSize: Theme.fontBase
+        color: Theme.ink3
+      }
+
+      Hairline {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: Theme.launcherContentInset
+        anchors.rightMargin: Theme.launcherContentInset
+      }
+
+      Row {
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: Theme.spaceLg
+
+        Repeater {
+          model: win.shortcuts
+
+          Row {
+            id: shortcutItem
+            required property var modelData
+
+            spacing: Theme.spaceXs
+            anchors.verticalCenter: parent.verticalCenter
+
+            KeyBadge {
+              text: shortcutItem.modelData.key
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+              text: shortcutItem.modelData.label
+              anchors.verticalCenter: parent.verticalCenter
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontSm
+              color: Theme.ink3
+            }
+          }
+        }
+      }
+    }
+  }
+}
