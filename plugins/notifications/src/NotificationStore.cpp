@@ -2,7 +2,9 @@
 
 #include "NotificationModel.hpp"
 
+#include <QClipboard>
 #include <QDateTime>
+#include <QGuiApplication>
 #include <limits>
 
 namespace qs::plugins::notifications {
@@ -71,8 +73,38 @@ void NotificationStore::setDnd(bool dnd) {
         }
         m_toasts = std::move(keep);
         syncModels();
+    } else {
+        m_dndUntil = QDateTime();
+        emit dndUntilChanged();
+        if (m_silencedCount > 0) {
+            const int count = m_silencedCount;
+            m_silencedCount = 0;
+            emit silencedCountChanged();
+            emit inhibitionSummaryRequested(count);
+        }
     }
     emit dndChanged();
+}
+
+void NotificationStore::setDndTimed(int minutes) {
+    if (minutes <= 0) {
+        m_dndUntil = QDateTime();
+        emit dndUntilChanged();
+        setDnd(true);
+        return;
+    }
+    m_dndUntil = QDateTime::currentDateTime().addSecs(static_cast<qint64>(minutes) * 60);
+    emit dndUntilChanged();
+    setDnd(true);
+    if (!m_sweepTimer->isActive()) {
+        m_sweepTimer->start();
+    }
+}
+
+void NotificationStore::cancelDnd() {
+    m_dndUntil = QDateTime();
+    emit dndUntilChanged();
+    setDnd(false);
 }
 
 void NotificationStore::setMaxNotifications(int max) {
@@ -123,6 +155,12 @@ NotificationEntry NotificationStore::entryFromMap(const QVariantMap &snap, int i
     e.notifIcon = snap.value(QStringLiteral("notifIcon")).toString();
     e.originName = snap.value(QStringLiteral("originName")).toString();
     e.hasDefaultAction = snap.value(QStringLiteral("hasDefaultAction"), false).toBool();
+    e.urls = snap.value(QStringLiteral("urls")).toStringList();
+    e.skipGrouping = snap.value(QStringLiteral("skipGrouping"), false).toBool();
+    e.userActionFeedback = snap.value(QStringLiteral("userActionFeedback"), false).toBool();
+    e.hasConfigureAction = snap.value(QStringLiteral("hasConfigureAction"), false).toBool();
+    e.configureLabel = snap.value(QStringLiteral("configureLabel")).toString();
+    e.replySubmitButtonText = snap.value(QStringLiteral("replySubmitButtonText")).toString();
     return e;
 }
 
@@ -152,6 +190,14 @@ QVariantMap NotificationStore::entryToMap(const NotificationEntry &e) {
         {QStringLiteral("soundName"), e.soundName},
         {QStringLiteral("soundFile"), e.soundFile},
         {QStringLiteral("suppressSound"), e.suppressSound},
+        {QStringLiteral("urls"), e.urls},
+        {QStringLiteral("skipGrouping"), e.skipGrouping},
+        {QStringLiteral("userActionFeedback"), e.userActionFeedback},
+        {QStringLiteral("resident"), e.resident},
+        {QStringLiteral("transient"), e.transient},
+        {QStringLiteral("hasConfigureAction"), e.hasConfigureAction},
+        {QStringLiteral("configureLabel"), e.configureLabel},
+        {QStringLiteral("replySubmitButtonText"), e.replySubmitButtonText},
         {QStringLiteral("isBridge"), false},
     };
 }
@@ -161,6 +207,9 @@ void NotificationStore::ingestSnapshot(const QVariantMap &snap, int id, const QV
     const int u = base.urgency;
 
     qint64 timeoutMs = timeoutForCategory(base.category, u);
+    if (u == 2) {
+        timeoutMs = kPersistTimeout; // FreeDesktop/KDE rule: critical notifications never auto-expire
+    }
     bool hasExpire = false;
     double expSec = 0.0;
     if (expireTimeoutSec.isValid() && !expireTimeoutSec.isNull()) {
@@ -171,9 +220,12 @@ void NotificationStore::ingestSnapshot(const QVariantMap &snap, int id, const QV
     if (hasExpire) {
         if (qFuzzyIsNull(expSec)) {
             timeoutMs = kPersistTimeout;
-        } else if (expSec > 0) {
+        } else if (expSec > 0 && u != 2) {
             timeoutMs = static_cast<qint64>(expSec * 1000.0);
         }
+    }
+    if (base.userActionFeedback) {
+        base.read = true;
     }
 
     const QDateTime now = QDateTime::currentDateTime();
@@ -248,7 +300,7 @@ void NotificationStore::ingestSnapshot(const QVariantMap &snap, int id, const QV
 
     NotificationEntry w = base;
     w.receivedAt = now;
-    w.read = carried;
+    w.read = carried || base.userActionFeedback;
     w.timeoutMs = timeoutMs;
     w.expiresAt = expiresAt;
 
@@ -258,6 +310,9 @@ void NotificationStore::ingestSnapshot(const QVariantMap &snap, int id, const QV
             while (m_toasts.size() > kMaxToasts) {
                 m_toasts.removeFirst();
             }
+        } else if (!carried) {
+            m_silencedCount++;
+            emit silencedCountChanged();
         }
         syncModels();
         return;
@@ -271,9 +326,14 @@ void NotificationStore::ingestSnapshot(const QVariantMap &snap, int id, const QV
             while (m_toasts.size() > kMaxToasts) {
                 m_toasts.removeFirst();
             }
+        } else {
+            m_silencedCount++;
+            emit silencedCountChanged();
         }
-        m_unread++;
-        emit unreadCountChanged();
+        if (!w.read) {
+            m_unread++;
+            emit unreadCountChanged();
+        }
     }
     syncModels();
     emit totalCountChanged();
@@ -542,6 +602,9 @@ bool NotificationStore::sendInlineReply(int id, const QString &text) {
 }
 
 void NotificationStore::onSweepTick() {
+    if (m_dnd && m_dndUntil.isValid() && QDateTime::currentDateTime() >= m_dndUntil) {
+        cancelDnd();
+    }
     if (m_toasts.isEmpty()) {
         return;
     }
@@ -599,9 +662,10 @@ void NotificationStore::syncModels() {
     const bool anyTimed = std::any_of(m_toasts.cbegin(), m_toasts.cend(), [](const NotificationEntry &t) {
         return t.expiresAt != kPersistTimeout;
     });
-    if (anyTimed && !m_sweepTimer->isActive()) {
+    const bool needSweep = anyTimed || (m_dnd && m_dndUntil.isValid());
+    if (needSweep && !m_sweepTimer->isActive()) {
         m_sweepTimer->start();
-    } else if (!anyTimed && m_sweepTimer->isActive()) {
+    } else if (!needSweep && m_sweepTimer->isActive()) {
         m_sweepTimer->stop();
     }
 
@@ -619,14 +683,20 @@ void NotificationStore::rebuildGrouped() {
     QVariantMap byKey;
     for (const auto &h : m_history) {
         const QVariantMap m = entryToMap(h);
-        QString key = m.value(QStringLiteral("appName")).toString().trimmed();
-        if (key.isEmpty()) {
-            key = QStringLiteral("Application");
+        QString displayApp = m.value(QStringLiteral("appName")).toString().trimmed();
+        if (displayApp.isEmpty()) {
+            displayApp = QStringLiteral("Application");
+        }
+        QString key;
+        if (h.skipGrouping) {
+            key = QStringLiteral("__skip_group_%1").arg(h.id);
+        } else {
+            key = displayApp;
         }
         if (!byKey.contains(key)) {
             order.append(key);
             byKey[key] = QVariantMap{
-                {QStringLiteral("appName"), key},
+                {QStringLiteral("appName"), displayApp},
                 {QStringLiteral("appIcon"), m.value(QStringLiteral("appIcon"))},
                 {QStringLiteral("desktopEntry"), m.value(QStringLiteral("desktopEntry"))},
                 {QStringLiteral("notifications"), QVariantList{}},
@@ -802,6 +872,12 @@ int NotificationStore::findToast(int id) const {
         }
     }
     return -1;
+}
+
+void NotificationStore::copyToClipboard(const QString &text) {
+    if (auto *cb = QGuiApplication::clipboard()) {
+        cb->setText(text);
+    }
 }
 
 QString NotificationStore::appNameOf(const NotificationEntry &e) {

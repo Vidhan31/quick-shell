@@ -36,6 +36,8 @@ class NotificationStore : public QObject {
     Q_PROPERTY(int unreadCount READ unreadCount NOTIFY unreadCountChanged)
     Q_PROPERTY(int totalCount READ totalCount NOTIFY totalCountChanged)
     Q_PROPERTY(bool dnd READ dnd WRITE setDnd NOTIFY dndChanged)
+    Q_PROPERTY(QDateTime dndUntil READ dndUntil NOTIFY dndUntilChanged)
+    Q_PROPERTY(int silencedDuringDndCount READ silencedDuringDndCount NOTIFY silencedCountChanged)
     // Incremented on every 60s time tick. QML timestamp labels read this so they
     // re-evaluate without waiting for a groupedList rebuild.
     Q_PROPERTY(int timeTick READ timeTick NOTIFY timeTickChanged)
@@ -60,6 +62,8 @@ public:
     [[nodiscard]] int totalCount() const { return m_history.size(); }
     [[nodiscard]] bool dnd() const { return m_dnd; }
     void setDnd(bool dnd);
+    [[nodiscard]] QDateTime dndUntil() const { return m_dndUntil; }
+    [[nodiscard]] int silencedDuringDndCount() const { return m_silencedCount; }
     [[nodiscard]] int timeTick() const { return m_timeTick; }
     [[nodiscard]] int maxNotifications() const { return m_max; }
     void setMaxNotifications(int max);
@@ -87,6 +91,9 @@ public:
     Q_INVOKABLE void clearAll();
     Q_INVOKABLE void markAllRead();
     Q_INVOKABLE void toggleDnd();
+    Q_INVOKABLE void setDndTimed(int minutes);
+    Q_INVOKABLE void cancelDnd();
+    Q_INVOKABLE void copyToClipboard(const QString &text);
     Q_INVOKABLE void toggleGroupExpanded(const QString &appName);
     Q_INVOKABLE bool isGroupExpanded(const QString &appName) const;
     // State mutation + request emission; QML executes the live D-Bus call.
@@ -101,9 +108,12 @@ signals:
     void unreadCountChanged();
     void totalCountChanged();
     void dndChanged();
+    void dndUntilChanged();
+    void silencedCountChanged();
     void timeTickChanged();
     void maxNotificationsChanged();
     void expandedGroupsChanged();
+    void inhibitionSummaryRequested(int count);
 
     // Outbound D-Bus requests for the QML adapter (owns live objects).
     void dismissRequested(int id);
@@ -146,6 +156,8 @@ private:
     int m_unread{0};
     int m_timeTick{0};
     bool m_dnd{false};
+    QDateTime m_dndUntil;
+    int m_silencedCount{0};
     int m_max{100};
     QTimer *m_sweepTimer{nullptr};
     QTimer *m_timeTimer{nullptr};

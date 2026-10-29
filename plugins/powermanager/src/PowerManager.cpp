@@ -12,33 +12,59 @@ PowerManager::PowerManager(QObject *parent)
 }
 
 void PowerManager::requestShutdown() {
-    QDBusMessage msg = QDBusMessage::createMethodCall(
+    QDBusMessage login1Msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.login1"),
+        QStringLiteral("/org/freedesktop/login1"),
+        QStringLiteral("org.freedesktop.login1.Manager"),
+        QStringLiteral("PowerOff")
+    );
+    login1Msg << true;
+    QDBusConnection::systemBus().asyncCall(login1Msg);
+
+    QDBusMessage kdeMsg = QDBusMessage::createMethodCall(
         QStringLiteral("org.kde.Shutdown"),
         QStringLiteral("/Shutdown"),
         QStringLiteral("org.kde.Shutdown"),
         QStringLiteral("logoutAndShutdown")
     );
-    QDBusConnection::sessionBus().asyncCall(msg);
+    QDBusConnection::sessionBus().asyncCall(kdeMsg);
 }
 
 void PowerManager::requestReboot() {
-    QDBusMessage msg = QDBusMessage::createMethodCall(
+    QDBusMessage login1Msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.login1"),
+        QStringLiteral("/org/freedesktop/login1"),
+        QStringLiteral("org.freedesktop.login1.Manager"),
+        QStringLiteral("Reboot")
+    );
+    login1Msg << true;
+    QDBusConnection::systemBus().asyncCall(login1Msg);
+
+    QDBusMessage kdeMsg = QDBusMessage::createMethodCall(
         QStringLiteral("org.kde.Shutdown"),
         QStringLiteral("/Shutdown"),
         QStringLiteral("org.kde.Shutdown"),
         QStringLiteral("logoutAndReboot")
     );
-    QDBusConnection::sessionBus().asyncCall(msg);
+    QDBusConnection::sessionBus().asyncCall(kdeMsg);
 }
 
 void PowerManager::requestLogout() {
-    QDBusMessage msg = QDBusMessage::createMethodCall(
+    QDBusMessage kdeMsg = QDBusMessage::createMethodCall(
         QStringLiteral("org.kde.Shutdown"),
         QStringLiteral("/Shutdown"),
         QStringLiteral("org.kde.Shutdown"),
         QStringLiteral("logout")
     );
-    QDBusConnection::sessionBus().asyncCall(msg);
+    QDBusConnection::sessionBus().asyncCall(kdeMsg);
+
+    QDBusMessage ksmMsg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.kde.ksmserver"),
+        QStringLiteral("/KSMServer"),
+        QStringLiteral("org.kde.KSMServerInterface"),
+        QStringLiteral("closeSession")
+    );
+    QDBusConnection::sessionBus().asyncCall(ksmMsg);
 }
 
 void PowerManager::requestSuspend() {
@@ -60,6 +86,22 @@ void PowerManager::requestLock() {
         QStringLiteral("Lock")
     );
     QDBusConnection::sessionBus().asyncCall(msg);
+
+    QDBusMessage msgPath = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.ScreenSaver"),
+        QStringLiteral("/org/freedesktop/ScreenSaver"),
+        QStringLiteral("org.freedesktop.ScreenSaver"),
+        QStringLiteral("Lock")
+    );
+    QDBusConnection::sessionBus().asyncCall(msgPath);
+
+    QDBusMessage login1Msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.login1"),
+        QStringLiteral("/org/freedesktop/login1"),
+        QStringLiteral("org.freedesktop.login1.Manager"),
+        QStringLiteral("LockSessions")
+    );
+    QDBusConnection::systemBus().asyncCall(login1Msg);
 }
 
 } // namespace qs::plugins

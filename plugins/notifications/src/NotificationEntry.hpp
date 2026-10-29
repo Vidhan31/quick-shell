@@ -35,6 +35,12 @@ struct NotificationEntry {
     QString soundName;
     QString soundFile;
     bool suppressSound{false};
+    QStringList urls;
+    bool skipGrouping{false};
+    bool userActionFeedback{false};
+    bool hasConfigureAction{false};
+    QString configureLabel;
+    QString replySubmitButtonText;
 
     QDateTime receivedAt;
     bool read{false};

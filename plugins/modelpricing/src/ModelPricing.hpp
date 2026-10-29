@@ -15,6 +15,7 @@ class QNetworkAccessManager;
 class QNetworkReply;
 class QRestAccessManager;
 class QRestReply;
+class QTimer;
 
 namespace qs::plugins {
 
@@ -192,6 +193,7 @@ private:
     QThread m_thread;
     PricingWorker *m_worker{nullptr};
     ::QNetworkAccessManager *m_logoNam{nullptr};
+    QTimer *m_autoRefreshTimer{nullptr};
 
     QUrl m_configSource;
     PricingSettings m_settings;

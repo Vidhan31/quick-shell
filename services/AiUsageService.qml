@@ -98,15 +98,11 @@ Item {
   }
 
   Component.onCompleted: {
-    if (pricingMonitor && !pricingMonitor.ready && !pricingMonitor.busy) {
-      pricingMonitor.refresh();
-    }
   }
 
   function refreshAll(): void {
     ocMonitor.refresh();
     agyMonitor.refresh();
-    pricingMonitor.refresh();
   }
 
   function ocText(): string {

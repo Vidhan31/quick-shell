@@ -45,6 +45,30 @@ PanelWindow {
     return iconResolver.resolveNamedOrPath(identifier);
   }
 
+  function cleanFilePath(urlStr) {
+    if (!urlStr) return "";
+    if (urlStr.startsWith("file://")) return decodeURIComponent(urlStr.slice(7));
+    return urlStr;
+  }
+
+  function fileNameOf(pathStr) {
+    const p = root.cleanFilePath(pathStr);
+    const idx = p.lastIndexOf("/");
+    return idx !== -1 ? p.slice(idx + 1) : p;
+  }
+
+  function fileDirOf(pathStr) {
+    const p = root.cleanFilePath(pathStr);
+    const idx = p.lastIndexOf("/");
+    return idx !== -1 ? p.slice(0, idx) : p;
+  }
+
+  function isImageUrl(urlStr) {
+    if (!urlStr) return false;
+    const lower = urlStr.toLowerCase();
+    return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp") || lower.endsWith(".gif") || lower.endsWith(".svg");
+  }
+
   readonly property var activeList: service ? (service.activeToasts || []) : []
   readonly property var activeJobsList: jobService ? (jobService.activeJobs || []) : []
 
@@ -312,8 +336,8 @@ PanelWindow {
         readonly property bool isCritical: toastItem.urgencyVal === 2
         readonly property bool isLow: toastItem.urgencyVal === 0
         // Service-provided timeout (category + expireTimeout aware, 0 = persist).
-        readonly property int timeoutMs: toast && toast.timeout > 0 ? toast.timeout : (isCritical ? 10000 : (isLow ? 3500 : 5000))
-        readonly property bool persistToast: toast ? toast.timeout === 0 : false
+        readonly property int timeoutMs: isCritical ? 10000 : (toast && toast.timeout > 0 ? toast.timeout : (isLow ? 3500 : 5000))
+        readonly property bool persistToast: isCritical || (toast ? toast.timeout === 0 : false)
         readonly property string timeStr: {
           void root.service.timeTick;
           return (root.service && toast) ? root.service.timeAgo(toast.timestamp) : "Just now";
@@ -322,6 +346,8 @@ PanelWindow {
         readonly property string replyPlaceholder: toast ? (toast.inlineReplyPlaceholder || "Reply…") : "Reply…"
         readonly property bool hasActionIcons: toast ? toast.hasActionIcons === true : false
         readonly property string desktopEntry: toast ? (toast.desktopEntry || "") : ""
+        readonly property var urlsList: toast ? (toast.urls || []) : []
+        readonly property string primaryUrl: toastItem.urlsList.length > 0 ? String(toastItem.urlsList[0]) : ""
 
         readonly property string resolvedAppIcon: root.resolveAppIcon(desktopEntry, appName, appIcon)
         readonly property string resolvedEventIcon: root.resolveEventIcon(notifIcon)
@@ -392,6 +418,16 @@ PanelWindow {
 
         // Hover holds the toast; leaving restarts the countdown.
         // Typing a reply also holds it.
+        property real progress: 1.0
+
+        NumberAnimation on progress {
+          from: 1.0
+          to: 0.0
+          duration: Math.max(500, toastItem.timeoutMs)
+          running: !toastItem.persistToast && !toastItem.replyActive && !toastItem.exiting && !toastItem.isHovered
+          paused: toastItem.isHovered || toastItem.replyActive
+        }
+
         Timer {
           id: dismissTimer
           interval: toastItem.timeoutMs
@@ -427,6 +463,40 @@ PanelWindow {
 
           Behavior on x { XAnimator { duration: 190; easing.type: Easing.InOutCubic } }
           Behavior on opacity { OpacityAnimator { duration: 180; easing.type: Easing.OutCubic } }
+
+          Rectangle {
+            id: countdownBar
+            visible: !toastItem.persistToast
+            z: 3
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            height: 2
+            width: parent.width * Math.max(0, Math.min(1.0, toastItem.progress))
+            color: toastItem.isCritical ? root.t.red : root.t.accent
+            opacity: 0.7
+          }
+
+          DropArea {
+            anchors.fill: parent
+            onEntered: {
+              if (toastItem.hasDefaultAction) {
+                dropActivationTimer.restart();
+              }
+            }
+            onExited: dropActivationTimer.stop()
+          }
+
+          Timer {
+            id: dropActivationTimer
+            interval: 350
+            repeat: false
+            onTriggered: {
+              if (toastItem.hasDefaultAction && root.service) {
+                const t = toastItem.toast;
+                toastItem.requestExit(() => root.service.invokeDefaultAction(t));
+              }
+            }
+          }
 
           MouseArea {
             id: toastHoverArea
@@ -502,7 +572,7 @@ PanelWindow {
                 spacing: 0
                 Text {
                   width: parent.width
-                  text: toastItem.originName.length > 0 ? (toastItem.appName + " · " + toastItem.originName) : toastItem.appName
+                  text: (toastItem.originName.length > 0 && toastItem.originName.toLowerCase() !== toastItem.appName.toLowerCase()) ? (toastItem.appName + " · " + toastItem.originName) : toastItem.appName
                   font.family: Theme.displayFont
                   font.pixelSize: Theme.fontMd
                   font.weight: Font.DemiBold
@@ -515,6 +585,19 @@ PanelWindow {
                   font.pixelSize: Theme.fontXs
                   color: toastItem.isCritical ? root.t.red : root.t.ink3
                   elide: Text.ElideRight
+                }
+              }
+
+              IconButton {
+                glyph: "󰒓"
+                fs: 13
+                btnSize: 26
+                visible: toastItem.toast ? toastItem.toast.hasConfigureAction === true : false
+                tooltip: (toastItem.toast && toastItem.toast.configureLabel) || "Configure"
+                onClicked: {
+                  if (root.service && toastItem.toast) {
+                    root.service.invokeAction(toastItem.toast, "settings");
+                  }
                 }
               }
 
@@ -580,37 +663,198 @@ PanelWindow {
                       elide: Text.ElideRight
                     }
 
-                    Text {
+                    TextEdit {
                       visible: toastItem.bodyText.length > 0
                       width: parent.width
                       text: toastItem.bodyText
-                      textFormat: Text.RichText
+                      textFormat: TextEdit.RichText
                       font.family: Theme.textFont
                       font.pixelSize: Theme.fontBase
                       color: root.t.ink2
-                      linkColor: root.t.accent
-                      wrapMode: Text.WordWrap
-                      maximumLineCount: 3
-                      elide: Text.ElideRight
+                      selectionColor: root.t.accentBg
+                      selectedTextColor: root.t.ink1
+                      readOnly: true
+                      selectByMouse: true
+                      activeFocusOnPress: false
+                      cursorVisible: false
+                      wrapMode: TextEdit.Wrap
                       onLinkActivated: link => Qt.openUrlExternally(link)
                     }
                   }
                 }
 
                 ClippingRectangle {
-                  visible: toastItem.imageSrc.length > 0
+                  visible: toastItem.imageSrc.length > 0 && toastImg.status === Image.Ready && (toastItem.urlsList.length === 0 || !root.isImageUrl(toastItem.primaryUrl))
                   width: parent.width
-                  height: Math.min(80, width * 0.45)
+                  height: Math.min(100, Math.max(48, toastImg.implicitHeight > 0 ? toastImg.implicitHeight : 80))
                   radius: Theme.radiusBase
                   color: root.t.inset
 
                   Image {
-                    anchors.fill: parent
+                    id: toastImg
+                    anchors.centerIn: parent
+                    width: parent.width - 8
+                    height: parent.height - 8
                     source: toastItem.imageSrc
-                    sourceSize.width: 320
-                    sourceSize.height: 160
-                    fillMode: Image.PreserveAspectCrop
+                    fillMode: Image.PreserveAspectFit
                     asynchronous: true
+                  }
+                }
+
+                Rectangle {
+                  visible: toastItem.urlsList.length > 0
+                  width: parent.width
+                  implicitHeight: fileRowCol.implicitHeight + 12
+                  radius: Theme.radiusBase
+                  color: root.t.inset
+                  border.color: root.t.cardBorder
+                  border.width: 1
+
+                  Column {
+                    id: fileRowCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 6
+                    spacing: 6
+
+                    RowLayout {
+                      width: parent.width
+                      spacing: 8
+
+                      Rectangle {
+                        Layout.preferredWidth: 32
+                        Layout.preferredHeight: 32
+                        radius: Theme.radiusBase
+                        color: root.t.surface
+                        clip: true
+
+                        Image {
+                          id: toastFileThumb
+                          visible: root.isImageUrl(toastItem.primaryUrl) && toastFileThumb.status === Image.Ready
+                          anchors.centerIn: parent
+                          width: parent.width - 4
+                          height: parent.height - 4
+                          source: toastItem.primaryUrl
+                          fillMode: Image.PreserveAspectFit
+                          asynchronous: true
+                        }
+
+                        Text {
+                          visible: !root.isImageUrl(toastItem.primaryUrl) || toastFileThumb.status !== Image.Ready
+                          anchors.centerIn: parent
+                          text: "󰈔"
+                          font.family: root.monoFont
+                          font.pixelSize: Theme.iconMd
+                          color: root.t.accent
+                        }
+                      }
+
+                      Column {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                          width: parent.width
+                          text: root.fileNameOf(toastItem.primaryUrl)
+                          font.family: Theme.textFont
+                          font.pixelSize: Theme.fontSm
+                          font.weight: Font.Medium
+                          color: root.t.ink1
+                          elide: Text.ElideMiddle
+                        }
+                        Text {
+                          width: parent.width
+                          text: root.fileDirOf(toastItem.primaryUrl)
+                          font.family: Theme.textFont
+                          font.pixelSize: Theme.fontXs
+                          color: root.t.ink3
+                          elide: Text.ElideMiddle
+                        }
+                      }
+                    }
+
+                    Row {
+                      spacing: 6
+                      Rectangle {
+                        implicitWidth: toastOpenTxt.implicitWidth + 14
+                        implicitHeight: 22
+                        radius: Theme.radiusChip
+                        color: toastOpenMouse.containsMouse ? root.t.accentBg : root.t.surface
+                        border.color: toastOpenMouse.containsMouse ? root.t.accent : root.t.cardBorder
+                        border.width: 1
+                        Text {
+                          id: toastOpenTxt
+                          anchors.centerIn: parent
+                          text: "Open"
+                          font.family: Theme.textFont
+                          font.pixelSize: Theme.fontXs
+                          font.weight: Font.Medium
+                          color: toastOpenMouse.containsMouse ? root.t.accent : root.t.ink1
+                        }
+                        MouseArea {
+                          id: toastOpenMouse
+                          anchors.fill: parent
+                          hoverEnabled: true
+                          cursorShape: Qt.PointingHandCursor
+                          onClicked: Qt.openUrlExternally(toastItem.primaryUrl)
+                        }
+                      }
+                      Rectangle {
+                        implicitWidth: toastFolderTxt.implicitWidth + 14
+                        implicitHeight: 22
+                        radius: Theme.radiusChip
+                        color: toastFolderMouse.containsMouse ? root.t.accentBg : root.t.surface
+                        border.color: toastFolderMouse.containsMouse ? root.t.accent : root.t.cardBorder
+                        border.width: 1
+                        Text {
+                          id: toastFolderTxt
+                          anchors.centerIn: parent
+                          text: "Folder"
+                          font.family: Theme.textFont
+                          font.pixelSize: Theme.fontXs
+                          font.weight: Font.Medium
+                          color: toastFolderMouse.containsMouse ? root.t.accent : root.t.ink1
+                        }
+                        MouseArea {
+                          id: toastFolderMouse
+                          anchors.fill: parent
+                          hoverEnabled: true
+                          cursorShape: Qt.PointingHandCursor
+                          onClicked: {
+                            const dir = root.fileDirOf(toastItem.primaryUrl);
+                            if (dir.length > 0) Qt.openUrlExternally("file://" + dir);
+                          }
+                        }
+                      }
+                      Rectangle {
+                        implicitWidth: toastCopyTxt.implicitWidth + 14
+                        implicitHeight: 22
+                        radius: Theme.radiusChip
+                        color: toastCopyMouse.containsMouse ? root.t.accentBg : root.t.surface
+                        border.color: toastCopyMouse.containsMouse ? root.t.accent : root.t.cardBorder
+                        border.width: 1
+                        Text {
+                          id: toastCopyTxt
+                          anchors.centerIn: parent
+                          text: "Copy Path"
+                          font.family: Theme.textFont
+                          font.pixelSize: Theme.fontXs
+                          font.weight: Font.Medium
+                          color: toastCopyMouse.containsMouse ? root.t.accent : root.t.ink1
+                        }
+                        MouseArea {
+                          id: toastCopyMouse
+                          anchors.fill: parent
+                          hoverEnabled: true
+                          cursorShape: Qt.PointingHandCursor
+                          onClicked: {
+                            if (root.service) {
+                              root.service.copyToClipboard(root.cleanFilePath(toastItem.primaryUrl));
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
 
@@ -622,29 +866,54 @@ PanelWindow {
                 Row {
                   visible: toastItem.actionsList.length > 0
                   width: parent.width
-                  spacing: 2
+                  spacing: 6
                   Repeater {
                     model: toastItem.actionsList
-                    delegate: Row {
-                      id: toastActRow
+                    delegate: Rectangle {
+                      id: toastActPill
                       required property var modelData
-                      required property int index
-                      spacing: 4
-                      IconImage {
-                        visible: toastItem.hasActionIcons
-                        width: 14
-                        height: 14
-                        anchors.verticalCenter: parent.verticalCenter
-                        source: root.resolveActionIcon(toastActRow.modelData.identifier)
-                        asynchronous: true
+                      implicitWidth: toastActRow.implicitWidth + 16
+                      implicitHeight: 24
+                      radius: Theme.radiusChip
+                      color: toastActMouse.containsMouse ? root.t.accentBg : root.t.surface
+                      border.color: toastActMouse.containsMouse ? root.t.accent : root.t.cardBorder
+                      border.width: 1
+
+                      Row {
+                        id: toastActRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        IconImage {
+                          visible: toastItem.hasActionIcons
+                          width: 12
+                          height: 12
+                          anchors.verticalCenter: parent.verticalCenter
+                          source: root.resolveActionIcon(toastActPill.modelData.identifier)
+                          asynchronous: true
+                        }
+                        Text {
+                          text: toastActPill.modelData.text || "Action"
+                          font.family: Theme.textFont
+                          font.pixelSize: Theme.fontXs
+                          font.weight: Font.Medium
+                          color: toastActMouse.containsMouse ? root.t.accent : root.t.ink1
+                        }
                       }
-                      TextButton {
-                        text: toastActRow.modelData.text || "Action"
+
+                      MouseArea {
+                        id: toastActMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                           if (root.service) {
                             const t = toastItem.toast;
-                            const ident = toastActRow.modelData.identifier;
-                            toastItem.requestExit(() => root.service.invokeAction(t, ident));
+                            const ident = toastActPill.modelData.identifier;
+                            if (t && t.resident === true) {
+                              root.service.invokeAction(t, ident);
+                            } else {
+                              toastItem.requestExit(() => root.service.invokeAction(t, ident));
+                            }
                           }
                         }
                       }
@@ -702,7 +971,7 @@ PanelWindow {
                     }
                   }
                   TextButton {
-                    text: "Send"
+                    text: (toastItem.toast && toastItem.toast.replySubmitButtonText) ? toastItem.toast.replySubmitButtonText : "Send"
                     fg: root.t.accent
                     onClicked: {
                       if (root.service && replyInput.text.trim().length > 0) {

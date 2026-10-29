@@ -523,6 +523,11 @@ ModelPricing::ModelPricing(QObject *parent)
     connect(m_worker, &PricingWorker::configLoaded, this, &ModelPricing::onConfigLoaded);
     connect(m_worker, &PricingWorker::fetched, this, &ModelPricing::onFetched);
     m_thread.start();
+
+    m_autoRefreshTimer = new QTimer(this);
+    m_autoRefreshTimer->setInterval(15 * 60 * 1000); // Check every 15 minutes
+    connect(m_autoRefreshTimer, &QTimer::timeout, this, &ModelPricing::maybeAutoRefresh);
+    m_autoRefreshTimer->start();
 }
 
 ModelPricing::~ModelPricing() {
@@ -576,15 +581,27 @@ void ModelPricing::onConfigLoaded(const PricingConfigResult &result) {
 }
 
 bool ModelPricing::indexStale() const {
+    const QDateTime now = QDateTime::currentDateTime();
+    // Only refresh after 12:00 PM local time
+    if (now.time().hour() < 12) {
+        return false;
+    }
+
     if (m_fetchedAtIso.isEmpty()) {
         return true;
     }
-    const QDateTime fetched = QDateTime::fromString(m_fetchedAtIso, Qt::ISODate);
+    const QDateTime fetched = QDateTime::fromString(m_fetchedAtIso, Qt::ISODate).toLocalTime();
     if (!fetched.isValid()) {
         return true;
     }
-    const int ttl = m_settingsOk && m_settings.ttlHours > 0 ? m_settings.ttlHours : 24;
-    return fetched.secsTo(QDateTime::currentDateTimeUtc()) > static_cast<qint64>(ttl) * 3600;
+
+    // Only once a day: if already fetched today after 12:00 PM, not stale
+    if (fetched.date() == now.date() && fetched.time().hour() >= 12) {
+        return false;
+    }
+
+    // If fetched before today, or fetched today prior to 12:00 PM, it's eligible to refresh
+    return fetched.date() < now.date() || fetched.time().hour() < 12;
 }
 
 void ModelPricing::maybeAutoRefresh() {

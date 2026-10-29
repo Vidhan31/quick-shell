@@ -1,14 +1,35 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Notifications
 import Quickshell.Plugins.Notifications
+import Quickshell.Plugins.KWin
 
 Item {
   id: root
 
   property bool takeoverEnabled: true
-  property var extraHints: []
+  property var extraHints: [
+    "sound",
+    "x-kde-urls",
+    "x-kde-origin-name",
+    "x-kde-display-appname",
+    "x-kde-skip-grouping",
+    "x-kde-user-action-feedback",
+    "x-kde-reply-placeholder-text",
+    "x-kde-reply-submit-button-text",
+    "x-kde-reply-submit-button-icon-name",
+    "inhibitions"
+  ]
+
+  Process {
+    id: soundProc
+  }
+
+  KWinManager {
+    id: kwinManager
+  }
 
   NotificationStore {
     id: store
@@ -17,6 +38,16 @@ Item {
     onExpireRequested: id => root._execExpire(id)
     onInvokeRequested: (id, identifier) => root._execInvoke(id, identifier)
     onReplyRequested: (id, text) => root._execReply(id, text)
+    onInhibitionSummaryRequested: count => {
+      const id = -Math.floor(Date.now() % 1000000);
+      store.ingestSnapshot({
+        appName: "Do Not Disturb",
+        summary: "Do Not Disturb Ended",
+        body: count === 1 ? "1 notification arrived while Do Not Disturb was active." : `${count} notifications arrived while Do Not Disturb was active.`,
+        urgency: 1,
+        transient: true
+      }, id, 5, false);
+    }
   }
 
   property var _live: ({})
@@ -27,6 +58,8 @@ Item {
   readonly property int unreadCount: store.unreadCount
   readonly property int totalCount: store.totalCount
   readonly property int timeTick: store.timeTick
+  readonly property var dndUntil: store.dndUntil
+  readonly property int silencedDuringDndCount: store.silencedDuringDndCount
   property alias dnd: store.dnd
   property alias maxNotifications: store.maxNotifications
   property alias expandedGroups: store.expandedGroups
@@ -110,6 +143,47 @@ Item {
     try { hasInline = n.hasInlineReply === true; } catch (e) {}
     try { inlinePh = n.inlineReplyPlaceholder || ""; } catch (e) {}
     try { hasActIcons = n.hasActionIcons === true; } catch (e) {}
+
+    if (!hasInline) {
+      if (hints["x-kde-reply-placeholder-text"] || hints["inline-reply"] === true || hints["inline-reply"] === "true") {
+        hasInline = true;
+      } else {
+        for (let i = 0; i < acts.length; i++) {
+          if (acts[i].identifier === "inline-reply") {
+            hasInline = true;
+            break;
+          }
+        }
+      }
+    }
+    if (!inlinePh && hints["x-kde-reply-placeholder-text"]) {
+      inlinePh = String(hints["x-kde-reply-placeholder-text"]);
+    }
+    if (!hasActIcons && (hints["action-icons"] === true || hints["action-icons"] === "true")) {
+      hasActIcons = true;
+    }
+
+    let hasConf = false;
+    let confLabel = "";
+    const filteredActs = [];
+    for (let i = 0; i < acts.length; i++) {
+      const ident = acts[i].identifier;
+      if (ident === "default") {
+        hasDef = true;
+        continue;
+      }
+      if (ident === "settings") {
+        hasConf = true;
+        confLabel = acts[i].text || "Configure";
+        continue;
+      }
+      if (hasInline && ident === "inline-reply") {
+        continue;
+      }
+      filteredActs.push(acts[i]);
+    }
+    const replySubmitText = hints["x-kde-reply-submit-button-text"] ? String(hints["x-kde-reply-submit-button-text"]) : "";
+    const replySubmitIcon = hints["x-kde-reply-submit-button-icon-name"] ? String(hints["x-kde-reply-submit-button-icon-name"]) : "";
     let urg = 1;
     try {
       const v = Number(n.urgency);
@@ -118,7 +192,24 @@ Item {
     } catch (e) {}
 
     const desktopEntry = n.desktopEntry || hints["desktop-entry"] || "";
+    const displayAppName = hints["x-kde-display-appname"] || "";
+    const effectiveAppName = displayAppName || n.appName || "Application";
     const originName = hints["x-kde-origin-name"] || hints["origin-name"] || "";
+
+    let urls = [];
+    const rawUrls = hints["x-kde-urls"];
+    if (rawUrls) {
+      if (Array.isArray(rawUrls)) {
+        for (let i = 0; i < rawUrls.length; i++) {
+          if (rawUrls[i]) urls.push(String(rawUrls[i]));
+        }
+      } else if (typeof rawUrls === "string" && rawUrls.length > 0) {
+        urls.push(rawUrls);
+      }
+    }
+
+    const skipGrouping = hints["x-kde-skip-grouping"] === true || hints["x-kde-skip-grouping"] === "true";
+    const userActionFeedback = hints["x-kde-user-action-feedback"] === true || hints["x-kde-user-action-feedback"] === "true";
 
     let appIcon = "";
     if (desktopEntry) {
@@ -148,7 +239,7 @@ Item {
           // If a rich image is attached, rawNotifIcon is the app icon (KDE rule)
           appIcon = rawNotifIcon;
         } else {
-          const lowerApp = (n.appName || "").toLowerCase();
+          const lowerApp = (effectiveAppName || "").toLowerCase();
           const lowerRaw = rawNotifIcon.toLowerCase();
           if (lowerRaw.includes(lowerApp) || (desktopEntry && lowerRaw.includes(desktopEntry.toLowerCase()))) {
             appIcon = rawNotifIcon;
@@ -157,7 +248,7 @@ Item {
           }
         }
       } else if (rawNotifIcon !== appIcon) {
-        const lowerApp = (n.appName || "").toLowerCase();
+        const lowerApp = (effectiveAppName || "").toLowerCase();
         const lowerRaw = rawNotifIcon.toLowerCase();
         const isAppIcon = (lowerApp && lowerRaw.includes(lowerApp)) ||
                           (desktopEntry && lowerRaw.includes(desktopEntry.toLowerCase())) ||
@@ -173,7 +264,7 @@ Item {
     }
 
     return {
-      appName: n.appName || "Application",
+      appName: effectiveAppName,
       appIcon: appIcon,
       notifIcon: notifIcon,
       originName: originName,
@@ -183,7 +274,7 @@ Item {
       image: imageSrc,
       desktopEntry: desktopEntry,
       urgency: urg,
-      actions: acts,
+      actions: filteredActs,
       resident: n.resident === true,
       transient: n.transient === true,
       hasInlineReply: hasInline,
@@ -192,8 +283,30 @@ Item {
       category: (hints["category"] || hints["Category"] || ""),
       soundName: (hints["sound-name"] || ""),
       soundFile: (hints["sound-file"] || ""),
-      suppressSound: (hints["suppress-sound"] === true)
+      suppressSound: (hints["suppress-sound"] === true),
+      urls: urls,
+      skipGrouping: skipGrouping,
+      userActionFeedback: userActionFeedback,
+      hasConfigureAction: hasConf,
+      configureLabel: confLabel,
+      replySubmitButtonText: replySubmitText,
+      replySubmitButtonIconName: replySubmitIcon
     };
+  }
+
+  function _playSound(soundName, soundFile) {
+    if (store.dnd) return;
+    try {
+      if (soundFile && soundFile.length > 0) {
+        soundProc.command = ["canberra-gtk-play", "-f", soundFile];
+        soundProc.running = false;
+        soundProc.running = true;
+      } else if (soundName && soundName.length > 0) {
+        soundProc.command = ["canberra-gtk-play", "-i", soundName];
+        soundProc.running = false;
+        soundProc.running = true;
+      }
+    } catch (e) {}
   }
 
   function _onQsNotification(n) {
@@ -209,7 +322,11 @@ Item {
     const live = root._live;
     live[n.id] = n;
     root._live = live;
-    store.ingestSnapshot(root._snapshotOf(n), n.id, exp, carried);
+    const snap = root._snapshotOf(n);
+    store.ingestSnapshot(snap, n.id, exp, carried);
+    if (!carried && !snap.suppressSound && (snap.soundName || snap.soundFile)) {
+      root._playSound(snap.soundName, snap.soundFile);
+    }
     root._gcLive();
   }
 
@@ -296,6 +413,21 @@ Item {
     } catch (e) {
       try { n.dismiss(); } catch (e2) {}
     }
+
+    try {
+      const targetApp = (n.desktopEntry || n.appName || "").toLowerCase();
+      if (targetApp.length > 0 && kwinManager.available) {
+        const wins = kwinManager.windows;
+        for (let i = 0; i < wins.length; i++) {
+          const w = wins[i];
+          const appId = (w.appId || "").toLowerCase();
+          if (appId.length > 0 && (appId.includes(targetApp) || targetApp.includes(appId))) {
+            kwinManager.activateWindow(w.id);
+            break;
+          }
+        }
+      }
+    } catch (e) {}
   }
 
   function _execReply(id, text) {
@@ -335,6 +467,18 @@ Item {
 
   function toggleDnd() {
     store.toggleDnd();
+  }
+
+  function setDndTimed(minutes) {
+    store.setDndTimed(minutes);
+  }
+
+  function cancelDnd() {
+    store.cancelDnd();
+  }
+
+  function copyToClipboard(text) {
+    store.copyToClipboard(text);
   }
 
   function toggleGroupExpanded(appName) {

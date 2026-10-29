@@ -38,11 +38,6 @@ Item {
   property int currentTab: 0 // 0: Overview, 1: OpenCode, 2: Antigravity, 3: Cost
 
   onCurrentTabChanged: {
-    /* First visit to the Cost tab kicks the pricing fetch when there is
-       nothing to show yet (no cache); otherwise the plugin
-       refreshes itself only when its TTL expires. */
-    if (root.currentTab === 3 && root.pricing && !root.pricing.ready && !root.pricing.busy)
-      root.pricing.refresh();
   }
 
   property int selectedMonths: 1

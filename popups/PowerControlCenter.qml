@@ -13,17 +13,11 @@ Item {
   signal closeRequested()
 
   implicitWidth: Theme.popupWidthSm
-  readonly property int preferredHeight: Math.max(160, bodyCol.height + (card.padding * 2))
+  readonly property int preferredHeight: 330
   property int popupHeight: 330
 
   function syncHeight(): void {
-    if (bodyCol.height > 0)
-      popupHeight = preferredHeight;
-  }
-
-  onPreferredHeightChanged: {
-    if (bodyCol.height > 0)
-      popupHeight = preferredHeight;
+    popupHeight = preferredHeight;
   }
 
   implicitHeight: popupHeight
@@ -295,56 +289,76 @@ Item {
         id: confirmCard
         visible: root.pendingAction !== ""
         width: parent.width
-        implicitHeight: confirmCol.implicitHeight + 20
+        height: actionsCol.height
         radius: Theme.radiusCard
         color: Theme.inset
-        border.color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : Theme.cardBorder)
+        border.color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : Theme.accent)
         border.width: 1
 
-        Column {
-          id: confirmCol
-          anchors {
-            top: parent.top
-            left: parent.left
-            right: parent.right
-            margins: 10
-          }
+        ColumnLayout {
+          anchors.fill: parent
+          anchors.margins: 14
           spacing: 10
 
           RowLayout {
-            width: parent.width
-            spacing: 8
+            Layout.fillWidth: true
+            spacing: 12
 
-            Text {
-              text: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : "󰍃")
-              font.family: Theme.mono
-              font.pixelSize: Theme.fontGlyphLg
-              color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : Theme.accent)
+            Rectangle {
+              Layout.preferredWidth: 38
+              Layout.preferredHeight: 38
+              radius: Theme.radiusBase
+              color: Qt.alpha(root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : Theme.accent), 0.15)
+
+              Text {
+                anchors.centerIn: parent
+                text: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : "󰍃")
+                font.family: Theme.mono
+                font.pixelSize: Theme.fontGlyphLg
+                color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : Theme.accent)
+              }
             }
 
-            Column {
+            ColumnLayout {
               Layout.fillWidth: true
               spacing: 2
 
               Text {
+                Layout.fillWidth: true
                 text: root.pendingAction === "shutdown" ? "Shut down system?" : (root.pendingAction === "reboot" ? "Restart system?" : "Log out of session?")
                 font.family: Theme.displayFont
                 font.pixelSize: Theme.fontBase
                 font.weight: Font.DemiBold
                 color: Theme.ink1
+                elide: Text.ElideRight
               }
 
               Text {
-                text: "KDE will prompt to save unsaved documents."
+                Layout.fillWidth: true
+                text: root.pendingAction === "shutdown" ? "Power off the computer completely." : (root.pendingAction === "reboot" ? "Reboot the operating system." : "End current user session.")
                 font.family: Theme.textFont
                 font.pixelSize: Theme.fontXs
                 color: Theme.ink3
+                wrapMode: Text.WordWrap
               }
             }
           }
 
+          Text {
+            Layout.fillWidth: true
+            text: "KDE will prompt to save unsaved documents."
+            font.family: Theme.textFont
+            font.pixelSize: Theme.fontXs
+            color: Theme.ink2
+            wrapMode: Text.WordWrap
+          }
+
+          Item {
+            Layout.fillHeight: true
+          }
+
           RowLayout {
-            width: parent.width
+            Layout.fillWidth: true
             spacing: 8
 
             Item {
@@ -366,6 +380,7 @@ Item {
               onClicked: {
                 const action = root.pendingAction;
                 root.pendingAction = "";
+                root.closeRequested();
                 if (action === "shutdown" && root.power) {
                   root.power.shutdown();
                 } else if (action === "reboot" && root.power) {
@@ -373,7 +388,6 @@ Item {
                 } else if (action === "logout" && root.power) {
                   root.power.logout();
                 }
-                root.closeRequested();
               }
             }
           }
