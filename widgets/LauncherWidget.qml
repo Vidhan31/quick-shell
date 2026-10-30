@@ -7,7 +7,7 @@ Item {
 
   property bool active: false
   property bool hovered: false
-  property string glyph: ""
+  property string glyph: "󱗼"
   property int iconSize: 26
 
   implicitWidth: iconText.implicitWidth
