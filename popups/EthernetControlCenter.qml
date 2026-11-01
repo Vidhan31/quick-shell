@@ -15,6 +15,14 @@ Item {
   property var ethData: activeMonitor ? activeMonitor.ethData : null
   signal triggerRefresh()
 
+  readonly property var vnstatData: activeMonitor ? activeMonitor.vnstatData : null
+  readonly property bool hasVnstat: activeMonitor ? activeMonitor.hasVnstat : false
+  readonly property var todayData: (vnstatData && vnstatData.today) ? vnstatData.today : null
+  readonly property var r24Data: (vnstatData && vnstatData.rolling24h) ? vnstatData.rolling24h : null
+  readonly property var weekData: (vnstatData && vnstatData.thisWeek) ? vnstatData.thisWeek : null
+  readonly property var cycleData: (vnstatData && vnstatData.billingCycle) ? vnstatData.billingCycle : null
+  readonly property var yearData: (vnstatData && vnstatData.thisYear) ? vnstatData.thisYear : null
+
   readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
   readonly property bool hasInternet: activeMonitor ? activeMonitor.hasInternet : false
   readonly property bool isCarrier: activeMonitor ? activeMonitor.carrier : false
@@ -48,8 +56,8 @@ Item {
   }
 
   implicitWidth: Theme.popupWidthMd
-  readonly property int preferredHeight: Math.min(640, 32 + bodyCol.height)
-  property int popupHeight: 360
+  readonly property int preferredHeight: Math.min(680, Math.max(560, 32 + bodyCol.height))
+  property int popupHeight: 640
 
   function syncHeight() {
     if (bodyCol.height > 0)
@@ -124,6 +132,9 @@ Item {
   }
 
   Component.onCompleted: {
+    if (root.activeMonitor && !root.hasVnstat) {
+      root.activeMonitor.refreshVnstat();
+    }
     if (root.hasInternet && root.pingLatency < 0 && !root.autoPinged) {
       root.autoPinged = true;
       root.runPing();
@@ -438,6 +449,343 @@ Item {
             }
           }
         }
+
+        Item { width: 1; height: 12 }
+
+        SectionHeader {
+          width: parent.width
+          label: "DATA CONSUMPTION (VNSTAT)"
+          actionGlyph: "󰑓"
+          actionTooltip: "Refresh vnstat"
+          onActionClicked: {
+            if (root.activeMonitor) {
+              root.activeMonitor.refreshVnstat();
+              root.showToast("Refreshing vnstat…");
+            }
+          }
+        }
+
+        Item { width: 1; height: 6 }
+
+        SectionCard {
+          width: parent.width
+          height: dataUsageCol.height
+
+          Column {
+            id: dataUsageCol
+            width: parent.width
+
+            Item {
+              visible: !root.hasVnstat
+              width: parent.width
+              height: 48
+              Text {
+                anchors.centerIn: parent
+                text: "No vnstat data recorded yet"
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontBase
+                color: root.t.ink3
+              }
+            }
+
+            Column {
+              visible: root.hasVnstat
+              width: parent.width
+
+              ActionRow {
+                width: parent.width
+                height: 44
+                rad: Theme.radiusSection
+                actionable: false
+                RowLayout {
+                  anchors.fill: parent
+                  anchors.leftMargin: 12
+                  anchors.rightMargin: 12
+                  spacing: 8
+                  Column {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                      text: "Today"
+                      font.family: Theme.textFont
+                      font.pixelSize: Theme.fontBase
+                      color: root.t.ink1
+                    }
+                    Text {
+                      text: "Since 12:00 AM"
+                      font.family: root.t.mono
+                      font.pixelSize: Theme.fontXs
+                      color: root.t.ink3
+                    }
+                  }
+                  Column {
+                    Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                    spacing: 2
+                    Text {
+                      anchors.right: parent.right
+                      text: root.todayData ? root.todayData.totalFormatted : "0 B"
+                      font.family: root.t.mono
+                      font.pixelSize: Theme.fontBase
+                      font.weight: Font.DemiBold
+                      color: root.t.ink1
+                    }
+                    Row {
+                      anchors.right: parent.right
+                      spacing: 6
+                      Text {
+                        text: "↓ " + (root.todayData ? root.todayData.rxFormatted : "0 B")
+                        font.family: root.t.mono
+                        font.pixelSize: Theme.fontXs
+                        color: root.t.green
+                      }
+                      Text {
+                        text: "↑ " + (root.todayData ? root.todayData.txFormatted : "0 B")
+                        font.family: root.t.mono
+                        font.pixelSize: Theme.fontXs
+                        color: root.t.amber
+                      }
+                    }
+                  }
+                }
+              }
+
+              Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
+
+              ActionRow {
+                width: parent.width
+                height: 44
+                actionable: false
+                RowLayout {
+                  anchors.fill: parent
+                  anchors.leftMargin: 12
+                  anchors.rightMargin: 12
+                  spacing: 8
+                  Column {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                      text: "Past 24 Hours"
+                      font.family: Theme.textFont
+                      font.pixelSize: Theme.fontBase
+                      color: root.t.ink1
+                    }
+                    Text {
+                      text: "Rolling window"
+                      font.family: root.t.mono
+                      font.pixelSize: Theme.fontXs
+                      color: root.t.ink3
+                    }
+                  }
+                  Column {
+                    Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                    spacing: 2
+                    Text {
+                      anchors.right: parent.right
+                      text: root.r24Data ? root.r24Data.totalFormatted : "0 B"
+                      font.family: root.t.mono
+                      font.pixelSize: Theme.fontBase
+                      font.weight: Font.DemiBold
+                      color: root.t.ink1
+                    }
+                    Row {
+                      anchors.right: parent.right
+                      spacing: 6
+                      Text {
+                        text: "↓ " + (root.r24Data ? root.r24Data.rxFormatted : "0 B")
+                        font.family: root.t.mono
+                        font.pixelSize: Theme.fontXs
+                        color: root.t.green
+                      }
+                      Text {
+                        text: "↑ " + (root.r24Data ? root.r24Data.txFormatted : "0 B")
+                        font.family: root.t.mono
+                        font.pixelSize: Theme.fontXs
+                        color: root.t.amber
+                      }
+                    }
+                  }
+                }
+              }
+
+              Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
+
+              ActionRow {
+                width: parent.width
+                height: 44
+                actionable: false
+                RowLayout {
+                  anchors.fill: parent
+                  anchors.leftMargin: 12
+                  anchors.rightMargin: 12
+                  spacing: 8
+                  Column {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                      text: "This Week"
+                      font.family: Theme.textFont
+                      font.pixelSize: Theme.fontBase
+                      color: root.t.ink1
+                    }
+                    Text {
+                      text: "Since Monday"
+                      font.family: root.t.mono
+                      font.pixelSize: Theme.fontXs
+                      color: root.t.ink3
+                    }
+                  }
+                  Column {
+                    Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                    spacing: 2
+                    Text {
+                      anchors.right: parent.right
+                      text: root.weekData ? root.weekData.totalFormatted : "0 B"
+                      font.family: root.t.mono
+                      font.pixelSize: Theme.fontBase
+                      font.weight: Font.DemiBold
+                      color: root.t.ink1
+                    }
+                    Row {
+                      anchors.right: parent.right
+                      spacing: 6
+                      Text {
+                        text: "↓ " + (root.weekData ? root.weekData.rxFormatted : "0 B")
+                        font.family: root.t.mono
+                        font.pixelSize: Theme.fontXs
+                        color: root.t.green
+                      }
+                      Text {
+                        text: "↑ " + (root.weekData ? root.weekData.txFormatted : "0 B")
+                        font.family: root.t.mono
+                        font.pixelSize: Theme.fontXs
+                        color: root.t.amber
+                      }
+                    }
+                  }
+                }
+              }
+
+              Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
+
+              ActionRow {
+                width: parent.width
+                height: 44
+                actionable: false
+                RowLayout {
+                  anchors.fill: parent
+                  anchors.leftMargin: 12
+                  anchors.rightMargin: 12
+                  spacing: 8
+                  Column {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                      text: "Billing Cycle"
+                      font.family: Theme.textFont
+                      font.pixelSize: Theme.fontBase
+                      color: root.t.ink1
+                    }
+                    Text {
+                      text: (root.vnstatData && root.vnstatData.cycleRange) ? (root.vnstatData.cycleRange + " · 25th") : "Since 25th"
+                      font.family: root.t.mono
+                      font.pixelSize: Theme.fontXs
+                      color: root.t.ink3
+                    }
+                  }
+                  Column {
+                    Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                    spacing: 2
+                    Text {
+                      anchors.right: parent.right
+                      text: root.cycleData ? root.cycleData.totalFormatted : "0 B"
+                      font.family: root.t.mono
+                      font.pixelSize: Theme.fontBase
+                      font.weight: Font.DemiBold
+                      color: root.t.ink1
+                    }
+                    Row {
+                      anchors.right: parent.right
+                      spacing: 6
+                      Text {
+                        text: "↓ " + (root.cycleData ? root.cycleData.rxFormatted : "0 B")
+                        font.family: root.t.mono
+                        font.pixelSize: Theme.fontXs
+                        color: root.t.green
+                      }
+                      Text {
+                        text: "↑ " + (root.cycleData ? root.cycleData.txFormatted : "0 B")
+                        font.family: root.t.mono
+                        font.pixelSize: Theme.fontXs
+                        color: root.t.amber
+                      }
+                    }
+                  }
+                }
+              }
+
+              Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
+
+              ActionRow {
+                width: parent.width
+                height: 44
+                rad: Theme.radiusSection
+                actionable: false
+                RowLayout {
+                  anchors.fill: parent
+                  anchors.leftMargin: 12
+                  anchors.rightMargin: 12
+                  spacing: 8
+                  Column {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                      text: "This Year"
+                      font.family: Theme.textFont
+                      font.pixelSize: Theme.fontBase
+                      color: root.t.ink1
+                    }
+                    Text {
+                      text: (root.vnstatData && root.vnstatData.yearLabel) ? ("Year " + root.vnstatData.yearLabel) : "Since Jan 1"
+                      font.family: root.t.mono
+                      font.pixelSize: Theme.fontXs
+                      color: root.t.ink3
+                    }
+                  }
+                  Column {
+                    Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                    spacing: 2
+                    Text {
+                      anchors.right: parent.right
+                      text: root.yearData ? root.yearData.totalFormatted : "0 B"
+                      font.family: root.t.mono
+                      font.pixelSize: Theme.fontBase
+                      font.weight: Font.DemiBold
+                      color: root.t.ink1
+                    }
+                    Row {
+                      anchors.right: parent.right
+                      spacing: 6
+                      Text {
+                        text: "↓ " + (root.yearData ? root.yearData.rxFormatted : "0 B")
+                        font.family: root.t.mono
+                        font.pixelSize: Theme.fontXs
+                        color: root.t.green
+                      }
+                      Text {
+                        text: "↑ " + (root.yearData ? root.yearData.txFormatted : "0 B")
+                        font.family: root.t.mono
+                        font.pixelSize: Theme.fontXs
+                        color: root.t.amber
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        Item { width: 1; height: 12 }
       }
     }
 

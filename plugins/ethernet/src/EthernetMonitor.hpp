@@ -33,6 +33,7 @@ public slots:
     void runCheck();
     void reconnect(const QString &iface);
     void openSettings();
+    void sampleVnstat();
 
 signals:
     void stateChanged(const qs::plugins::EthernetState &state);
@@ -40,6 +41,7 @@ signals:
     void pingFinished(bool ok, const QString &target, double latencyMs, const QString &output);
     // Emitted when nmcli actually finishes, not when it was spawned.
     void reconnectFinished(bool ok, const QString &target, const QString &output);
+    void vnstatUpdated(const QVariantMap &data);
 
 private slots:
     void onNmSignal();
@@ -111,6 +113,9 @@ class EthernetMonitor : public QObject {
     Q_PROPERTY(double pingLatency READ pingLatency NOTIFY pingStatusChanged)
     Q_PROPERTY(QString pingResult READ pingResult NOTIFY pingStatusChanged)
 
+    Q_PROPERTY(QVariantMap vnstatData READ vnstatData NOTIFY vnstatDataChanged)
+    Q_PROPERTY(bool hasVnstat READ hasVnstat NOTIFY vnstatDataChanged)
+
     Q_PROPERTY(bool running READ running WRITE setRunning NOTIFY runningChanged)
     Q_PROPERTY(int interval READ interval WRITE setInterval NOTIFY intervalChanged)
     Q_PROPERTY(bool throughputTracking READ throughputTracking WRITE setThroughputTracking NOTIFY throughputTrackingChanged)
@@ -154,6 +159,9 @@ public:
     [[nodiscard]] double pingLatency() const noexcept { return m_pingLatency; }
     [[nodiscard]] QString pingResult() const { return m_pingResult; }
 
+    [[nodiscard]] QVariantMap vnstatData() const { return m_vnstatData; }
+    [[nodiscard]] bool hasVnstat() const { return m_vnstatData.value(QStringLiteral("hasData")).toBool(); }
+
     [[nodiscard]] bool running() const noexcept { return m_running; }
     [[nodiscard]] int interval() const noexcept { return m_interval; }
     [[nodiscard]] bool throughputTracking() const noexcept { return m_throughputTracking; }
@@ -169,11 +177,14 @@ public:
     Q_INVOKABLE void runCheck();
     Q_INVOKABLE void reconnect(const QString &iface = QString());
     Q_INVOKABLE void openSettings();
+    Q_INVOKABLE void refreshVnstat();
+    Q_INVOKABLE void copy(const QString &text);
 
 signals:
     void stateChanged();
     void throughputChanged();
     void pingStatusChanged();
+    void vnstatDataChanged();
     void runningChanged();
     void intervalChanged();
     void throughputTrackingChanged();
@@ -192,17 +203,20 @@ signals:
     void requestCheck();
     void requestReconnect(const QString &iface);
     void requestOpenSettings();
+    void requestVnstat();
 
 private slots:
     void onStateChanged(const qs::plugins::EthernetState &state);
     void onThroughputUpdated(quint64 rxBytes, quint64 txBytes, double rxBps, double txBps);
     void onPingFinished(bool ok, const QString &target, double latencyMs, const QString &output);
     void onReconnectFinished(bool ok, const QString &target, const QString &output);
+    void onVnstatUpdated(const QVariantMap &data);
     void onReachabilityChanged(QNetworkInformation::Reachability reachability);
 
 private:
     EthernetState m_state;
     QVariantMap m_cachedMap;
+    QVariantMap m_vnstatData;
 
     quint64 m_rxBytes{0};
     quint64 m_txBytes{0};

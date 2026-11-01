@@ -7,6 +7,11 @@
 #include <QDBusMetaType>
 #include <QNetworkInformation>
 #include <QProcess>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QDateTime>
+#include <QDate>
 #include <QRegularExpression>
 #include <QDir>
 #include <QFileInfo>
@@ -881,6 +886,203 @@ EthernetState EthernetProbe::probe(bool checkInternet) {
     state.queryTimeMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
     return state;
+}
+
+static QString formatDataBytes(quint64 bytes) {
+    constexpr double KB = 1024.0;
+    constexpr double MB = KB * 1024.0;
+    constexpr double GB = MB * 1024.0;
+    constexpr double TB = GB * 1024.0;
+
+    if (bytes < 1024) {
+        return QString::number(bytes) + QStringLiteral(" B");
+    } else if (bytes < MB) {
+        return QString::number(bytes / KB, 'f', 1) + QStringLiteral(" KB");
+    } else if (bytes < GB) {
+        return QString::number(bytes / MB, 'f', 1) + QStringLiteral(" MB");
+    } else if (bytes < TB) {
+        return QString::number(bytes / GB, 'f', 2) + QStringLiteral(" GB");
+    } else {
+        return QString::number(bytes / TB, 'f', 2) + QStringLiteral(" TB");
+    }
+}
+
+QVariantMap EthernetProbe::queryVnstat(const QString &iface, int billingDay) {
+    QVariantMap result;
+    result.insert(QStringLiteral("hasData"), false);
+
+    QProcess proc;
+    QStringList args;
+    args << QStringLiteral("--json");
+
+    proc.start(QStringLiteral("vnstat"), args);
+    if (!proc.waitForStarted(1500) || !proc.waitForFinished(3000)) {
+        proc.kill();
+        result.insert(QStringLiteral("error"), QStringLiteral("vnstat failed to start or timed out"));
+        return result;
+    }
+
+    if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) {
+        result.insert(QStringLiteral("error"), QString::fromUtf8(proc.readAllStandardError()).trimmed());
+        return result;
+    }
+
+    const QByteArray rawJson = proc.readAllStandardOutput();
+    QJsonParseError parseErr;
+    const QJsonDocument doc = QJsonDocument::fromJson(rawJson, &parseErr);
+    if (doc.isNull() || !doc.isObject()) {
+        result.insert(QStringLiteral("error"), QStringLiteral("Invalid JSON from vnstat"));
+        return result;
+    }
+
+    const QJsonObject rootObj = doc.object();
+    const QJsonArray itfArray = rootObj.value(QStringLiteral("interfaces")).toArray();
+    if (itfArray.isEmpty()) {
+        result.insert(QStringLiteral("error"), QStringLiteral("No interfaces found in vnstat output"));
+        return result;
+    }
+
+    QJsonObject chosenItf;
+    if (!iface.isEmpty()) {
+        for (const auto &val : itfArray) {
+            const QJsonObject itfObj = val.toObject();
+            if (itfObj.value(QStringLiteral("name")).toString() == iface) {
+                chosenItf = itfObj;
+                break;
+            }
+        }
+    }
+    if (chosenItf.isEmpty()) {
+        chosenItf = itfArray.first().toObject();
+    }
+
+    const QJsonObject traffic = chosenItf.value(QStringLiteral("traffic")).toObject();
+    const QJsonArray dayArray = traffic.value(QStringLiteral("day")).toArray();
+    const QJsonArray hourArray = traffic.value(QStringLiteral("hour")).toArray();
+    const QJsonArray yearArray = traffic.value(QStringLiteral("year")).toArray();
+
+    const QDateTime now = QDateTime::currentDateTime();
+    const QDate todayDate = now.date();
+    const qint64 nowEpoch = now.toSecsSinceEpoch();
+
+    auto makePeriodMap = [](quint64 rx, quint64 tx) -> QVariantMap {
+        QVariantMap m;
+        m.insert(QStringLiteral("rx"), static_cast<qulonglong>(rx));
+        m.insert(QStringLiteral("tx"), static_cast<qulonglong>(tx));
+        m.insert(QStringLiteral("total"), static_cast<qulonglong>(rx + tx));
+        m.insert(QStringLiteral("rxFormatted"), formatDataBytes(rx));
+        m.insert(QStringLiteral("txFormatted"), formatDataBytes(tx));
+        m.insert(QStringLiteral("totalFormatted"), formatDataBytes(rx + tx));
+        return m;
+    };
+
+    // 1. Today (since 12:00 AM)
+    quint64 todayRx = 0, todayTx = 0;
+    for (const auto &val : dayArray) {
+        const QJsonObject d = val.toObject();
+        const QJsonObject dateObj = d.value(QStringLiteral("date")).toObject();
+        if (dateObj.value(QStringLiteral("year")).toInt() == todayDate.year() &&
+            dateObj.value(QStringLiteral("month")).toInt() == todayDate.month() &&
+            dateObj.value(QStringLiteral("day")).toInt() == todayDate.day()) {
+            todayRx = static_cast<quint64>(d.value(QStringLiteral("rx")).toVariant().toULongLong());
+            todayTx = static_cast<quint64>(d.value(QStringLiteral("tx")).toVariant().toULongLong());
+            break;
+        }
+    }
+
+    // 2. Rolling 24 Hours
+    quint64 r24Rx = 0, r24Tx = 0;
+    const qint64 cutoff24h = nowEpoch - 86400;
+    for (const auto &val : hourArray) {
+        const QJsonObject h = val.toObject();
+        const qint64 ts = h.value(QStringLiteral("timestamp")).toVariant().toLongLong();
+        if (ts >= cutoff24h) {
+            r24Rx += static_cast<quint64>(h.value(QStringLiteral("rx")).toVariant().toULongLong());
+            r24Tx += static_cast<quint64>(h.value(QStringLiteral("tx")).toVariant().toULongLong());
+        }
+    }
+    if (r24Rx == 0 && r24Tx == 0 && (todayRx > 0 || todayTx > 0)) {
+        r24Rx = todayRx;
+        r24Tx = todayTx;
+    }
+
+    // 3. This Week (since Monday)
+    const int dayOfWeek = todayDate.dayOfWeek(); // 1 = Monday, 7 = Sunday
+    const QDate mondayDate = todayDate.addDays(-(dayOfWeek - 1));
+    quint64 weekRx = 0, weekTx = 0;
+    for (const auto &val : dayArray) {
+        const QJsonObject d = val.toObject();
+        const QJsonObject dateObj = d.value(QStringLiteral("date")).toObject();
+        const QDate dDate(dateObj.value(QStringLiteral("year")).toInt(),
+                          dateObj.value(QStringLiteral("month")).toInt(),
+                          dateObj.value(QStringLiteral("day")).toInt());
+        if (dDate >= mondayDate && dDate <= todayDate) {
+            weekRx += static_cast<quint64>(d.value(QStringLiteral("rx")).toVariant().toULongLong());
+            weekTx += static_cast<quint64>(d.value(QStringLiteral("tx")).toVariant().toULongLong());
+        }
+    }
+
+    // 4. Billing Cycle (since 25th)
+    QDate cycleStartDate;
+    if (todayDate.day() >= billingDay) {
+        cycleStartDate = QDate(todayDate.year(), todayDate.month(), billingDay);
+    } else {
+        const QDate prevMonth = todayDate.addMonths(-1);
+        cycleStartDate = QDate(prevMonth.year(), prevMonth.month(), billingDay);
+    }
+    const QDate cycleEndDate = cycleStartDate.addMonths(1).addDays(-1);
+
+    quint64 cycleRx = 0, cycleTx = 0;
+    for (const auto &val : dayArray) {
+        const QJsonObject d = val.toObject();
+        const QJsonObject dateObj = d.value(QStringLiteral("date")).toObject();
+        const QDate dDate(dateObj.value(QStringLiteral("year")).toInt(),
+                          dateObj.value(QStringLiteral("month")).toInt(),
+                          dateObj.value(QStringLiteral("day")).toInt());
+        if (dDate >= cycleStartDate && dDate <= todayDate) {
+            cycleRx += static_cast<quint64>(d.value(QStringLiteral("rx")).toVariant().toULongLong());
+            cycleTx += static_cast<quint64>(d.value(QStringLiteral("tx")).toVariant().toULongLong());
+        }
+    }
+
+    // 5. This Year (since Jan 1)
+    quint64 yearRx = 0, yearTx = 0;
+    bool foundYear = false;
+    for (const auto &val : yearArray) {
+        const QJsonObject y = val.toObject();
+        const QJsonObject dateObj = y.value(QStringLiteral("date")).toObject();
+        if (dateObj.value(QStringLiteral("year")).toInt() == todayDate.year()) {
+            yearRx = static_cast<quint64>(y.value(QStringLiteral("rx")).toVariant().toULongLong());
+            yearTx = static_cast<quint64>(y.value(QStringLiteral("tx")).toVariant().toULongLong());
+            foundYear = true;
+            break;
+        }
+    }
+    if (!foundYear) {
+        for (const auto &val : dayArray) {
+            const QJsonObject d = val.toObject();
+            const QJsonObject dateObj = d.value(QStringLiteral("date")).toObject();
+            if (dateObj.value(QStringLiteral("year")).toInt() == todayDate.year()) {
+                yearRx += static_cast<quint64>(d.value(QStringLiteral("rx")).toVariant().toULongLong());
+                yearTx += static_cast<quint64>(d.value(QStringLiteral("tx")).toVariant().toULongLong());
+            }
+        }
+    }
+
+    result.insert(QStringLiteral("hasData"), true);
+    result.insert(QStringLiteral("interface"), chosenItf.value(QStringLiteral("name")).toString());
+    result.insert(QStringLiteral("today"), makePeriodMap(todayRx, todayTx));
+    result.insert(QStringLiteral("rolling24h"), makePeriodMap(r24Rx, r24Tx));
+    result.insert(QStringLiteral("thisWeek"), makePeriodMap(weekRx, weekTx));
+    result.insert(QStringLiteral("billingCycle"), makePeriodMap(cycleRx, cycleTx));
+    result.insert(QStringLiteral("thisYear"), makePeriodMap(yearRx, yearTx));
+    result.insert(QStringLiteral("cycleRange"), QStringLiteral("%1 – %2")
+        .arg(cycleStartDate.toString(QStringLiteral("MMM d")), cycleEndDate.toString(QStringLiteral("MMM d"))));
+    result.insert(QStringLiteral("cycleDay"), billingDay);
+    result.insert(QStringLiteral("yearLabel"), QString::number(todayDate.year()));
+    result.insert(QStringLiteral("updatedAt"), now.toString(QStringLiteral("hh:mm AP")));
+
+    return result;
 }
 
 } // namespace qs::plugins

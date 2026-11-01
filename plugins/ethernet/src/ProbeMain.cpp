@@ -90,6 +90,14 @@ int main(int argc, char *argv[]) {
         return ok ? 0 : 1;
     }
 
+    if (action == QStringLiteral("vnstat")) {
+        const QString iface = (argc > 2) ? QString::fromUtf8(argv[2]) : QString();
+        const auto map = EthernetProbe::queryVnstat(iface, 25);
+        const QJsonObject obj = QJsonObject::fromVariantMap(map);
+        std::cout << QJsonDocument(obj).toJson(QJsonDocument::Indented).toStdString() << std::endl;
+        return 0;
+    }
+
     std::cerr << "Unknown action: " << action.toStdString() << std::endl;
     return 1;
 }

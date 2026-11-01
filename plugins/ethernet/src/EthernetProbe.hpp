@@ -26,6 +26,7 @@ public:
     // asynchronously by EthernetWorker so the caller learns the real outcome.
     static QString reconnectTarget(const QString &iface = QString());
     static bool openSettings();
+    static QVariantMap queryVnstat(const QString &iface = QString(), int billingDay = 25);
 
     static bool queryNetlinkAndEthtool(EthernetState &state);
     static bool queryNetworkManagerFast(EthernetState &state);

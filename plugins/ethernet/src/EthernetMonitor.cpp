@@ -123,6 +123,7 @@ void EthernetWorker::start() {
     setupNetlink();
     setupDbusSubscriptions();
     sample(true);
+    sampleVnstat();
 }
 
 void EthernetWorker::stop() {
@@ -223,6 +224,12 @@ void EthernetWorker::runCheck() {
     sample(true);
 }
 
+void EthernetWorker::sampleVnstat() {
+    const QString targetIface = m_lastState.iface.isEmpty() ? QStringLiteral("enp34s0") : m_lastState.iface;
+    const QVariantMap data = EthernetProbe::queryVnstat(targetIface, 25);
+    emit vnstatUpdated(data);
+}
+
 void EthernetWorker::reportReconnectResult(bool ok, const QString &target, const QString &output) {
     // Re-sample once nmcli has actually finished, not when it was spawned, so
     // the reported state reflects the reconnected link.
@@ -318,11 +325,13 @@ EthernetMonitor::EthernetMonitor(QObject *parent)
     connect(this, &EthernetMonitor::requestCheck, m_worker, &EthernetWorker::runCheck);
     connect(this, &EthernetMonitor::requestReconnect, m_worker, &EthernetWorker::reconnect);
     connect(this, &EthernetMonitor::requestOpenSettings, m_worker, &EthernetWorker::openSettings);
+    connect(this, &EthernetMonitor::requestVnstat, m_worker, &EthernetWorker::sampleVnstat);
 
     connect(m_worker, &EthernetWorker::stateChanged, this, &EthernetMonitor::onStateChanged);
     connect(m_worker, &EthernetWorker::throughputUpdated, this, &EthernetMonitor::onThroughputUpdated);
     connect(m_worker, &EthernetWorker::pingFinished, this, &EthernetMonitor::onPingFinished);
     connect(m_worker, &EthernetWorker::reconnectFinished, this, &EthernetMonitor::onReconnectFinished);
+    connect(m_worker, &EthernetWorker::vnstatUpdated, this, &EthernetMonitor::onVnstatUpdated);
 
     QNetworkInformation::loadDefaultBackend();
     if (auto *netInfo = QNetworkInformation::instance()) {
@@ -400,6 +409,24 @@ void EthernetMonitor::onReconnectFinished(bool ok, const QString &target, const 
 
 void EthernetMonitor::openSettings() {
     emit requestOpenSettings();
+}
+
+void EthernetMonitor::refreshVnstat() {
+    emit requestVnstat();
+}
+
+void EthernetMonitor::copy(const QString &text) {
+    if (text.isEmpty()) return;
+    QProcess proc;
+    proc.start(QStringLiteral("wl-copy"), QStringList());
+    proc.write(text.toUtf8());
+    proc.closeWriteChannel();
+    proc.waitForFinished(1000);
+}
+
+void EthernetMonitor::onVnstatUpdated(const QVariantMap &data) {
+    m_vnstatData = data;
+    emit vnstatDataChanged();
 }
 
 void EthernetMonitor::onStateChanged(const EthernetState &state) {
