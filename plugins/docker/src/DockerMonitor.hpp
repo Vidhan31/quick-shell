@@ -30,7 +30,7 @@ public:
 public slots:
     void start();
     void stop();
-    void sample();
+    void sample(bool includeDiskUsage = false);
     void refresh();
     void runContainerAction(const QString &action, const QString &id, int timeoutSec);
     void runRemove(const QString &kind, const QString &target, bool force);

@@ -243,7 +243,7 @@ void TailscaleWorker::triggerSampleDebounced()
     }
 
     if (!m_debounceTimer->isActive()) {
-        m_debounceTimer->start(60);
+        m_debounceTimer->start(250);
     }
 }
 
@@ -501,22 +501,12 @@ bool TailscaleMonitor::hasFunnel() const noexcept
 
 QVariantList TailscaleMonitor::serveItems() const
 {
-    QVariantList list;
-    list.reserve(m_state.serveItems.size());
-    for (const auto &item : m_state.serveItems) {
-        list.append(item.toMap());
-    }
-    return list;
+    return m_cachedMap.value(QStringLiteral("serve_items")).toList();
 }
 
 QVariantList TailscaleMonitor::peers() const
 {
-    QVariantList list;
-    list.reserve(m_state.peers.size());
-    for (const auto &peer : m_state.peers) {
-        list.append(peer.toMap());
-    }
-    return list;
+    return m_cachedMap.value(QStringLiteral("peers")).toList();
 }
 
 void TailscaleMonitor::refresh()

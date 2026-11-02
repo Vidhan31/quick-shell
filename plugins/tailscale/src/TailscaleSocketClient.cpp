@@ -470,13 +470,16 @@ bool TailscaleSocketClient::copyToClipboard(const QString &text)
         QGuiApplication::clipboard()->setText(text);
     }
 
-    // Also run wl-copy to ensure persistence on Wayland compositor
-    QProcess proc;
-    proc.start(QStringLiteral("wl-copy"), QStringList());
-    if (proc.waitForStarted(1000)) {
-        proc.write(text.toUtf8());
-        proc.closeWriteChannel();
-        proc.waitForFinished(1000);
+    // Also run wl-copy to ensure persistence on Wayland compositor without blocking
+    auto *proc = new QProcess();
+    QObject::connect(proc, &QProcess::finished, proc, &QObject::deleteLater);
+    QObject::connect(proc, &QProcess::errorOccurred, proc, &QObject::deleteLater);
+    proc->start(QStringLiteral("wl-copy"), QStringList());
+    if (proc->waitForStarted(200)) {
+        proc->write(text.toUtf8());
+        proc->closeWriteChannel();
+    } else {
+        proc->deleteLater();
     }
     return true;
 }

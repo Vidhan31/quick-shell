@@ -843,7 +843,9 @@ EthernetState EthernetProbe::probe(bool checkInternet) {
 
     queryNetworkManagerFast(state);
 
-    querySysfsAndPosixFallback(state);
+    if (state.ip.isEmpty() || state.gateway.isEmpty() || state.dns.isEmpty() || state.hwAddress.isEmpty()) {
+        querySysfsAndPosixFallback(state);
+    }
 
     if (state.rxBytes == 0 && state.txBytes == 0) {
         readRxTxBytes(state.iface, state.rxBytes, state.txBytes);

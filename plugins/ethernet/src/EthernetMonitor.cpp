@@ -1,6 +1,8 @@
 #include "EthernetMonitor.hpp"
 
+#include <QClipboard>
 #include <QDBusConnection>
+#include <QGuiApplication>
 #include <fcntl.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
@@ -417,11 +419,20 @@ void EthernetMonitor::refreshVnstat() {
 
 void EthernetMonitor::copy(const QString &text) {
     if (text.isEmpty()) return;
-    QProcess proc;
-    proc.start(QStringLiteral("wl-copy"), QStringList());
-    proc.write(text.toUtf8());
-    proc.closeWriteChannel();
-    proc.waitForFinished(1000);
+    if (QGuiApplication::clipboard()) {
+        QGuiApplication::clipboard()->setText(text);
+    }
+    // Update wl-copy asynchronously without blocking the UI thread
+    auto *proc = new QProcess();
+    QObject::connect(proc, &QProcess::finished, proc, &QObject::deleteLater);
+    QObject::connect(proc, &QProcess::errorOccurred, proc, &QObject::deleteLater);
+    proc->start(QStringLiteral("wl-copy"), QStringList());
+    if (proc->waitForStarted(200)) {
+        proc->write(text.toUtf8());
+        proc->closeWriteChannel();
+    } else {
+        proc->deleteLater();
+    }
 }
 
 void EthernetMonitor::onVnstatUpdated(const QVariantMap &data) {

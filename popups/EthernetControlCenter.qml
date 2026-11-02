@@ -56,10 +56,10 @@ Item {
   }
 
   implicitWidth: Theme.popupWidthMd
-  readonly property int preferredHeight: Math.min(680, Math.max(560, 32 + bodyCol.height))
-  property int popupHeight: 640
+  readonly property int preferredHeight: Math.min(680, Math.max(668, 24 + bodyCol.height))
+  property int popupHeight: preferredHeight
 
-  function syncHeight() {
+  function syncHeight(): void {
     if (bodyCol.height > 0)
       popupHeight = preferredHeight;
   }
@@ -132,12 +132,21 @@ Item {
   }
 
   Component.onCompleted: {
-    if (root.activeMonitor && !root.hasVnstat) {
-      root.activeMonitor.refreshVnstat();
+    if (root.activeMonitor) {
+      root.activeMonitor.throughputTracking = true;
+      if (!root.hasVnstat) {
+        root.activeMonitor.refreshVnstat();
+      }
     }
     if (root.hasInternet && root.pingLatency < 0 && !root.autoPinged) {
       root.autoPinged = true;
       root.runPing();
+    }
+  }
+
+  Component.onDestruction: {
+    if (root.activeMonitor) {
+      root.activeMonitor.throughputTracking = false;
     }
   }
 
@@ -478,7 +487,7 @@ Item {
             Item {
               visible: !root.hasVnstat
               width: parent.width
-              height: 48
+              height: 224
               Text {
                 anchors.centerIn: parent
                 text: "No vnstat data recorded yet"

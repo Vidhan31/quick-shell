@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
 
     if (action == QStringLiteral("state")) {
         DockerState st;
-        const bool ok = client.fetchFullState(st);
+        const bool ok = client.fetchFullState(st, true);
         printJson(QJsonDocument::fromVariant(st.toMap()));
         return ok ? 0 : 1;
     }

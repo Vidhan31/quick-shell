@@ -123,7 +123,7 @@ static DockerContainer containerFromSummary(const QJsonObject &o)
     return c;
 }
 
-bool DockerSocketClient::fetchFullState(DockerState &outState) const
+bool DockerSocketClient::fetchFullState(DockerState &outState, bool includeDiskUsage) const
 {
     outState = DockerState{};
     outState.socketPath = socketPath();
@@ -217,42 +217,44 @@ bool DockerSocketClient::fetchFullState(DockerState &outState) const
         }
     }
 
-    // Items shape is empty in the spec, so keep it raw for the header stats and
-    // derive the C++-computed cleanup rows QML displays verbatim.
-    const HttpResponse dfResp = request(QStringLiteral("GET"), QByteArray(kApiPrefix) + "/system/df");
+    // Disk usage (/system/df) is expensive on large storage pools. Only query it
+    // on demand for the control center popup, keeping background monitoring lean.
     qint64 imageReclaim = 0;
     qint64 buildReclaim = 0;
     qint64 volumeTotal = 0;
-    if (dfResp.ok) {
-        const QJsonDocument doc = dfResp.toJson();
-        if (doc.isObject()) {
-            outState.df = doc.object().toVariantMap();
-            const QJsonObject root = doc.object();
-            imageReclaim = static_cast<qint64>(root.value(QStringLiteral("ImageUsage")).toObject().value(QStringLiteral("Reclaimable")).toDouble(0));
-            buildReclaim = static_cast<qint64>(root.value(QStringLiteral("BuildCacheUsage")).toObject().value(QStringLiteral("Reclaimable")).toDouble(0));
-            volumeTotal = static_cast<qint64>(root.value(QStringLiteral("VolumeUsage")).toObject().value(QStringLiteral("TotalSize")).toDouble(0));
+    if (includeDiskUsage) {
+        const HttpResponse dfResp = request(QStringLiteral("GET"), QByteArray(kApiPrefix) + "/system/df");
+        if (dfResp.ok) {
+            const QJsonDocument doc = dfResp.toJson();
+            if (doc.isObject()) {
+                outState.df = doc.object().toVariantMap();
+                const QJsonObject root = doc.object();
+                imageReclaim = static_cast<qint64>(root.value(QStringLiteral("ImageUsage")).toObject().value(QStringLiteral("Reclaimable")).toDouble(0));
+                buildReclaim = static_cast<qint64>(root.value(QStringLiteral("BuildCacheUsage")).toObject().value(QStringLiteral("Reclaimable")).toDouble(0));
+                volumeTotal = static_cast<qint64>(root.value(QStringLiteral("VolumeUsage")).toObject().value(QStringLiteral("TotalSize")).toDouble(0));
+            }
         }
-    }
 
-    auto cleanupRow = [](const QString &kind, const QString &label, const QString &detail) {
-        QVariantMap r;
-        r[QStringLiteral("kind")] = kind;
-        r[QStringLiteral("label")] = label;
-        r[QStringLiteral("detail")] = detail;
-        return r;
-    };
-    outState.cleanup = QVariantList{
-        cleanupRow(QStringLiteral("containers"), QStringLiteral("Containers"),
-                   outState.stopped > 0 ? QStringLiteral("%1 stopped").arg(outState.stopped) : QStringLiteral("none stopped")),
-        cleanupRow(QStringLiteral("images"), QStringLiteral("Images"),
-                   imageReclaim > 0 ? formatBytes(imageReclaim) + QStringLiteral(" reclaimable") : QStringLiteral("nothing unused")),
-        cleanupRow(QStringLiteral("volumes"), QStringLiteral("Volumes"),
-                   volumeTotal > 0 ? formatBytes(volumeTotal) + QStringLiteral(" total") : QStringLiteral("no volumes")),
-        cleanupRow(QStringLiteral("build"), QStringLiteral("Build cache"),
-                   buildReclaim > 0 ? formatBytes(buildReclaim) + QStringLiteral(" reclaimable") : QStringLiteral("nothing unused")),
-    };
-    const qint64 totalReclaim = imageReclaim + buildReclaim;
-    outState.reclaimSummary = totalReclaim > 0 ? formatBytes(totalReclaim) + QStringLiteral(" reclaimable") : QString();
+        auto cleanupRow = [](const QString &kind, const QString &label, const QString &detail) {
+            QVariantMap r;
+            r[QStringLiteral("kind")] = kind;
+            r[QStringLiteral("label")] = label;
+            r[QStringLiteral("detail")] = detail;
+            return r;
+        };
+        outState.cleanup = QVariantList{
+            cleanupRow(QStringLiteral("containers"), QStringLiteral("Containers"),
+                       outState.stopped > 0 ? QStringLiteral("%1 stopped").arg(outState.stopped) : QStringLiteral("none stopped")),
+            cleanupRow(QStringLiteral("images"), QStringLiteral("Images"),
+                       imageReclaim > 0 ? formatBytes(imageReclaim) + QStringLiteral(" reclaimable") : QStringLiteral("nothing unused")),
+            cleanupRow(QStringLiteral("volumes"), QStringLiteral("Volumes"),
+                       volumeTotal > 0 ? formatBytes(volumeTotal) + QStringLiteral(" total") : QStringLiteral("no volumes")),
+            cleanupRow(QStringLiteral("build"), QStringLiteral("Build cache"),
+                       buildReclaim > 0 ? formatBytes(buildReclaim) + QStringLiteral(" reclaimable") : QStringLiteral("nothing unused")),
+        };
+        const qint64 totalReclaim = imageReclaim + buildReclaim;
+        outState.reclaimSummary = totalReclaim > 0 ? formatBytes(totalReclaim) + QStringLiteral(" reclaimable") : QString();
+    }
 
     outState.ok = true;
     return true;

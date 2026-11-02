@@ -31,7 +31,7 @@ void DockerWorker::start()
         m_debounceTimer = new QTimer(this);
         m_debounceTimer->setSingleShot(true);
         m_debounceTimer->setInterval(400);
-        connect(m_debounceTimer, &QTimer::timeout, this, &DockerWorker::sample);
+        connect(m_debounceTimer, &QTimer::timeout, this, [this]() { sample(false); });
     }
     setupFsWatcher();
     sample(); // initial full state at quickshell startup
@@ -282,7 +282,7 @@ void DockerWorker::onEventsDisconnected()
     }
 }
 
-void DockerWorker::sample()
+void DockerWorker::sample(bool includeDiskUsage)
 {
     if (m_isSampling) {
         return;
@@ -290,7 +290,13 @@ void DockerWorker::sample()
     m_isSampling = true;
 
     DockerState state;
-    m_client->fetchFullState(state);
+    m_client->fetchFullState(state, includeDiskUsage);
+
+    if (!includeDiskUsage && m_initialized) {
+        state.df = m_lastState.df;
+        state.cleanup = m_lastState.cleanup;
+        state.reclaimSummary = m_lastState.reclaimSummary;
+    }
 
     // A cancelled fetch leaves `state` reset, so publishing it would wipe the
     // UI to empty just because teardown interrupted the sample.
@@ -322,10 +328,10 @@ QString DockerWorker::containerName(const QString &id) const
 
 void DockerWorker::refresh()
 {
-    // Explicit user refresh (button): same sample, but with a busy pulse so
-    // the UI can spin. Internal/event samples stay silent.
+    // Explicit user refresh (button): fetch full sample including disk usage
+    // with a busy pulse so the UI can spin. Internal/event samples stay lean.
     setBusy(true, QStringLiteral("refresh"), QStringLiteral("Refreshing…"));
-    sample();
+    sample(true);
     setBusy(false);
 }
 
@@ -356,30 +362,7 @@ void DockerWorker::runContainerAction(const QString &action, const QString &id, 
         res.error = QStringLiteral("Unknown container action: ") + action;
     }
 
-    if (res.ok) {
-        for (int retry = 0; retry < 6; ++retry) {
-            if (retry > 0) {
-                QThread::msleep(150);
-            }
-            sample();
-            bool stateMatched = false;
-            for (const auto &c : m_lastState.containers) {
-                if (c.id == id || (!id.isEmpty() && c.id.startsWith(id))) {
-                    if ((action == QStringLiteral("start") || action == QStringLiteral("restart")) && c.isRunning()) {
-                        stateMatched = true;
-                    } else if ((action == QStringLiteral("stop") || action == QStringLiteral("kill")) && !c.isRunning()) {
-                        stateMatched = true;
-                    }
-                    break;
-                }
-            }
-            if (stateMatched) {
-                break;
-            }
-        }
-    } else {
-        sample();
-    }
+    sample(false);
 
     emit actionFinished(res.ok, res.output, res.error, action + QStringLiteral(":") + id);
     setBusy(false);
@@ -464,30 +447,7 @@ void DockerWorker::runProjectAction(const QString &action, const QString &projec
         }
     }
 
-    if (okCount > 0) {
-        for (int retry = 0; retry < 6; ++retry) {
-            if (retry > 0) {
-                QThread::msleep(150);
-            }
-            sample();
-            bool allMatched = true;
-            for (const auto &p : m_lastState.projects) {
-                if (p.name == project) {
-                    if (action == QStringLiteral("start") && p.running < p.total) {
-                        allMatched = false;
-                    } else if (action == QStringLiteral("stop") && p.running > 0) {
-                        allMatched = false;
-                    }
-                    break;
-                }
-            }
-            if (allMatched) {
-                break;
-            }
-        }
-    } else {
-        sample();
-    }
+    sample(false);
 
     const bool ok = (failCount == 0);
     const QString summary = QStringLiteral("%1 %2: %3 ok, %4 failed").arg(action, project).arg(okCount).arg(failCount);
@@ -634,52 +594,27 @@ void DockerMonitor::setRunning(bool run)
 
 QVariantList DockerMonitor::containers() const
 {
-    QVariantList l;
-    l.reserve(m_state.containers.size());
-    for (const auto &c : m_state.containers) {
-        l.append(c.toMap());
-    }
-    return l;
+    return m_cachedMap.value(QStringLiteral("containers")).toList();
 }
 
 QVariantList DockerMonitor::projects() const
 {
-    QVariantList l;
-    l.reserve(m_state.projects.size());
-    for (const auto &p : m_state.projects) {
-        l.append(p.toMap());
-    }
-    return l;
+    return m_cachedMap.value(QStringLiteral("projects")).toList();
 }
 
 QVariantList DockerMonitor::standalone() const
 {
-    QVariantList l;
-    l.reserve(m_state.standalone.size());
-    for (const auto &c : m_state.standalone) {
-        l.append(c.toMap());
-    }
-    return l;
+    return m_cachedMap.value(QStringLiteral("standalone")).toList();
 }
 
 QVariantList DockerMonitor::images() const
 {
-    QVariantList l;
-    l.reserve(m_state.images.size());
-    for (const auto &i : m_state.images) {
-        l.append(i.toMap());
-    }
-    return l;
+    return m_cachedMap.value(QStringLiteral("images")).toList();
 }
 
 QVariantList DockerMonitor::volumes() const
 {
-    QVariantList l;
-    l.reserve(m_state.volumes.size());
-    for (const auto &v : m_state.volumes) {
-        l.append(v.toMap());
-    }
-    return l;
+    return m_cachedMap.value(QStringLiteral("volumes")).toList();
 }
 
 void DockerMonitor::refresh()

@@ -27,7 +27,7 @@ public:
 
     explicit DockerSocketClient(QString socketPath = QString());
 
-    bool fetchFullState(DockerState &outState) const;
+    bool fetchFullState(DockerState &outState, bool includeDiskUsage = false) const;
     bool ping(QString *errOut = nullptr) const;
 
     ActionResult startContainer(const QString &id) const;
