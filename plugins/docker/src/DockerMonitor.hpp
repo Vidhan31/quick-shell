@@ -37,6 +37,7 @@ public slots:
     void runPrune(const QString &kind);
     void runFetchLogs(const QString &id, int tail);
     void runProjectAction(const QString &action, const QString &project, int timeoutSec);
+    void runServiceAction(const QString &action);
 
 signals:
     void stateChanged(const qs::plugins::DockerState &state);
@@ -163,6 +164,8 @@ public:
     Q_INVOKABLE void fetchLogs(const QString &id, int tail = 200);
     Q_INVOKABLE void startProject(const QString &project);
     Q_INVOKABLE void stopProject(const QString &project, int timeoutSec = 10);
+    Q_INVOKABLE void startService();
+    Q_INVOKABLE void stopService();
     Q_INVOKABLE void openPath(const QString &path);
 
 signals:
@@ -178,6 +181,7 @@ signals:
     void requestPrune(const QString &kind);
     void requestFetchLogs(const QString &id, int tail);
     void requestProjectAction(const QString &action, const QString &project, int timeoutSec);
+    void requestServiceAction(const QString &action);
 
 private slots:
     void onStateChanged(const qs::plugins::DockerState &state);

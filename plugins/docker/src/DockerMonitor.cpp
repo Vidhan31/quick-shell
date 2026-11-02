@@ -2,6 +2,8 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QtDBus/QDBusConnection>
+#include <QtDBus/QDBusMessage>
 
 #include <cctype>
 
@@ -493,6 +495,77 @@ void DockerWorker::runProjectAction(const QString &action, const QString &projec
     setBusy(false);
 }
 
+void DockerWorker::runServiceAction(const QString &action)
+{
+    const bool isStart = (action == QLatin1String("start"));
+    const QString ctx = QStringLiteral("service:") + action;
+    setBusy(true, ctx, isStart ? QStringLiteral("Starting Docker service…") : QStringLiteral("Stopping Docker service…"));
+
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) {
+        setBusy(false);
+        emit actionFinished(false, QString(), QStringLiteral("D-Bus session bus unavailable"), ctx);
+        return;
+    }
+
+    const QString method = isStart ? QStringLiteral("StartUnit") : QStringLiteral("StopUnit");
+    QDBusMessage msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.systemd1"),
+        QStringLiteral("/org/freedesktop/systemd1"),
+        QStringLiteral("org.freedesktop.systemd1.Manager"),
+        method
+    );
+    msg.setArguments({QStringLiteral("docker.service"), QStringLiteral("replace")});
+
+    const QDBusMessage reply = bus.call(msg);
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        setBusy(false);
+        emit actionFinished(false, QString(), reply.errorMessage(), ctx);
+        return;
+    }
+
+    const QString sockPath = m_client->socketPath();
+
+    if (isStart) {
+        bool ready = false;
+        for (int i = 0; i < 40; ++i) {
+            QThread::msleep(200);
+            if (QFileInfo::exists(sockPath)) {
+                QString pingErr;
+                if (m_client->ping(&pingErr)) {
+                    ready = true;
+                    break;
+                }
+            }
+        }
+        setupFsWatcher();
+        connectEvents();
+        sample();
+        setBusy(false);
+        if (ready) {
+            emit actionFinished(true, QStringLiteral("Docker service started"), QString(), ctx);
+        } else {
+            emit actionFinished(false, QString(), QStringLiteral("Docker daemon did not become responsive"), ctx);
+        }
+    } else {
+        for (int i = 0; i < 40; ++i) {
+            QThread::msleep(200);
+            if (!QFileInfo::exists(sockPath)) {
+                break;
+            }
+            QString pingErr;
+            if (!m_client->ping(&pingErr)) {
+                break;
+            }
+        }
+        closeEvents();
+        sample();
+        setupFsWatcher();
+        setBusy(false);
+        emit actionFinished(true, QStringLiteral("Docker service stopped"), QString(), ctx);
+    }
+}
+
 DockerMonitor::DockerMonitor(QObject *parent)
     : QObject(parent)
 {
@@ -525,6 +598,7 @@ DockerMonitor::DockerMonitor(QObject *parent)
     connect(this, &DockerMonitor::requestPrune, m_worker, &DockerWorker::runPrune, Qt::QueuedConnection);
     connect(this, &DockerMonitor::requestFetchLogs, m_worker, &DockerWorker::runFetchLogs, Qt::QueuedConnection);
     connect(this, &DockerMonitor::requestProjectAction, m_worker, &DockerWorker::runProjectAction, Qt::QueuedConnection);
+    connect(this, &DockerMonitor::requestServiceAction, m_worker, &DockerWorker::runServiceAction, Qt::QueuedConnection);
 
     m_thread.start(QThread::LowPriority);
 }
@@ -667,6 +741,16 @@ void DockerMonitor::startProject(const QString &project)
 void DockerMonitor::stopProject(const QString &project, int timeoutSec)
 {
     emit requestProjectAction(QStringLiteral("stop"), project, timeoutSec);
+}
+
+void DockerMonitor::startService()
+{
+    emit requestServiceAction(QStringLiteral("start"));
+}
+
+void DockerMonitor::stopService()
+{
+    emit requestServiceAction(QStringLiteral("stop"));
 }
 
 void DockerMonitor::openPath(const QString &path)

@@ -5,7 +5,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(docker_plugin VERSION 1.0.0 LANGUAGES CXX)
 
-find_package(Qt6 6.11 REQUIRED COMPONENTS Core Quick Qml Network Gui)
+find_package(Qt6 6.11 REQUIRED COMPONENTS Core Quick Qml Network Gui DBus)
 
 qt_standard_project_setup(REQUIRES 6.11)
 
@@ -48,6 +48,7 @@ target_link_libraries(docker
         Qt6::Qml
         Qt6::Network
         Qt6::Gui
+        Qt6::DBus
 )
 
 add_executable(docker-probe

@@ -14,23 +14,17 @@ Item {
 
   signal triggerRefresh()
   implicitWidth: Theme.popupWidthLg
-  readonly property int preferredHeight: Math.min(700, 32 + bodyCol.height)
-  property int popupHeight: 500
+  implicitHeight: 500
 
-  function syncHeight() {
-    if (bodyCol.height > 0)
-      popupHeight = preferredHeight;
-  }
-  onPreferredHeightChanged: {
-    if (bodyCol.height > 0)
-      popupHeight = preferredHeight;
-  }
-  implicitHeight: popupHeight
+  function syncHeight(): void {}
 
   readonly property bool connected: activeMonitor ? activeMonitor.connected : false
   readonly property bool busy: activeMonitor ? activeMonitor.isBusy : false
   readonly property string busyContext: activeMonitor ? activeMonitor.busyContext : ""
   readonly property string busyLabel: activeMonitor ? activeMonitor.busyLabel : ""
+  readonly property bool isServiceStarting: busy && busyContext === "service:start"
+  readonly property bool isServiceStopping: busy && busyContext === "service:stop"
+
   readonly property var projects: activeMonitor ? activeMonitor.projects : []
   readonly property var standalone: activeMonitor ? activeMonitor.standalone : []
   readonly property var images: activeMonitor ? activeMonitor.images : []
@@ -41,6 +35,34 @@ Item {
   readonly property string lastError: activeMonitor ? activeMonitor.lastError : ""
   readonly property int runningCount: activeMonitor ? activeMonitor.runningCount : 0
   readonly property int totalCount: activeMonitor ? activeMonitor.totalCount : 0
+
+  property bool confirmStopPrompt: false
+
+  onConnectedChanged: {
+    if (!root.connected)
+      root.confirmStopPrompt = false;
+  }
+
+  function startService(): void {
+    if (root.activeMonitor)
+      root.activeMonitor.startService();
+  }
+
+  function requestStopService(): void {
+    if (root.busy)
+      return;
+    if (root.runningCount > 0) {
+      root.confirmStopPrompt = true;
+    } else {
+      executeStopService();
+    }
+  }
+
+  function executeStopService(): void {
+    root.confirmStopPrompt = false;
+    if (root.activeMonitor)
+      root.activeMonitor.stopService();
+  }
 
   property string toastMsg: ""
   property string logViewId: ""
@@ -118,9 +140,7 @@ Item {
 
   ColumnLayout {
     id: bodyCol
-    anchors.left: parent.left
-    anchors.right: parent.right
-    anchors.top: parent.top
+    anchors.fill: parent
     anchors.margins: Theme.cardPadding
     spacing: 0
 
@@ -160,12 +180,25 @@ Item {
         glyph: "󰑓"
         fs: Theme.iconBase
         tooltip: "Refresh containers"
-        spinning: root.busy
+        spinning: root.busy && !root.isServiceStopping
+        dimmed: root.busy
         onClicked: {
           if (root.activeMonitor)
             root.activeMonitor.refresh();
           root.triggerRefresh();
         }
+      }
+
+      IconButton {
+        visible: root.connected
+        glyph: "󰐥"
+        fs: Theme.iconBase
+        fg: Theme.red
+        tooltip: "Stop Docker service"
+        tooltipSub: root.runningCount > 0 ? (root.runningCount + " running") : "Safe shutdown"
+        dimmed: root.busy
+        spinning: root.isServiceStopping
+        onClicked: root.requestStopService()
       }
     }
 
@@ -176,34 +209,171 @@ Item {
 
     Rectangle {
       Layout.fillWidth: true
-      visible: !root.connected
-      radius: Theme.radiusBase
+      visible: root.confirmStopPrompt
+      radius: Theme.radiusSection
       color: Theme.surface
-      Layout.preferredHeight: offlineText.height + 20
-      Text {
-        id: offlineText
+      border.color: Theme.amber
+      border.width: 1
+      Layout.preferredHeight: confirmStopCol.implicitHeight + 24
+
+      ColumnLayout {
+        id: confirmStopCol
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        anchors.leftMargin: 12
-        anchors.rightMargin: 12
-        wrapMode: Text.Wrap
-        font.family: Theme.textFont
-        font.pixelSize: Theme.fontSm
-        color: Theme.red
-        text: "Daemon unreachable at " + (root.activeMonitor ? root.activeMonitor.socketPath : "?")
+        anchors.margins: 12
+        spacing: 10
+
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: 8
+
+          Text {
+            text: "󰀦"
+            font.family: Theme.mono
+            font.pixelSize: Theme.iconMd
+            color: Theme.amber
+          }
+
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 2
+
+            Text {
+              Layout.fillWidth: true
+              text: "Active containers running"
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontBase
+              font.weight: Font.DemiBold
+              color: Theme.ink1
+            }
+
+            Text {
+              Layout.fillWidth: true
+              text: root.runningCount + (root.runningCount === 1 ? " container is" : " containers are") + " currently active. Stopping Docker will shut them down."
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontXs
+              color: Theme.ink3
+              wrapMode: Text.Wrap
+            }
+          }
+        }
+
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: 8
+
+          Item {
+            Layout.fillWidth: true
+          }
+
+          TextButton {
+            text: "Cancel"
+            fs: Theme.fontSm
+            fg: Theme.ink2
+            onClicked: root.confirmStopPrompt = false
+          }
+
+          PrimaryButton {
+            text: "Stop Service"
+            glyph: "󰐥"
+            fill: Theme.red
+            ink: Theme.darkInk
+            enabledBtn: !root.busy
+            onClicked: root.executeStopService()
+          }
+        }
       }
     }
 
     Item {
       Layout.fillWidth: true
-      Layout.preferredHeight: root.connected ? 0 : 14
+      Layout.preferredHeight: root.confirmStopPrompt ? 14 : 0
+      visible: root.confirmStopPrompt
+    }
+
+    Rectangle {
+      Layout.fillWidth: true
       visible: !root.connected
+      radius: Theme.radiusSection
+      color: Theme.surface
+      border.color: Theme.lineMuted
+      border.width: 1
+      Layout.preferredHeight: offlineCol.implicitHeight + 28
+
+      ColumnLayout {
+        id: offlineCol
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.margins: 14
+        spacing: 12
+
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: 10
+
+          Text {
+            text: root.isServiceStarting ? "󰑓" : "󰅚"
+            font.family: Theme.mono
+            font.pixelSize: Theme.iconMd
+            color: root.isServiceStarting ? Theme.accent : Theme.red
+            NumberAnimation on rotation {
+              running: root.isServiceStarting
+              from: 0
+              to: 360
+              loops: Animation.Infinite
+              duration: 800
+            }
+          }
+
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 2
+
+            Text {
+              Layout.fillWidth: true
+              text: root.isServiceStarting ? "Starting Docker service…" : "Docker service is inactive"
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontBase
+              font.weight: Font.DemiBold
+              color: Theme.ink1
+            }
+
+            Text {
+              Layout.fillWidth: true
+              wrapMode: Text.Wrap
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontXs
+              color: Theme.ink3
+              text: root.isServiceStarting
+                ? "Connecting to daemon via user systemd D-Bus…"
+                : "Daemon unreachable at " + (root.activeMonitor ? root.activeMonitor.socketPath : "socket")
+            }
+          }
+        }
+
+        RowLayout {
+          Layout.fillWidth: true
+
+          Item {
+            Layout.fillWidth: true
+          }
+
+          PrimaryButton {
+            text: root.isServiceStarting ? "Starting…" : "Start Docker Service"
+            glyph: "󰐊"
+            enabledBtn: !root.busy
+            onClicked: root.startService()
+          }
+        }
+      }
     }
 
     Flickable {
       Layout.fillWidth: true
-      Layout.preferredHeight: Math.min(600, contentCol.height)
+      Layout.fillHeight: true
+      visible: root.connected
       contentHeight: contentCol.height
       boundsBehavior: Flickable.StopAtBounds
       clip: true
@@ -479,6 +649,12 @@ Item {
           }
         }
       }
+    }
+
+    Item {
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      visible: !root.connected
     }
 
     Item {
