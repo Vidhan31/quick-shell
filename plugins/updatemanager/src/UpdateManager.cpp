@@ -1,8 +1,10 @@
 #include "UpdateManager.hpp"
 
 #include <algorithm>
+#include <QClipboard>
 #include <QColor>
 #include <QDateTime>
+#include <QGuiApplication>
 #include <QMetaObject>
 #include <QTimer>
 
@@ -340,6 +342,20 @@ void UpdateManager::autoremove() {
     QMetaObject::invokeMethod(m_worker, &UpdateWorker::autoremove, Qt::QueuedConnection);
 }
 
+void UpdateManager::clearErrorMessage() {
+    if (!m_errorMessage.isEmpty()) {
+        m_errorMessage.clear();
+        emit errorMessageChanged();
+        emit summaryChanged();
+    }
+}
+
+void UpdateManager::copyToClipboard(const QString &text) {
+    if (auto *cb = QGuiApplication::clipboard()) {
+        cb->setText(text);
+    }
+}
+
 void UpdateManager::handleCheckStarted() {
     bool wasChecking = m_isChecking;
     m_isChecking = true;
@@ -397,6 +413,7 @@ void UpdateManager::handleCheckFinished(const QList<UpdateItem> &items, bool suc
 
 void UpdateManager::handleChangelogFetched(const QString &packageName, const QVariantList &entries) {
     m_model.updateChangelog(packageName, entries);
+    emit changelogReady(packageName);
 }
 
 void UpdateManager::handleDownloadProgress(quint64 downloadedBytes, quint64 totalBytes, double fraction) {

@@ -63,6 +63,8 @@ public:
     Q_INVOKABLE [[nodiscard]] QVariantMap get(int index) const;
     Q_INVOKABLE [[nodiscard]] QVariantList getGroupKeys(const QString &groupBy) const;
     Q_INVOKABLE [[nodiscard]] QVariantList getItemsInGroup(const QString &groupBy, const QString &groupKey) const;
+    Q_INVOKABLE [[nodiscard]] QVariantList getChangelog(const QString &packageName) const;
+    Q_INVOKABLE [[nodiscard]] bool isChangelogLoaded(const QString &packageName) const;
 
 signals:
     void countChanged();

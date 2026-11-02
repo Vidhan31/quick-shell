@@ -30,6 +30,15 @@ struct DbusTransactionItem {
     QVariantMap objectData;
 };
 
+QDBusArgument &operator<<(QDBusArgument &argument, const DbusChangelogEntry &entry);
+const QDBusArgument &operator>>(const QDBusArgument &argument, DbusChangelogEntry &entry);
+
+QDBusArgument &operator<<(QDBusArgument &argument, const DbusAdvisoryRef &ref);
+const QDBusArgument &operator>>(const QDBusArgument &argument, DbusAdvisoryRef &ref);
+
+QDBusArgument &operator<<(QDBusArgument &argument, const DbusTransactionItem &item);
+const QDBusArgument &operator>>(const QDBusArgument &argument, DbusTransactionItem &item);
+
 void registerDbusTypes();
 
 } // namespace qs::updatemanager

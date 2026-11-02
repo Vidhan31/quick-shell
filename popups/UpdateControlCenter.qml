@@ -29,6 +29,36 @@ Item {
   readonly property string currentStep: service ? service.currentStep : ""
   readonly property int checkPercent: service ? (service.checkPercent || 0) : 0
   readonly property string errorMessage: service ? service.errorMessage : ""
+  property bool errorDetailsExpanded: false
+
+  onErrorMessageChanged: {
+    if (root.errorMessage.length === 0) {
+      root.errorDetailsExpanded = false;
+    }
+  }
+
+  readonly property bool isDependencyConflict: root.errorMessage.indexOf("Problem") !== -1 || root.errorMessage.indexOf("conflict") !== -1 || root.errorMessage.indexOf("requires") !== -1
+
+  readonly property string errorTitle: {
+    if (!root.errorMessage) return "";
+    if (root.isDependencyConflict) return "Dependency Conflict";
+    if (root.errorMessage.indexOf("Authentication cancelled") !== -1) return "Authentication Cancelled";
+    if (root.errorMessage.indexOf("Resolution error") !== -1) return "Resolution Error";
+    return "Update Failed";
+  }
+
+  readonly property string errorSummary: {
+    if (!root.errorMessage) return "";
+    if (root.isDependencyConflict) return "Updates are held back by conflicting upstream repository packages.";
+    if (root.errorMessage.indexOf("Authentication cancelled") !== -1) return "Administrator authentication was cancelled.";
+    const firstLine = root.errorMessage.split("\n")[0];
+    return firstLine.length > 80 ? (firstLine.substring(0, 80) + "…") : firstLine;
+  }
+
+  readonly property bool hasErrorDetails: {
+    if (!root.errorMessage) return false;
+    return root.isDependencyConflict || root.errorMessage.indexOf("\n") !== -1 || root.errorMessage.length > 80;
+  }
 
   readonly property bool canSwitchMethod: !root.isBusy && !root.offlineReady
 
@@ -39,6 +69,18 @@ Item {
   property bool hoverClean: false
   property bool hoverAutoremove: false
   property bool hoverRefresh: false
+
+  property var changelogCache: ({})
+  property int changelogCacheVersion: 0
+
+  Connections {
+    target: root.service
+    function onChangelogReady(packageName: string): void {
+      if (!root.service || !root.service.model) return;
+      root.changelogCache[packageName] = root.service.model.getChangelog(packageName);
+      root.changelogCacheVersion++;
+    }
+  }
 
   onRecommendedMethodChanged: {
     /* No check/download/apply runs concurrently with another operation, so
@@ -194,34 +236,159 @@ Item {
       Hairline { visible: root.hasUpdates && !root.isChecking }
 
       Rectangle {
+        id: errorBanner
         visible: root.errorMessage.length > 0
         width: parent.width
-        implicitHeight: errText.implicitHeight + 16
+        implicitHeight: errCol.implicitHeight + 16
         height: visible ? implicitHeight : 0
-        color: Theme.errBg
+        color: root.isDependencyConflict ? Theme.warnBg : Theme.errBg
         radius: Theme.radiusBase
-        border.width: 0
+        border.width: 1
+        border.color: root.isDependencyConflict ? Qt.rgba(0.90, 0.63, 0.20, 0.35) : Qt.rgba(0.91, 0.36, 0.36, 0.35)
 
-        RowLayout {
+        ColumnLayout {
+          id: errCol
           anchors.fill: parent
           anchors.margins: 8
           spacing: 8
 
-          Text {
-            text: "󰅚"
-            font.family: root.monoFont
-            font.pixelSize: Theme.fontGlyphMd
-            color: Theme.red
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+
+            Text {
+              Layout.alignment: Qt.AlignTop
+              text: root.isDependencyConflict ? "󱈸" : "󰅚"
+              font.family: root.monoFont
+              font.pixelSize: Theme.fontGlyphMd
+              color: root.isDependencyConflict ? Theme.amber : Theme.red
+            }
+
+            ColumnLayout {
+              Layout.fillWidth: true
+              spacing: 2
+
+              Text {
+                Layout.fillWidth: true
+                text: root.errorTitle
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontSm
+                font.bold: true
+                color: Theme.ink1
+              }
+
+              Text {
+                Layout.fillWidth: true
+                text: root.errorSummary
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontXs
+                color: Theme.ink2
+                wrapMode: Text.Wrap
+              }
+            }
+
+            Row {
+              Layout.alignment: Qt.AlignTop
+              spacing: 4
+
+              Rectangle {
+                visible: root.hasErrorDetails
+                implicitWidth: detRow.implicitWidth + 12
+                implicitHeight: 24
+                radius: Theme.radiusPill
+                color: detMa.containsMouse ? Theme.hoverWash : "transparent"
+                border.width: 1
+                border.color: Theme.lineMuted
+
+                RowLayout {
+                  id: detRow
+                  anchors.centerIn: parent
+                  spacing: 4
+
+                  Text {
+                    text: root.errorDetailsExpanded ? "󰅃" : "󰅂"
+                    font.family: root.monoFont
+                    font.pixelSize: Theme.fontXs
+                    color: Theme.ink2
+                  }
+
+                  Text {
+                    text: root.errorDetailsExpanded ? "Hide" : "Details"
+                    font.family: Theme.textFont
+                    font.pixelSize: Theme.fontXs
+                    color: Theme.ink2
+                  }
+                }
+
+                MouseArea {
+                  id: detMa
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    root.errorDetailsExpanded = !root.errorDetailsExpanded;
+                  }
+                }
+              }
+
+              IconButton {
+                btnSize: 24
+                fs: Theme.fontSm
+                glyph: "󰆏"
+                tooltip: "Copy error details"
+                tooltipSub: "Copy to clipboard"
+                onClicked: {
+                  if (root.service) root.service.copyToClipboard(root.errorMessage);
+                }
+              }
+
+              IconButton {
+                btnSize: 24
+                fs: Theme.fontSm
+                glyph: "󰅖"
+                tooltip: "Dismiss"
+                onClicked: {
+                  if (root.service) root.service.clearErrorMessage();
+                }
+              }
+            }
           }
 
-          Text {
-            id: errText
+          Rectangle {
+            id: detailsBox
+            visible: root.errorDetailsExpanded
             Layout.fillWidth: true
-            text: root.errorMessage
-            font.family: Theme.textFont
-            font.pixelSize: Theme.fontSm
-            color: Theme.ink1
-            wrapMode: Text.Wrap
+            Layout.maximumHeight: 140
+            implicitHeight: Math.min(140, detailsText.implicitHeight + 16)
+            color: Theme.inset
+            radius: Theme.radiusBase
+            border.width: 1
+            border.color: Theme.lineMuted
+            clip: true
+
+            Flickable {
+              id: detailsFlick
+              anchors.fill: parent
+              anchors.margins: 8
+              contentWidth: width
+              contentHeight: detailsText.implicitHeight
+              boundsBehavior: Flickable.StopAtBounds
+              clip: true
+
+              TextEdit {
+                id: detailsText
+                width: detailsFlick.width
+                text: root.errorMessage
+                font.family: root.monoFont
+                font.pixelSize: Theme.fontXs
+                color: Theme.ink2
+                selectionColor: Theme.selected
+                selectedTextColor: Theme.ink1
+                readOnly: true
+                selectByMouse: true
+                wrapMode: TextEdit.Wrap
+              }
+            }
           }
         }
       }
@@ -328,8 +495,6 @@ Item {
             Repeater {
               model: {
                 if (!root.service || !root.service.model || !root.hasUpdates) return [];
-                // Reactively re-evaluate whenever model revision, update count, or active tab changes
-                const _rev = root.service.modelRevision;
                 const _cnt = root.updateCount;
                 const groupBy = (root.activeTab === 0) ? "advisory" : "repository";
                 return root.service.model.getGroupKeys(groupBy);
@@ -350,7 +515,6 @@ Item {
                 Repeater {
                   model: {
                     if (!root.service || !root.service.model || !root.hasUpdates) return [];
-                    const _rev = root.service.modelRevision;
                     const _cnt = root.updateCount;
                     const groupBy = (root.activeTab === 0) ? "advisory" : "repository";
                     return root.service.model.getItemsInGroup(groupBy, groupCol.modelData.key);
@@ -359,6 +523,20 @@ Item {
                   Rectangle {
                     id: itemCard
                     required property var modelData
+                    readonly property bool changelogIsLoaded: {
+                      const _v = root.changelogCacheVersion;
+                      if (root.changelogCache[itemCard.modelData.name] !== undefined) return true;
+                      if (root.service && root.service.model) return root.service.model.isChangelogLoaded(itemCard.modelData.name);
+                      return itemCard.modelData.changelogLoaded;
+                    }
+                    readonly property var changelogItems: {
+                      const _v = root.changelogCacheVersion;
+                      if (root.changelogCache[itemCard.modelData.name] !== undefined) return root.changelogCache[itemCard.modelData.name];
+                      if (root.service && root.service.model && root.service.model.isChangelogLoaded(itemCard.modelData.name)) {
+                        return root.service.model.getChangelog(itemCard.modelData.name);
+                      }
+                      return itemCard.modelData.changelogList || [];
+                    }
                     width: groupCol.width
                     implicitHeight: cardContent.implicitHeight + 16
                     height: implicitHeight
@@ -449,7 +627,7 @@ Item {
                             root.expandedPkg = "";
                           } else {
                             root.expandedPkg = itemCard.modelData.name;
-                            if (!itemCard.modelData.changelogLoaded && root.service) {
+                            if (!itemCard.changelogIsLoaded && root.service) {
                               root.service.fetchChangelog(itemCard.modelData.name);
                             }
                           }
@@ -536,7 +714,7 @@ Item {
                       }
 
                       Text {
-                        visible: !itemCard.modelData.changelogLoaded
+                        visible: !itemCard.changelogIsLoaded
                         text: "Loading changelog entries…"
                         font.family: root.monoFont
                         font.pixelSize: Theme.fontSm
@@ -544,7 +722,7 @@ Item {
                       }
 
                       Text {
-                        visible: itemCard.modelData.changelogLoaded && (!itemCard.modelData.changelogList || itemCard.modelData.changelogList.length === 0)
+                        visible: itemCard.changelogIsLoaded && (!itemCard.changelogItems || itemCard.changelogItems.length === 0)
                         text: "No spec changelogs provided by repository."
                         font.family: Theme.textFont
                         font.pixelSize: Theme.fontXs
@@ -552,9 +730,9 @@ Item {
                       }
 
                       Repeater {
-                        visible: itemCard.modelData.changelogLoaded && itemCard.modelData.changelogList && itemCard.modelData.changelogList.length > 0
-                        model: (itemCard.modelData.changelogList && itemCard.modelData.changelogList.length > 0)
-                               ? itemCard.modelData.changelogList.slice(0, 5) : []
+                        visible: itemCard.changelogIsLoaded && itemCard.changelogItems && itemCard.changelogItems.length > 0
+                        model: (itemCard.changelogItems && itemCard.changelogItems.length > 0)
+                               ? itemCard.changelogItems.slice(0, 5) : []
 
                         Column {
                           id: changelogEntry

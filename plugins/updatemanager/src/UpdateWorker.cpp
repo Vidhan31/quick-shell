@@ -738,6 +738,37 @@ void UpdateWorker::fetchChangelog(const QString &packageName) {
     emit changelogFetched(packageName, entries);
 }
 
+static QString formatResolutionProblems(QDBusInterface &goalIface, const QString &defaultMsg) {
+    QDBusMessage probMsg = goalIface.call(QStringLiteral("get_transaction_problems_string"));
+    if (probMsg.type() != QDBusMessage::ErrorMessage && !probMsg.arguments().isEmpty()) {
+        const QStringList problems = probMsg.arguments().at(0).toStringList();
+        if (!problems.isEmpty()) {
+            return problems.join(QLatin1Char('\n'));
+        }
+    }
+    return defaultMsg;
+}
+
+static int countActionableTransactionItems(const QDBusMessage &reply) {
+    if (reply.arguments().isEmpty()) {
+        return 0;
+    }
+    const QVariant argVar = reply.arguments().at(0);
+    if (!argVar.canConvert<QDBusArgument>()) {
+        return 0;
+    }
+    const QDBusArgument arg = argVar.value<QDBusArgument>();
+    QList<DbusTransactionItem> transItems;
+    arg >> transItems;
+    int count = 0;
+    for (const auto &item : transItems) {
+        if (!item.action.trimmed().isEmpty()) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 void UpdateWorker::stageOfflineUpgrade() {
     emit statusMessageChanged(QStringLiteral("Preparing offline upgrade staging..."));
     m_downloadedPerId.clear();
@@ -780,21 +811,26 @@ void UpdateWorker::stageOfflineUpgrade() {
     if (resReply.arguments().size() >= 2) {
         uint resCode = resReply.arguments().at(1).toUInt();
         if (resCode == 2) {
-            QDBusMessage probMsg = goalIface.call(QStringLiteral("get_transaction_problems_string"));
-            QString errMsg;
-            if (probMsg.type() != QDBusMessage::ErrorMessage && !probMsg.arguments().isEmpty()) {
-                QStringList problems = probMsg.arguments().at(0).toStringList();
-                if (!problems.isEmpty()) {
-                    errMsg = QStringLiteral("Dependency resolution failed:\n") + problems.join(QLatin1Char('\n'));
-                }
-            }
-            if (errMsg.isEmpty()) {
-                errMsg = QStringLiteral("Dependency resolution failed (broken dependencies or conflicts).");
-            }
+            QString errMsg = formatResolutionProblems(
+                goalIface, QStringLiteral("Dependency resolution failed (broken dependencies or conflicts)."));
             closeSession();
+            emit statusMessageChanged(errMsg);
             emit operationFinished(false, errMsg);
             return;
         }
+    }
+
+    const int actionableCount = countActionableTransactionItems(resReply);
+    if (actionableCount == 0) {
+        QString errMsg = formatResolutionProblems(
+            goalIface, QStringLiteral("No updates could be applied due to dependency conflicts."));
+        if (!errMsg.startsWith(QStringLiteral("Problem")) && !errMsg.contains(QStringLiteral("conflict"), Qt::CaseInsensitive)) {
+            errMsg = QStringLiteral("No updates could be applied due to dependency conflicts:\n") + errMsg;
+        }
+        closeSession();
+        emit statusMessageChanged(errMsg);
+        emit operationFinished(false, errMsg);
+        return;
     }
 
     m_downloadedPerId.clear();
@@ -878,21 +914,26 @@ void UpdateWorker::startInPlaceUpgrade() {
     if (resReply.arguments().size() >= 2) {
         uint resCode = resReply.arguments().at(1).toUInt();
         if (resCode == 2) {
-            QDBusMessage probMsg = goalIface.call(QStringLiteral("get_transaction_problems_string"));
-            QString errMsg;
-            if (probMsg.type() != QDBusMessage::ErrorMessage && !probMsg.arguments().isEmpty()) {
-                QStringList problems = probMsg.arguments().at(0).toStringList();
-                if (!problems.isEmpty()) {
-                    errMsg = QStringLiteral("Dependency resolution failed:\n") + problems.join(QLatin1Char('\n'));
-                }
-            }
-            if (errMsg.isEmpty()) {
-                errMsg = QStringLiteral("Dependency resolution failed (broken dependencies or conflicts).");
-            }
+            QString errMsg = formatResolutionProblems(
+                goalIface, QStringLiteral("Dependency resolution failed (broken dependencies or conflicts)."));
             closeSession();
+            emit statusMessageChanged(errMsg);
             emit operationFinished(false, errMsg);
             return;
         }
+    }
+
+    const int actionableCount = countActionableTransactionItems(resReply);
+    if (actionableCount == 0) {
+        QString errMsg = formatResolutionProblems(
+            goalIface, QStringLiteral("No updates could be applied due to dependency conflicts."));
+        if (!errMsg.startsWith(QStringLiteral("Problem")) && !errMsg.contains(QStringLiteral("conflict"), Qt::CaseInsensitive)) {
+            errMsg = QStringLiteral("No updates could be applied due to dependency conflicts:\n") + errMsg;
+        }
+        closeSession();
+        emit statusMessageChanged(errMsg);
+        emit operationFinished(false, errMsg);
+        return;
     }
 
     m_downloadedPerId.clear();
@@ -1249,23 +1290,23 @@ void UpdateWorker::autoremove() {
     if (resReply.arguments().size() >= 2) {
         uint resCode = resReply.arguments().at(1).toUInt();
         if (resCode == 2) {
-            QDBusMessage probMsg = goalIface.call(QStringLiteral("get_transaction_problems_string"));
-            QString errMsg;
-            if (probMsg.type() != QDBusMessage::ErrorMessage && !probMsg.arguments().isEmpty()) {
-                QStringList problems = probMsg.arguments().at(0).toStringList();
-                if (!problems.isEmpty()) {
-                    errMsg = QStringLiteral("Dependency resolution failed:\n") + problems.join(QLatin1Char('\n'));
-                }
-            }
-            if (errMsg.isEmpty()) {
-                errMsg = QStringLiteral("Dependency resolution failed (broken dependencies or conflicts).");
-            }
+            QString errMsg = formatResolutionProblems(
+                goalIface, QStringLiteral("Dependency resolution failed (broken dependencies or conflicts)."));
             closeSession();
             emit statusMessageChanged(errMsg);
             emit autoremoveFinished(false, errMsg);
             emit operationFinished(false, errMsg);
             return;
         }
+    }
+
+    const int actionableCount = countActionableTransactionItems(resReply);
+    if (actionableCount == 0) {
+        closeSession();
+        emit statusMessageChanged(QStringLiteral("No unused packages to remove."));
+        emit autoremoveFinished(true, QStringLiteral("No unused packages to remove."));
+        emit operationFinished(true, QStringLiteral("No unused packages to remove."));
+        return;
     }
 
     emit progressStageUpdated(QStringLiteral("authenticating"), QStringLiteral("Authenticating"), QString(), 0, specs.size(), 0.0);
@@ -1409,7 +1450,7 @@ void UpdateWorker::onRepoKeyImportRequest(const QDBusObjectPath &session, const 
 
 void UpdateWorker::verifyTransactionResult(const QString &fallbackErrMsg, const QString &errStr) {
     Q_UNUSED(errStr);
-    if (!openSession(true, false)) {
+    if (!openSession(true, true)) {
         emit statusMessageChanged(fallbackErrMsg);
         emit operationFinished(false, fallbackErrMsg);
         return;

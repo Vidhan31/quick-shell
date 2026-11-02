@@ -110,6 +110,8 @@ public:
     Q_INVOKABLE void cleanAll();
     Q_INVOKABLE void cleanCache(const QString &cacheType = QStringLiteral("all"));
     Q_INVOKABLE void autoremove();
+    Q_INVOKABLE void clearErrorMessage();
+    Q_INVOKABLE void copyToClipboard(const QString &text);
 
 signals:
     void summaryChanged();
@@ -137,6 +139,7 @@ signals:
     void lastCheckedTextChanged();
     void modelRevisionChanged();
     void updatesAvailable(int count, int securityCount);
+    void changelogReady(const QString &packageName);
     void operationSucceeded(const QString &message);
     void operationFailed(const QString &error);
 

@@ -114,8 +114,6 @@ void UpdateModel::updateChangelog(const QString &packageName, const QVariantList
             m_items[i].changelogList = changelogs;
             const QModelIndex idx = index(i);
             emit dataChanged(idx, idx, {ChangelogLoadedRole, ChangelogListRole, ItemDataRole});
-            m_revision++;
-            emit revisionChanged();
             break;
         }
     }
@@ -144,36 +142,43 @@ QVariantList UpdateModel::getGroupKeys(const QString &groupBy) const {
     }
 
     if (groupBy == QStringLiteral("advisory")) {
-        const QStringList order = {QStringLiteral("security"), QStringLiteral("bugfix"),
-                                   QStringLiteral("enhancement"), QStringLiteral("general")};
-        for (const auto &type : order) {
-            int count = 0;
-            for (const auto &item : m_items) {
-                const QString t = item.advisoryType.toLower();
-                if (type == QStringLiteral("general")) {
-                    if (t.isEmpty() || t == QStringLiteral("general") ||
-                        (t != QStringLiteral("security") && t != QStringLiteral("bugfix") && t != QStringLiteral("enhancement"))) {
-                        count++;
-                    }
-                } else if (t == type) {
-                    count++;
-                }
+        int secCount = 0;
+        int bugCount = 0;
+        int enhCount = 0;
+        int genCount = 0;
+
+        for (const auto &item : m_items) {
+            const QStringView t(item.advisoryType);
+            if (t.compare(u"security", Qt::CaseInsensitive) == 0) {
+                secCount++;
+            } else if (t.compare(u"bugfix", Qt::CaseInsensitive) == 0) {
+                bugCount++;
+            } else if (t.compare(u"enhancement", Qt::CaseInsensitive) == 0) {
+                enhCount++;
+            } else {
+                genCount++;
             }
-            if (count > 0) {
-                QVariantMap g;
-                g[QStringLiteral("key")] = type;
-                if (type == QStringLiteral("security")) {
-                    g[QStringLiteral("label")] = QStringLiteral("Security Updates");
-                } else if (type == QStringLiteral("bugfix")) {
-                    g[QStringLiteral("label")] = QStringLiteral("Bug Fixes");
-                } else if (type == QStringLiteral("enhancement")) {
-                    g[QStringLiteral("label")] = QStringLiteral("Enhancements");
-                } else {
-                    g[QStringLiteral("label")] = QStringLiteral("Package Updates");
-                }
-                g[QStringLiteral("count")] = count;
-                groups.append(g);
-            }
+        }
+
+        auto makeGroup = [](const QString &key, const QString &label, int count) {
+            QVariantMap g;
+            g[QStringLiteral("key")] = key;
+            g[QStringLiteral("label")] = label;
+            g[QStringLiteral("count")] = count;
+            return g;
+        };
+
+        if (secCount > 0) {
+            groups.append(makeGroup(QStringLiteral("security"), QStringLiteral("Security Updates"), secCount));
+        }
+        if (bugCount > 0) {
+            groups.append(makeGroup(QStringLiteral("bugfix"), QStringLiteral("Bug Fixes"), bugCount));
+        }
+        if (enhCount > 0) {
+            groups.append(makeGroup(QStringLiteral("enhancement"), QStringLiteral("Enhancements"), enhCount));
+        }
+        if (genCount > 0) {
+            groups.append(makeGroup(QStringLiteral("general"), QStringLiteral("Package Updates"), genCount));
         }
     } else { // default to repository
         QMap<QString, int> repoCounts;
@@ -198,12 +203,14 @@ QVariantList UpdateModel::getItemsInGroup(const QString &groupBy, const QString 
     for (const auto &item : m_items) {
         bool match = false;
         if (groupBy == QStringLiteral("advisory")) {
-            const QString t = item.advisoryType.toLower();
+            const QStringView t(item.advisoryType);
             if (groupKey == QStringLiteral("general")) {
-                match = (t.isEmpty() || t == QStringLiteral("general") ||
-                         (t != QStringLiteral("security") && t != QStringLiteral("bugfix") && t != QStringLiteral("enhancement")));
+                match = (t.isEmpty() || t.compare(u"general", Qt::CaseInsensitive) == 0 ||
+                         (t.compare(u"security", Qt::CaseInsensitive) != 0 &&
+                          t.compare(u"bugfix", Qt::CaseInsensitive) != 0 &&
+                          t.compare(u"enhancement", Qt::CaseInsensitive) != 0));
             } else {
-                match = (t == groupKey.toLower());
+                match = (t.compare(groupKey, Qt::CaseInsensitive) == 0);
             }
         } else { // repository
             const QString r = item.repoId.isEmpty() ? QStringLiteral("System Repositories") : item.repoId;
@@ -214,6 +221,24 @@ QVariantList UpdateModel::getItemsInGroup(const QString &groupBy, const QString 
         }
     }
     return list;
+}
+
+QVariantList UpdateModel::getChangelog(const QString &packageName) const {
+    for (const auto &item : m_items) {
+        if (item.name == packageName) {
+            return item.changelogList;
+        }
+    }
+    return {};
+}
+
+bool UpdateModel::isChangelogLoaded(const QString &packageName) const {
+    for (const auto &item : m_items) {
+        if (item.name == packageName) {
+            return item.changelogLoaded;
+        }
+    }
+    return false;
 }
 
 } // namespace qs::updatemanager
