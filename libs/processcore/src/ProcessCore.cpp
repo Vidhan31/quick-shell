@@ -20,42 +20,12 @@ QString formatRssKb(unsigned long kb) {
         return QStringLiteral("0K");
     }
     if (kb < 1024UL) {
-        return QString::number(kb) + QStringLiteral("K");
+        return QString::number(kb) + u'K';
     }
     if (kb < 1024UL * 1024UL) {
-        return QString::number(static_cast<double>(kb) / 1024.0, 'f', 1) + QStringLiteral("M");
+        return QString::number(static_cast<double>(kb) / 1024.0, 'f', 1) + u'M';
     }
-    return QString::number(static_cast<double>(kb) / (1024.0 * 1024.0), 'f', 2) + QStringLiteral("G");
-}
-
-static inline bool isShellOrSystemd(const QString &c) {
-    return c == u"systemd" || c == u"bash" || c == u"zsh" || c == u"fish" || c == u"sh";
-}
-
-int getRootFast(int pid, int ppid, const QString &comm, const std::function<std::pair<int, QString>(int)> &getParent) {
-    if (pid <= 1 || ppid <= 1 || isShellOrSystemd(comm)) {
-        return pid;
-    }
-
-    int curr = pid;
-    int currPpid = ppid;
-    int depth = 0;
-
-    while (depth++ < 32) {
-        if (currPpid <= 1) {
-            break;
-        }
-
-        auto [parentOfParent, parentComm] = getParent(currPpid);
-        if (parentComm.isEmpty() || isShellOrSystemd(parentComm)) {
-            break;
-        }
-
-        curr = currPpid;
-        currPpid = parentOfParent;
-    }
-
-    return curr;
+    return QString::number(static_cast<double>(kb) / (1024.0 * 1024.0), 'f', 2) + u'G';
 }
 
 static bool isProcessAlive(int pid) {
@@ -91,7 +61,7 @@ static bool isProcessAlive(int pid) {
     return true;
 }
 
-bool killProcessTree(int rootPid, int signal) {
+bool killProcessTree(int rootPid, int signal, bool waitExited) {
     if (rootPid <= 1) {
         return false;
     }
@@ -200,7 +170,7 @@ bool killProcessTree(int rootPid, int signal) {
     }
 
     const bool isTerminationSignal = (signal == 15 || signal == 9 || signal == 2 || signal == 1 || signal == 3 || signal == 6);
-    if (!isTerminationSignal) {
+    if (!isTerminationSignal || !waitExited) {
         return true;
     }
 

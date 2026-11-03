@@ -61,6 +61,7 @@ public slots:
     void setCandidateCount(int candidateCount);
     void sample();
     void sampleSysStats();
+    void killProcess(int pid, int signal);
 
 signals:
     void dataReady(const QVariantList &processes, double maxMem, const QString &updatedAt);
@@ -91,6 +92,7 @@ private:
     std::vector<int> m_groupIndices;
     std::vector<ProcessItem> m_items;
     std::vector<RawProc> m_prevProcs;
+    std::unordered_map<int, std::string> m_cmdlineNameCache;
 
     int m_statFd{-1};
     int m_meminfoFd{-1};

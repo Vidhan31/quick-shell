@@ -66,6 +66,8 @@ public:
         m_cv.notify_one();
     }
 
+    size_t size() const noexcept { return m_workers.size(); }
+
 private:
     std::vector<std::thread> m_workers;
     std::queue<std::function<void()>> m_tasks;
@@ -154,7 +156,6 @@ void SamplerWorker::stop() {
     if (m_timer && m_timer->isActive()) {
         m_timer->stop();
     }
-    m_pool.reset();
 }
 
 void SamplerWorker::setInterval(int intervalMs) {
@@ -166,6 +167,11 @@ void SamplerWorker::setInterval(int intervalMs) {
 
 void SamplerWorker::setCandidateCount(int candidateCount) {
     m_candidateCount = std::clamp(candidateCount, 16, 32);
+}
+
+void SamplerWorker::killProcess(int pid, int signal) {
+    qs::processcore::killProcessTree(pid, signal, false);
+    QTimer::singleShot(150, this, &SamplerWorker::sample);
 }
 
 void SamplerWorker::sampleSysStats() {
@@ -391,17 +397,20 @@ void SamplerWorker::sample() {
     m_prevTotalJiffies = totalJiffies;
     m_prevJiffies = std::move(m_currJiffies);
 
-    auto getParent = [&](int p) -> std::pair<int, QString> {
+    auto getParent = [&](int p) -> std::pair<int, std::string_view> {
         auto it = m_pidToIndex.find(p);
-        if (it == m_pidToIndex.end()) return {0, QString{}};
+        if (it == m_pidToIndex.end()) return {0, {}};
         const auto &pr = m_rawProcs[it->second];
-        return {pr.ppid, QString::fromUtf8(pr.comm)};
+        return {pr.ppid, std::string_view(pr.comm)};
     };
 
     m_groups.clear();
     m_groupLookup.clear();
+    std::unordered_map<int, int> rootMemo;
+    rootMemo.reserve(m_rawProcs.size());
+
     for (auto &proc : m_rawProcs) {
-        int r = qs::processcore::getRootFast(proc.pid, proc.ppid, QString::fromUtf8(proc.comm), getParent);
+        int r = qs::processcore::getRootFast(proc.pid, proc.ppid, std::string_view(proc.comm), getParent, &rootMemo);
         proc.rootPid = r;
 
         auto it = m_groupLookup.find(r);
@@ -478,28 +487,39 @@ void SamplerWorker::sample() {
     }
 
     if (!procIndicesToResolve.empty()) {
-        std::atomic<int> remaining(static_cast<int>(procIndicesToResolve.size()));
+        const size_t total = procIndicesToResolve.size();
+        size_t numWorkers = std::min(m_pool ? m_pool->size() : size_t(1), total);
+        if (numWorkers == 0) numWorkers = 1;
+
+        std::atomic<size_t> nextIndex{0};
+        std::atomic<size_t> completedWorkers{0};
         std::mutex doneMutex;
         std::condition_variable doneCv;
 
-        for (int pIdx : procIndicesToResolve) {
-            m_pool->enqueue([&, pIdx, procFd] {
+        for (size_t w = 0; w < numWorkers; ++w) {
+            m_pool->enqueue([&, procFd, total, numWorkers] {
                 char pbuf[64];
-                snprintf(pbuf, sizeof(pbuf), "%d/smaps_rollup", m_rawProcs[pIdx].pid);
-                int smapsFd = openat(procFd, pbuf, O_RDONLY);
-                if (smapsFd >= 0) {
-                    char smapsBuf[384];
-                    ssize_t sn = read(smapsFd, smapsBuf, sizeof(smapsBuf) - 1);
-                    close(smapsFd);
-                    if (sn > 0) {
-                        smapsBuf[sn] = '\0';
-                        const char *pssPtr = strstr(smapsBuf, "\nPss:");
-                        if (pssPtr) {
-                            m_rawProcs[pIdx].finalMemKb = std::strtoull(pssPtr + 5, nullptr, 10);
+                char smapsBuf[384];
+                while (true) {
+                    size_t i = nextIndex.fetch_add(1, std::memory_order_relaxed);
+                    if (i >= total) break;
+
+                    int pIdx = procIndicesToResolve[i];
+                    snprintf(pbuf, sizeof(pbuf), "%d/smaps_rollup", m_rawProcs[pIdx].pid);
+                    int smapsFd = openat(procFd, pbuf, O_RDONLY);
+                    if (smapsFd >= 0) {
+                        ssize_t sn = read(smapsFd, smapsBuf, sizeof(smapsBuf) - 1);
+                        close(smapsFd);
+                        if (sn > 0) {
+                            smapsBuf[sn] = '\0';
+                            const char *pssPtr = strstr(smapsBuf, "\nPss:");
+                            if (pssPtr) {
+                                m_rawProcs[pIdx].finalMemKb = std::strtoull(pssPtr + 5, nullptr, 10);
+                            }
                         }
                     }
                 }
-                if (--remaining == 0) {
+                if (completedWorkers.fetch_add(1, std::memory_order_acq_rel) + 1 == numWorkers) {
                     std::unique_lock<std::mutex> lk(doneMutex);
                     doneCv.notify_one();
                 }
@@ -508,7 +528,7 @@ void SamplerWorker::sample() {
 
         {
             std::unique_lock<std::mutex> lk(doneMutex);
-            doneCv.wait(lk, [&] { return remaining.load() == 0; });
+            doneCv.wait(lk, [&] { return completedWorkers.load(std::memory_order_acquire) == numWorkers; });
         }
     }
 
@@ -623,19 +643,25 @@ void SamplerWorker::sample() {
     for (size_t i = 0; i < topN; ++i) {
         auto &item = m_items[i];
         if (item.name.size() == 15 && item.mpid > 0) {
-            char cmdBuf[64];
-            snprintf(cmdBuf, sizeof(cmdBuf), "/proc/%d/cmdline", item.mpid);
-            int fdCmd = open(cmdBuf, O_RDONLY | O_CLOEXEC);
-            if (fdCmd >= 0) {
-                char rawCmd[512];
-                ssize_t cn = read(fdCmd, rawCmd, sizeof(rawCmd) - 1);
-                close(fdCmd);
-                if (cn > 0) {
-                    rawCmd[cn] = '\0';
-                    const char *base = strrchr(rawCmd, '/');
-                    const char *candidate = base ? (base + 1) : rawCmd;
-                    if (strncmp(candidate, item.name.c_str(), 15) == 0) {
-                        item.name = candidate;
+            auto cachedIt = m_cmdlineNameCache.find(item.mpid);
+            if (cachedIt != m_cmdlineNameCache.end()) {
+                item.name = cachedIt->second;
+            } else {
+                char cmdBuf[64];
+                snprintf(cmdBuf, sizeof(cmdBuf), "/proc/%d/cmdline", item.mpid);
+                int fdCmd = open(cmdBuf, O_RDONLY | O_CLOEXEC);
+                if (fdCmd >= 0) {
+                    char rawCmd[512];
+                    ssize_t cn = read(fdCmd, rawCmd, sizeof(rawCmd) - 1);
+                    close(fdCmd);
+                    if (cn > 0) {
+                        rawCmd[cn] = '\0';
+                        const char *base = strrchr(rawCmd, '/');
+                        const char *candidate = base ? (base + 1) : rawCmd;
+                        if (strncmp(candidate, item.name.c_str(), 15) == 0) {
+                            item.name = candidate;
+                            m_cmdlineNameCache[item.mpid] = item.name;
+                        }
                     }
                 }
             }
@@ -740,9 +766,9 @@ void ProcessMonitor::sampleSync() {
 
 bool ProcessMonitor::kill(int pid, int signal) {
     if (pid <= 1) return false;
-    bool ok = qs::processcore::killProcessTree(pid, signal);
-    if (ok) {
-        QTimer::singleShot(150, this, &ProcessMonitor::refresh);
+    if (m_worker) {
+        QMetaObject::invokeMethod(m_worker, "killProcess", Qt::QueuedConnection,
+                                  Q_ARG(int, pid), Q_ARG(int, signal));
         return true;
     }
     return false;

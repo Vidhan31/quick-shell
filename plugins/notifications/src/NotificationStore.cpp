@@ -678,11 +678,25 @@ void NotificationStore::syncModels() {
 }
 
 void NotificationStore::rebuildGrouped() {
-    QVariantList groups;
-    QStringList order;
-    QVariantMap byKey;
-    for (const auto &h : m_history) {
-        const QVariantMap m = entryToMap(h);
+    struct GroupBuild {
+        QString key;
+        QString appName;
+        QVariant appIcon;
+        QVariant desktopEntry;
+        QVariantList notifications;
+        bool expanded{false};
+    };
+
+    std::vector<GroupBuild> groupBuilds;
+    groupBuilds.reserve(static_cast<size_t>(m_history.size()));
+    QHash<QString, size_t> keyToIndex;
+    keyToIndex.reserve(m_history.size());
+
+    const qsizetype n = m_history.size();
+    for (qsizetype i = 0; i < n; ++i) {
+        const auto &h = m_history.at(i);
+        const QVariantMap m = (i < m_notifications.size()) ? m_notifications.at(i).toMap() : entryToMap(h);
+
         QString displayApp = m.value(QStringLiteral("appName")).toString().trimmed();
         if (displayApp.isEmpty()) {
             displayApp = QStringLiteral("Application");
@@ -693,40 +707,49 @@ void NotificationStore::rebuildGrouped() {
         } else {
             key = displayApp;
         }
-        if (!byKey.contains(key)) {
-            order.append(key);
-            byKey[key] = QVariantMap{
-                {QStringLiteral("appName"), displayApp},
-                {QStringLiteral("appIcon"), m.value(QStringLiteral("appIcon"))},
-                {QStringLiteral("desktopEntry"), m.value(QStringLiteral("desktopEntry"))},
-                {QStringLiteral("notifications"), QVariantList{}},
-                {QStringLiteral("totalCount"), 0},
-                {QStringLiteral("expanded"), m_expanded.contains(key)},
-            };
+
+        auto it = keyToIndex.find(key);
+        if (it == keyToIndex.end()) {
+            size_t idx = groupBuilds.size();
+            keyToIndex.insert(key, idx);
+            GroupBuild gb;
+            gb.key = key;
+            gb.appName = displayApp;
+            gb.appIcon = m.value(QStringLiteral("appIcon"));
+            gb.desktopEntry = m.value(QStringLiteral("desktopEntry"));
+            gb.expanded = m_expanded.contains(key);
+            gb.notifications.append(m);
+            groupBuilds.push_back(std::move(gb));
+        } else {
+            GroupBuild &gb = groupBuilds[it.value()];
+            if (gb.appIcon.toString().isEmpty() && !m.value(QStringLiteral("appIcon")).toString().isEmpty()) {
+                gb.appIcon = m.value(QStringLiteral("appIcon"));
+            }
+            if (gb.desktopEntry.toString().isEmpty() && !m.value(QStringLiteral("desktopEntry")).toString().isEmpty()) {
+                gb.desktopEntry = m.value(QStringLiteral("desktopEntry"));
+            }
+            gb.notifications.append(m);
         }
-        QVariantMap g = byKey[key].toMap();
-        if (g.value(QStringLiteral("appIcon")).toString().isEmpty() && !m.value(QStringLiteral("appIcon")).toString().isEmpty()) {
-            g[QStringLiteral("appIcon")] = m.value(QStringLiteral("appIcon"));
-        }
-        if (g.value(QStringLiteral("desktopEntry")).toString().isEmpty() && !m.value(QStringLiteral("desktopEntry")).toString().isEmpty()) {
-            g[QStringLiteral("desktopEntry")] = m.value(QStringLiteral("desktopEntry"));
-        }
-        QVariantList notifs = g.value(QStringLiteral("notifications")).toList();
-        notifs.append(m);
-        g[QStringLiteral("notifications")] = notifs;
-        g[QStringLiteral("totalCount")] = notifs.size();
-        g[QStringLiteral("expanded")] = m_expanded.contains(key);
-        byKey[key] = g;
-    }
-    for (const QString &k : order) {
-        groups.append(byKey[k]);
     }
 
+    QVariantList groups;
+    groups.reserve(static_cast<qsizetype>(groupBuilds.size()));
     m_groupIndex.clear();
-    m_groupIndex.reserve(order.size());
-    for (qsizetype i = 0; i < order.size(); ++i) {
-        m_groupIndex.insert(order.at(i), static_cast<int>(i));
+    m_groupIndex.reserve(static_cast<qsizetype>(groupBuilds.size()));
+
+    for (size_t i = 0; i < groupBuilds.size(); ++i) {
+        auto &gb = groupBuilds[i];
+        m_groupIndex.insert(gb.key, static_cast<int>(i));
+        QVariantMap g;
+        g[QStringLiteral("appName")] = gb.appName;
+        g[QStringLiteral("appIcon")] = gb.appIcon;
+        g[QStringLiteral("desktopEntry")] = gb.desktopEntry;
+        g[QStringLiteral("totalCount")] = static_cast<int>(gb.notifications.size());
+        g[QStringLiteral("expanded")] = gb.expanded;
+        g[QStringLiteral("notifications")] = std::move(gb.notifications);
+        groups.append(g);
     }
+
     m_groupedTimeAgo.clear();
     m_groupedTimeAgo.reserve(m_history.size());
     for (const auto &h : m_history) {

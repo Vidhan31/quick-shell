@@ -14,7 +14,7 @@ Item {
 
   readonly property bool isDnd: service ? (service.dnd === true) : false
   readonly property int unreadCount: service ? (service.unreadCount || 0) : 0
-  readonly property int totalCount: service ? ((service.notifications && service.notifications.length) || 0) : 0
+  readonly property int totalCount: service ? (service.totalCount || 0) : 0
 
   readonly property string iconGlyph: {
     if (root.isDnd) return "󰂛";

@@ -59,6 +59,14 @@ private:
     long m_pageSizeKb{4};
     ProcessManager *m_manager{nullptr};
 
+    struct CachedCmd {
+        std::string cmdline;
+        QString name;
+        QString nameLower;
+        QString cmdlineLower;
+    };
+    std::unordered_map<int, CachedCmd> m_cmdCache;
+
     std::vector<ProcInfo> scanProcFS();
     std::vector<SvcInfo> scanServicesDBus();
 };

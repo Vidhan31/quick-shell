@@ -174,16 +174,21 @@ std::vector<ProcInfo> ProcessWorker::scanProcFS() {
         pidToIndex[raw[i].pid] = static_cast<int>(i);
     }
 
+    auto getParent = [&](int ppid) -> std::pair<int, std::string_view> {
+        auto itPar = pidToIndex.find(ppid);
+        if (itPar == pidToIndex.end()) return {0, {}};
+        const auto &par = raw[itPar->second];
+        return {par.ppid, std::string_view(par.comm)};
+    };
+
+    std::unordered_map<int, int> rootMemo;
+    rootMemo.reserve(raw.size());
+
     auto getRootFast = [&](int startPid) -> int {
         auto it = pidToIndex.find(startPid);
         if (it == pidToIndex.end()) return startPid;
         const auto &p = raw[it->second];
-        return qs::processcore::getRootFast(p.pid, p.ppid, QString::fromLatin1(p.comm), [&](int ppid) -> std::pair<int, QString> {
-            auto itPar = pidToIndex.find(ppid);
-            if (itPar == pidToIndex.end()) return {0, QString()};
-            const auto &par = raw[itPar->second];
-            return {par.ppid, QString::fromLatin1(par.comm)};
-        });
+        return qs::processcore::getRootFast(p.pid, p.ppid, std::string_view(p.comm), getParent, &rootMemo);
     };
 
     std::vector<ProcInfo> cachedProcs;
@@ -215,7 +220,20 @@ std::vector<ProcInfo> ProcessWorker::scanProcFS() {
         }
     }
 
+    std::unordered_set<int> currentPids;
+    currentPids.reserve(cachedProcs.size());
+
     for (auto &group : cachedProcs) {
+        currentPids.insert(group.pid);
+        auto itCached = m_cmdCache.find(group.pid);
+        if (itCached != m_cmdCache.end()) {
+            group.cmdline = itCached->second.cmdline;
+            group.name = itCached->second.name;
+            group.nameLower = itCached->second.nameLower;
+            group.cmdlineLower = itCached->second.cmdlineLower;
+            continue;
+        }
+
         char cmdPath[32];
         snprintf(cmdPath, sizeof(cmdPath), "%d/cmdline", group.pid);
         int cmdFd = openat(dfd, cmdPath, O_RDONLY | O_CLOEXEC);
@@ -238,6 +256,23 @@ std::vector<ProcInfo> ProcessWorker::scanProcFS() {
         group.name = QString::fromUtf8(group.comm.data(), static_cast<qsizetype>(group.comm.size()));
         group.nameLower = group.name.toLower();
         group.cmdlineLower = QString::fromUtf8(group.cmdline.data(), static_cast<qsizetype>(group.cmdline.size())).toLower();
+
+        m_cmdCache[group.pid] = CachedCmd{
+            group.cmdline,
+            group.name,
+            group.nameLower,
+            group.cmdlineLower
+        };
+    }
+
+    if (m_cmdCache.size() > cachedProcs.size() * 2) {
+        for (auto it = m_cmdCache.begin(); it != m_cmdCache.end();) {
+            if (currentPids.find(it->first) == currentPids.end()) {
+                it = m_cmdCache.erase(it);
+            } else {
+                ++it;
+            }
+        }
     }
     closedir(dir);
 
@@ -565,7 +600,7 @@ QVariantList ProcessManager::search(const QString &term, int explicitSignal, int
         triggerProcessRefresh();
     }
 
-    if (m_servicesDirty.load() || sElapsed >= 5000) {
+    if (m_servicesDirty.load() || sElapsed >= 60000) {
         triggerServiceRefresh();
     }
 
@@ -701,13 +736,13 @@ QVariantList ProcessManager::search(const QString &term, int explicitSignal, int
             QString desc;
             if (p.childCount > 1) {
                 desc = QStringLiteral("PID %1 · %2 processes · %3")
-                           .arg(p.pid)
-                           .arg(p.childCount)
-                           .arg(qs::processcore::formatRssKb(p.rssKb));
+                           .arg(QString::number(p.pid),
+                                QString::number(p.childCount),
+                                qs::processcore::formatRssKb(p.rssKb));
             } else {
                 desc = QStringLiteral("PID %1 · %2")
-                           .arg(p.pid)
-                           .arg(qs::processcore::formatRssKb(p.rssKb));
+                           .arg(QString::number(p.pid),
+                                qs::processcore::formatRssKb(p.rssKb));
             }
 
             QVariantList hlName;
@@ -779,7 +814,7 @@ QVariantMap ProcessManager::sendSignal(int pid, int signal, bool killTree) {
 
     bool ok = false;
     if (killTree) {
-        ok = qs::processcore::killProcessTree(pid, signal);
+        ok = qs::processcore::killProcessTree(pid, signal, false);
     } else {
         ok = (::kill(static_cast<pid_t>(pid), signal) == 0);
     }
