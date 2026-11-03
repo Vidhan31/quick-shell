@@ -365,6 +365,12 @@ Item {
 
   readonly property bool isKillActive: processManager.isKillQuery(root.query)
 
+  onIsKillActiveChanged: {
+    if (root.isKillActive) {
+      processManager.invalidateCache();
+    }
+  }
+
   readonly property bool isFileSearchActive: fileSearch.available && fileSearch.isSearchQuery(root.query)
   readonly property bool isFileSearching: fileSearch.searching
 
@@ -395,12 +401,10 @@ Item {
   function open(): void {
     ensureCorpus();
     resetQuery();
-    processManager.invalidateCache();
     root.isOpen = true;
   }
 
   function close(): void {
-    processManager.invalidateCache();
     root.isOpen = false;
   }
 
@@ -637,6 +641,7 @@ Item {
     const model = DesktopEntries.applications;
     if (!model) {
       root.apps = out;
+      appRanker.setApps(out);
       refilter();
       return;
     }
@@ -661,6 +666,7 @@ Item {
     }
     out.sort((a, b) => a.name < b.name ? -1 : (a.name > b.name ? 1 : 0));
     root.apps = out;
+    appRanker.setApps(out);
     const appMap = {};
     for (let i = 0; i < out.length; i++) {
       const a = out[i];
@@ -904,7 +910,7 @@ Item {
     const corpus = root.apps;
 
     if (!q) {
-      root.rows = appRanker.rank(corpus, "", root.maxRows);
+      root.rows = appRanker.rank("", root.maxRows);
       root.selectedIndex = 0;
       return;
     }
@@ -924,7 +930,7 @@ Item {
       return;
     }
 
-    const scored = appRanker.rank(corpus, q, root.maxRows);
+    const scored = appRanker.rank(q, root.maxRows);
     if (scored.length === 0) {
       root.rows = [commandRowFor(raw)];
       root.selectedIndex = 0;

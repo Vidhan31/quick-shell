@@ -99,8 +99,12 @@ Item {
   readonly property var hlName: row.modelData.hlName || []
   readonly property var hlGeneric: row.modelData.hlGeneric || []
 
-  readonly property string richName: formatHl(row.plainName, hlName)
-  readonly property string richGeneric: formatHl(row.plainGeneric, hlGeneric)
+  readonly property string richName: (row.isCurrent && row.hlName.length > 0)
+    ? formatHl(row.plainName, hlName)
+    : row.plainName
+  readonly property string richGeneric: (row.isCurrent && row.hlGeneric.length > 0)
+    ? formatHl(row.plainGeneric, hlGeneric)
+    : row.plainGeneric
 
   Rectangle {
     id: bg

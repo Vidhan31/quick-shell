@@ -29,6 +29,7 @@ struct ProcInfo {
     QString nameLower;
     QString cmdlineLower;
     int childCount{1};
+    std::vector<int> childPids;
 };
 
 struct SvcInfo {

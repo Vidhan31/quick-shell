@@ -211,11 +211,13 @@ std::vector<ProcInfo> ProcessWorker::scanProcFS() {
             group.rssKb = p.rssKb;
             group.comm = rootProc.comm;
             group.childCount = 1;
+            group.childPids.push_back(p.pid);
             cachedProcs.push_back(std::move(group));
         } else {
             auto &group = cachedProcs[it->second];
             group.rssKb += p.rssKb;
             group.childCount++;
+            group.childPids.push_back(p.pid);
             if (p.state == 'T') group.state = 'T';
         }
     }
@@ -608,6 +610,11 @@ QVariantList ProcessManager::search(const QString &term, int explicitSignal, int
     std::shared_ptr<const std::vector<SvcInfo>> services;
     {
         std::unique_lock<std::mutex> lock(m_cacheMutex);
+        if (m_cachedProcs->empty()) {
+            m_initCv.wait_for(lock, std::chrono::milliseconds(500), [this]() {
+                return !m_cachedProcs->empty();
+            });
+        }
         procs = m_cachedProcs;
         services = m_cachedServices;
     }
@@ -620,6 +627,7 @@ QVariantList ProcessManager::search(const QString &term, int explicitSignal, int
         int hlStart{-1};
         int hlLen{0};
         bool hlIsGeneric{false};
+        int matchedChildPid{0};
     };
     std::vector<Candidate> candidates;
     candidates.reserve(procs->size() + services->size());
@@ -632,14 +640,23 @@ QVariantList ProcessManager::search(const QString &term, int explicitSignal, int
         int hlStart = -1;
         int hlLen = 0;
         bool hlIsGeneric = false;
+        int matchedChildPid = 0;
 
         if (q.isEmpty()) {
             tier = 3;
-        } else if (isNumeric && p.pid == numericPid) {
-            tier = 1;
-            hlStart = 0;
-            hlLen = q.length();
-            hlIsGeneric = true;
+        } else if (isNumeric) {
+            if (p.pid == numericPid) {
+                tier = 1;
+                hlStart = 0;
+                hlLen = q.length();
+                hlIsGeneric = true;
+            } else if (std::find(p.childPids.begin(), p.childPids.end(), numericPid) != p.childPids.end()) {
+                tier = 1;
+                hlStart = 0;
+                hlLen = q.length();
+                hlIsGeneric = true;
+                matchedChildPid = numericPid;
+            }
         } else if (p.nameLower == q) {
             tier = 1;
             hlStart = 0;
@@ -670,6 +687,7 @@ QVariantList ProcessManager::search(const QString &term, int explicitSignal, int
             c.hlStart = hlStart;
             c.hlLen = hlLen;
             c.hlIsGeneric = hlIsGeneric;
+            c.matchedChildPid = matchedChildPid;
             candidates.push_back(c);
         }
     }
@@ -734,7 +752,13 @@ QVariantList ProcessManager::search(const QString &term, int explicitSignal, int
         if (c.proc) {
             const auto &p = *c.proc;
             QString desc;
-            if (p.childCount > 1) {
+            if (c.matchedChildPid > 0) {
+                desc = QStringLiteral("PID %1 (child %2) · %3 processes · %4")
+                           .arg(QString::number(p.pid),
+                                QString::number(c.matchedChildPid),
+                                QString::number(p.childCount),
+                                qs::processcore::formatRssKb(p.rssKb));
+            } else if (p.childCount > 1) {
                 desc = QStringLiteral("PID %1 · %2 processes · %3")
                            .arg(QString::number(p.pid),
                                 QString::number(p.childCount),
@@ -749,7 +773,10 @@ QVariantList ProcessManager::search(const QString &term, int explicitSignal, int
             QVariantList hlGeneric;
             if (c.hlStart >= 0) {
                 if (c.hlIsGeneric) {
-                    hlGeneric.append(QVariantList{c.hlStart, c.hlStart + c.hlLen});
+                    int pos = (c.matchedChildPid > 0) ? desc.indexOf(q) : c.hlStart;
+                    if (pos >= 0) {
+                        hlGeneric.append(QVariantList{pos, pos + c.hlLen});
+                    }
                 } else {
                     hlName.append(QVariantList{c.hlStart, c.hlStart + c.hlLen});
                 }

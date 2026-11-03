@@ -38,17 +38,17 @@ int getRootFast(int pid, int ppid, std::string_view comm, ParentLookup &&getPare
             break;
         }
 
+        auto [parentOfParent, parentComm] = getParent(currPpid);
+        if (parentComm.empty() || isShellOrSystemd(parentComm)) {
+            break;
+        }
+
         if (memo) {
             auto memoIt = memo->find(currPpid);
             if (memoIt != memo->end()) {
                 curr = memoIt->second;
                 break;
             }
-        }
-
-        auto [parentOfParent, parentComm] = getParent(currPpid);
-        if (parentComm.empty() || isShellOrSystemd(parentComm)) {
-            break;
         }
 
         curr = currPpid;

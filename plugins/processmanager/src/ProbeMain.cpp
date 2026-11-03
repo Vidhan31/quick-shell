@@ -18,6 +18,9 @@ int main(int argc, char *argv[]) {
                   << ", sig: " << pm.parseSignalFlag(q) << "\n";
     }
 
+    std::cout << "\nWaiting 400ms for worker scan...\n";
+    usleep(400000);
+
     std::cout << "\nEmpty search results (top candidates):\n";
     QVariantList topList = pm.search(QString(), 0, 8);
     for (int i = 0; i < topList.size(); ++i) {

@@ -139,10 +139,7 @@ int FileSearch::computeDebounceMs(const QString &term, const QString &prevTerm) 
     if (len == 2) {
         return 120;
     }
-    if (len == 3) {
-        return m_config.debounceMs;
-    }
-    return std::max(25, m_config.debounceMs / 2);
+    return m_config.debounceMs;
 }
 
 bool FileSearch::tryInMemoryNarrowing(const QString &term) {
@@ -279,7 +276,9 @@ void FileSearch::onPipelineError(quint64 requestId, const QString &/*errorMessag
 }
 
 QString FileSearch::toDisplayPath(const QString &path) {
-    const QString home = QDir::homePath();
+    static const QString home = QDir::homePath();
+    static const QString canonicalHome = QFileInfo(home).canonicalFilePath();
+
     if (path == home) {
         return QStringLiteral("~");
     }
@@ -287,7 +286,6 @@ QString FileSearch::toDisplayPath(const QString &path) {
         return QStringLiteral("~") + path.sliced(home.size());
     }
 
-    const QString canonicalHome = QFileInfo(home).canonicalFilePath();
     if (!canonicalHome.isEmpty() && canonicalHome != home) {
         if (path == canonicalHome) {
             return QStringLiteral("~");
