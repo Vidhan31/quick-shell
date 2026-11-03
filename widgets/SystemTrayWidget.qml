@@ -14,6 +14,7 @@ Item {
   signal requestClosePopups()
 
   function closePopup(): void {
+    root.closeSubmenu();
     passivePopup.visible = false;
     contextMenuPopup.visible = false;
     tooltipTimer.stop();
@@ -57,6 +58,43 @@ Item {
   property int menuPopupX: 0
   property int menuPopupY: 0
 
+  property var activeSubmenuEntry: null
+  property Item activeSubmenuItem: null
+  property var pendingSubmenuEntry: null
+  property Item pendingSubmenuItem: null
+  property int activeSubmenuY: 0
+
+  function openSubmenu(targetItem: Item, entry: var): void {
+    if (!targetItem || !entry) return;
+    submenuCloseTimer.stop();
+    submenuOpenTimer.stop();
+    root.pendingSubmenuItem = null;
+    root.pendingSubmenuEntry = null;
+
+    root.activeSubmenuItem = targetItem;
+    root.activeSubmenuEntry = entry;
+    submenuOpener.menu = entry;
+
+    const pt = targetItem.mapToItem(contextMenuCard, 0, 0);
+    root.activeSubmenuY = Math.max(0, pt.y - 6);
+  }
+
+  function closeSubmenu(): void {
+    submenuOpenTimer.stop();
+    submenuCloseTimer.stop();
+    root.pendingSubmenuItem = null;
+    root.pendingSubmenuEntry = null;
+    root.activeSubmenuItem = null;
+    root.activeSubmenuEntry = null;
+    submenuOpener.menu = null;
+    root.activeSubmenuY = 0;
+  }
+
+  function closeAllMenus(): void {
+    root.closeSubmenu();
+    contextMenuPopup.visible = false;
+  }
+
   QsMenuOpener {
     id: menuOpener
     menu: root.activeMenu
@@ -80,6 +118,31 @@ Item {
           contextMenuPopup.visible = true;
         }
       }
+    }
+  }
+
+  QsMenuOpener {
+    id: submenuOpener
+    menu: root.activeSubmenuEntry
+  }
+
+  Timer {
+    id: submenuOpenTimer
+    interval: 150
+    repeat: false
+    onTriggered: {
+      if (root.pendingSubmenuItem && root.pendingSubmenuEntry) {
+        root.openSubmenu(root.pendingSubmenuItem, root.pendingSubmenuEntry);
+      }
+    }
+  }
+
+  Timer {
+    id: submenuCloseTimer
+    interval: 300
+    repeat: false
+    onTriggered: {
+      root.closeSubmenu();
     }
   }
 
@@ -268,6 +331,7 @@ Item {
 
   function openItemMenu(targetItem: Item, trayItem: SystemTrayItem, isInsidePassivePopup: bool): void {
     if (!targetItem || !trayItem) return;
+    root.closeSubmenu();
     trayTooltip.visible = false;
     tooltipTimer.stop();
     root.requestClosePopups();
@@ -357,12 +421,16 @@ Item {
   PopupWindow {
     id: contextMenuPopup
     anchor.window: root.barWindow
-    anchor.rect.x: root.barWindow ? Math.max(8, Math.min(root.menuPopupX - contextMenuCard.implicitWidth / 2, root.barWindow.width - contextMenuCard.implicitWidth - 12)) : 0
+    anchor.rect.x: {
+      if (!root.barWindow) return 0;
+      const totalW = contextMenuCard.implicitWidth + (submenuCard.visible ? (submenuCard.implicitWidth + 4) : 0);
+      return Math.max(8, Math.min(root.menuPopupX - contextMenuCard.implicitWidth / 2, root.barWindow.width - totalW - 12));
+    }
     anchor.rect.y: root.menuPopupY
     visible: false
     grabFocus: true
-    implicitWidth: contextMenuCard.implicitWidth
-    implicitHeight: contextMenuCard.implicitHeight
+    implicitWidth: contextMenuCard.implicitWidth + (submenuCard.visible ? (submenuCard.implicitWidth + 4) : 0)
+    implicitHeight: Math.max(contextMenuCard.implicitHeight, submenuCard.visible ? (submenuCard.y + submenuCard.implicitHeight) : 0)
     color: "transparent"
 
     onVisibleChanged: {
@@ -371,146 +439,369 @@ Item {
         menuFallbackTimer.stop();
         root.activeMenuTarget = null;
         contextMenuCard.maxItemWidth = 0;
+        root.closeSubmenu();
       }
     }
 
-    Rectangle {
-      id: contextMenuCard
-      property real maxItemWidth: 0
-      implicitWidth: Math.max(160, maxItemWidth + 16)
-      implicitHeight: menuCol.implicitHeight + 16
-      width: implicitWidth
-      height: implicitHeight
-      radius: Theme.radiusCard
-      color: Theme.bg
-      border.color: Theme.cardBorder
-      border.width: 1
+    Item {
+      anchors.fill: parent
 
-      Column {
-        id: menuCol
-        anchors.top: parent.top
-        anchors.topMargin: 8
+      Rectangle {
+        id: contextMenuCard
         anchors.left: parent.left
-        anchors.leftMargin: 8
-        anchors.right: parent.right
-        anchors.rightMargin: 8
-        spacing: 2
+        anchors.top: parent.top
+        property real maxItemWidth: 0
+        implicitWidth: Math.max(160, maxItemWidth + 16)
+        implicitHeight: menuCol.implicitHeight + 16
+        width: implicitWidth
+        height: implicitHeight
+        radius: Theme.radiusCard
+        color: Theme.bg
+        border.color: Theme.cardBorder
+        border.width: 1
 
-        Repeater {
-          model: menuOpener.children
+        Column {
+          id: menuCol
+          anchors.top: parent.top
+          anchors.topMargin: 8
+          anchors.left: parent.left
+          anchors.leftMargin: 8
+          anchors.right: parent.right
+          anchors.rightMargin: 8
+          spacing: 2
 
-          delegate: Item {
-            id: menuItem
-            required property QsMenuEntry modelData
-            required property int index
+          Repeater {
+            model: menuOpener.children
 
-            readonly property QsMenuEntry entry: menuItem.modelData
-            readonly property bool isSep: entry ? entry.isSeparator : false
-            readonly property real contentWidth: visible ? (isSep ? 80 : (itemRow.implicitWidth + (entry && entry.hasChildren ? 36 : 24))) : 0
+            delegate: Item {
+              id: menuItem
+              required property QsMenuEntry modelData
+              required property int index
 
-            visible: entry ? (entry.text !== "" || isSep) : false
-            implicitHeight: visible ? (isSep ? 7 : 26) : 0
-            implicitWidth: contentWidth
-            width: parent ? parent.width : implicitWidth
-            height: implicitHeight
+              readonly property QsMenuEntry entry: menuItem.modelData
+              readonly property bool isSep: entry ? entry.isSeparator : false
+              readonly property real contentWidth: visible ? (isSep ? 80 : (itemRow.implicitWidth + (entry && entry.hasChildren ? 36 : 24))) : 0
 
-            onContentWidthChanged: {
-              if (contentWidth > contextMenuCard.maxItemWidth)
-                contextMenuCard.maxItemWidth = contentWidth;
-            }
+              visible: entry ? (entry.text !== "" || isSep) : false
+              implicitHeight: visible ? (isSep ? 7 : 26) : 0
+              implicitWidth: contentWidth
+              width: parent ? parent.width : implicitWidth
+              height: implicitHeight
 
-            Component.onCompleted: {
-              if (contentWidth > contextMenuCard.maxItemWidth)
-                contextMenuCard.maxItemWidth = contentWidth;
-            }
+              onContentWidthChanged: {
+                if (contentWidth > contextMenuCard.maxItemWidth)
+                  contextMenuCard.maxItemWidth = contentWidth;
+              }
 
-            Component.onDestruction: {
-              Qt.callLater(() => {
-                let max = 0;
-                for (let i = 0; i < menuCol.children.length; i++) {
-                  const c = menuCol.children[i];
-                  if (c && c.contentWidth) max = Math.max(max, c.contentWidth);
+              Component.onCompleted: {
+                if (contentWidth > contextMenuCard.maxItemWidth)
+                  contextMenuCard.maxItemWidth = contentWidth;
+              }
+
+              Component.onDestruction: {
+                Qt.callLater(() => {
+                  if (typeof menuCol === "undefined" || !menuCol) return;
+                  let max = 0;
+                  for (let i = 0; i < menuCol.children.length; i++) {
+                    const c = menuCol.children[i];
+                    if (c && c.contentWidth) max = Math.max(max, c.contentWidth);
+                  }
+                  if (typeof contextMenuCard !== "undefined" && contextMenuCard) {
+                    contextMenuCard.maxItemWidth = max;
+                  }
+                });
+              }
+
+              Item {
+                anchors.fill: parent
+                visible: menuItem.isSep
+
+                Rectangle {
+                  anchors.centerIn: parent
+                  width: parent.width - 8
+                  height: 1
+                  color: Theme.line
                 }
-                contextMenuCard.maxItemWidth = max;
-              });
-            }
-
-            Item {
-              anchors.fill: parent
-              visible: menuItem.isSep
+              }
 
               Rectangle {
-                anchors.centerIn: parent
-                width: parent.width - 8
-                height: 1
-                color: Theme.line
+                anchors.fill: parent
+                radius: 7
+                visible: !menuItem.isSep
+                color: (menuMouse.containsMouse || root.activeSubmenuItem === menuItem) && menuItem.entry && menuItem.entry.enabled ? Theme.hoverWash : "transparent"
+
+                Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+
+                Row {
+                  id: itemRow
+                  anchors.left: parent.left
+                  anchors.leftMargin: 8
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: 8
+
+                  Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: menuItem.entry && menuItem.entry.buttonType !== QsMenuButtonType.Normal
+                    text: menuItem.entry && menuItem.entry.checkState === Qt.Checked ? "✓" : " "
+                    font.family: Theme.textFont
+                    font.pixelSize: Theme.fontSm
+                    font.bold: true
+                    color: Theme.accent
+                  }
+
+                  IconImage {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 14
+                    height: 14
+                    source: menuItem.entry && menuItem.entry.icon ? menuItem.entry.icon : ""
+                    visible: menuItem.entry && Boolean(menuItem.entry.icon)
+                  }
+
+                  Text {
+                    id: itemLabel
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: menuItem.entry ? menuItem.entry.text.replace(/&/g, "") : ""
+                    color: menuItem.entry && menuItem.entry.enabled ? ((menuMouse.containsMouse || root.activeSubmenuItem === menuItem) ? Theme.ink1 : Theme.ink2) : Theme.ink3
+                    font.pixelSize: Theme.fontSm
+                    font.family: Theme.textFont
+                  }
+                }
+
+                Text {
+                  anchors.right: parent.right
+                  anchors.rightMargin: 8
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: "›"
+                  color: (menuMouse.containsMouse || root.activeSubmenuItem === menuItem) ? Theme.ink1 : Theme.ink3
+                  font.family: Theme.textFont
+                  font.pixelSize: Theme.fontMd
+                  font.bold: true
+                  visible: menuItem.entry ? menuItem.entry.hasChildren : false
+                }
+
+                MouseArea {
+                  id: menuMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: menuItem.entry && menuItem.entry.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+                  onEntered: {
+                    if (!menuItem.entry || !menuItem.entry.enabled || menuItem.isSep) return;
+
+                    if (menuItem.entry.hasChildren) {
+                      submenuCloseTimer.stop();
+                      if (root.activeSubmenuItem === menuItem && submenuCard.visible) {
+                        return;
+                      }
+                      root.pendingSubmenuItem = menuItem;
+                      root.pendingSubmenuEntry = menuItem.entry;
+                      submenuOpenTimer.restart();
+                    } else {
+                      submenuOpenTimer.stop();
+                      root.pendingSubmenuItem = null;
+                      root.pendingSubmenuEntry = null;
+                      if (submenuCard.visible) {
+                        submenuCloseTimer.restart();
+                      }
+                    }
+                  }
+
+                  onExited: {
+                    if (root.pendingSubmenuItem === menuItem) {
+                      submenuOpenTimer.stop();
+                      root.pendingSubmenuItem = null;
+                      root.pendingSubmenuEntry = null;
+                    }
+                    if (submenuCard.visible && root.activeSubmenuItem === menuItem) {
+                      submenuCloseTimer.restart();
+                    }
+                  }
+
+                  onClicked: {
+                    if (!menuItem.entry || !menuItem.entry.enabled || menuItem.isSep) return;
+
+                    if (menuItem.entry.hasChildren) {
+                      submenuOpenTimer.stop();
+                      root.openSubmenu(menuItem, menuItem.entry);
+                    } else {
+                      root.closeAllMenus();
+                      menuItem.entry.triggered();
+                    }
+                  }
+                }
               }
             }
+          }
+        }
+      }
 
-            Rectangle {
-              anchors.fill: parent
-              radius: 7
-              visible: !menuItem.isSep
-              color: menuMouse.containsMouse && menuItem.entry && menuItem.entry.enabled ? Theme.hoverWash : "transparent"
+      Rectangle {
+        id: submenuCard
+        anchors.left: contextMenuCard.right
+        anchors.leftMargin: 4
+        y: root.activeSubmenuY
+        property real maxItemWidth: 0
+        visible: root.activeSubmenuItem !== null && submenuOpener.children && submenuOpener.children.values.length > 0
+        implicitWidth: Math.max(140, maxItemWidth + 16)
+        implicitHeight: submenuCol.implicitHeight + 16
+        width: implicitWidth
+        height: implicitHeight
+        radius: Theme.radiusCard
+        color: Theme.bg
+        border.color: Theme.cardBorder
+        border.width: 1
 
-              Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+        onVisibleChanged: {
+          if (!visible) {
+            maxItemWidth = 0;
+          }
+        }
 
-              Row {
-                id: itemRow
-                anchors.left: parent.left
-                anchors.leftMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 8
+        HoverHandler {
+          id: submenuHover
+          onHoveredChanged: {
+            if (hovered) {
+              submenuCloseTimer.stop();
+            } else {
+              submenuCloseTimer.restart();
+            }
+          }
+        }
 
-                Text {
-                  anchors.verticalCenter: parent.verticalCenter
-                  visible: menuItem.entry && menuItem.entry.buttonType !== QsMenuButtonType.Normal
-                  text: menuItem.entry && menuItem.entry.checkState === Qt.Checked ? "✓" : " "
-                  font.family: Theme.textFont
-                  font.pixelSize: Theme.fontSm
-                  font.bold: true
-                  color: Theme.accent
-                }
+        Column {
+          id: submenuCol
+          anchors.top: parent.top
+          anchors.topMargin: 8
+          anchors.left: parent.left
+          anchors.leftMargin: 8
+          anchors.right: parent.right
+          anchors.rightMargin: 8
+          spacing: 2
 
-                IconImage {
-                  anchors.verticalCenter: parent.verticalCenter
-                  width: 14
-                  height: 14
-                  source: menuItem.entry && menuItem.entry.icon ? menuItem.entry.icon : ""
-                  visible: menuItem.entry && Boolean(menuItem.entry.icon)
-                }
+          Repeater {
+            model: submenuOpener.children
 
-                Text {
-                  id: itemLabel
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: menuItem.entry ? menuItem.entry.text.replace(/&/g, "") : ""
-                  color: menuItem.entry && menuItem.entry.enabled ? (menuMouse.containsMouse ? Theme.ink1 : Theme.ink2) : Theme.ink3
-                  font.pixelSize: Theme.fontSm
-                  font.family: Theme.textFont
-                }
+            delegate: Item {
+              id: subMenuItem
+              required property QsMenuEntry modelData
+              required property int index
+
+              readonly property QsMenuEntry entry: subMenuItem.modelData
+              readonly property bool isSep: entry ? entry.isSeparator : false
+              readonly property real contentWidth: visible ? (isSep ? 80 : (subItemRow.implicitWidth + (entry && entry.hasChildren ? 36 : 24))) : 0
+
+              visible: entry ? (entry.text !== "" || isSep) : false
+              implicitHeight: visible ? (isSep ? 7 : 26) : 0
+              implicitWidth: contentWidth
+              width: parent ? parent.width : implicitWidth
+              height: implicitHeight
+
+              onContentWidthChanged: {
+                if (contentWidth > submenuCard.maxItemWidth)
+                  submenuCard.maxItemWidth = contentWidth;
               }
 
-              Text {
-                anchors.right: parent.right
-                anchors.rightMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                text: "›"
-                color: menuMouse.containsMouse ? Theme.ink1 : Theme.ink3
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontMd
-                font.bold: true
-                visible: menuItem.entry ? menuItem.entry.hasChildren : false
+              Component.onCompleted: {
+                if (contentWidth > submenuCard.maxItemWidth)
+                  submenuCard.maxItemWidth = contentWidth;
               }
 
-              MouseArea {
-                id: menuMouse
+              Component.onDestruction: {
+                Qt.callLater(() => {
+                  if (typeof submenuCol === "undefined" || !submenuCol) return;
+                  let max = 0;
+                  for (let i = 0; i < submenuCol.children.length; i++) {
+                    const c = submenuCol.children[i];
+                    if (c && c.contentWidth) max = Math.max(max, c.contentWidth);
+                  }
+                  if (typeof submenuCard !== "undefined" && submenuCard) {
+                    submenuCard.maxItemWidth = max;
+                  }
+                });
+              }
+
+              Item {
                 anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: menuItem.entry && menuItem.entry.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onClicked: {
-                  if (menuItem.entry && menuItem.entry.enabled && !menuItem.isSep) {
-                    contextMenuPopup.visible = false;
-                    menuItem.entry.triggered();
+                visible: subMenuItem.isSep
+
+                Rectangle {
+                  anchors.centerIn: parent
+                  width: parent.width - 8
+                  height: 1
+                  color: Theme.line
+                }
+              }
+
+              Rectangle {
+                anchors.fill: parent
+                radius: 7
+                visible: !subMenuItem.isSep
+                color: subMenuMouse.containsMouse && subMenuItem.entry && subMenuItem.entry.enabled ? Theme.hoverWash : "transparent"
+
+                Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+
+                Row {
+                  id: subItemRow
+                  anchors.left: parent.left
+                  anchors.leftMargin: 8
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: 8
+
+                  Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: subMenuItem.entry && subMenuItem.entry.buttonType !== QsMenuButtonType.Normal
+                    text: subMenuItem.entry && subMenuItem.entry.checkState === Qt.Checked ? "✓" : " "
+                    font.family: Theme.textFont
+                    font.pixelSize: Theme.fontSm
+                    font.bold: true
+                    color: Theme.accent
+                  }
+
+                  IconImage {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 14
+                    height: 14
+                    source: subMenuItem.entry && subMenuItem.entry.icon ? subMenuItem.entry.icon : ""
+                    visible: subMenuItem.entry && Boolean(subMenuItem.entry.icon)
+                  }
+
+                  Text {
+                    id: subItemLabel
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: subMenuItem.entry ? subMenuItem.entry.text.replace(/&/g, "") : ""
+                    color: subMenuItem.entry && subMenuItem.entry.enabled ? (subMenuMouse.containsMouse ? Theme.ink1 : Theme.ink2) : Theme.ink3
+                    font.pixelSize: Theme.fontSm
+                    font.family: Theme.textFont
+                  }
+                }
+
+                Text {
+                  anchors.right: parent.right
+                  anchors.rightMargin: 8
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: "›"
+                  color: subMenuMouse.containsMouse ? Theme.ink1 : Theme.ink3
+                  font.family: Theme.textFont
+                  font.pixelSize: Theme.fontMd
+                  font.bold: true
+                  visible: subMenuItem.entry ? subMenuItem.entry.hasChildren : false
+                }
+
+                MouseArea {
+                  id: subMenuMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: subMenuItem.entry && subMenuItem.entry.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+                  onEntered: {
+                    submenuCloseTimer.stop();
+                  }
+
+                  onClicked: {
+                    if (subMenuItem.entry && subMenuItem.entry.enabled && !subMenuItem.isSep) {
+                      root.closeAllMenus();
+                      subMenuItem.entry.triggered();
+                    }
                   }
                 }
               }
