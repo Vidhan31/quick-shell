@@ -4,11 +4,37 @@
 #include <QClipboard>
 #include <QColor>
 #include <QDateTime>
+#include <QDBusConnection>
+#include <QDBusInterface>
 #include <QGuiApplication>
 #include <QMetaObject>
 #include <QTimer>
 
 namespace qs::updatemanager {
+
+static bool isNetworkMeteredOrOffline() {
+    QDBusInterface nm(QStringLiteral("org.freedesktop.NetworkManager"),
+                      QStringLiteral("/org/freedesktop/NetworkManager"),
+                      QStringLiteral("org.freedesktop.NetworkManager"),
+                      QDBusConnection::systemBus());
+    if (nm.isValid()) {
+        const QVariant meteredVar = nm.property("Metered");
+        if (meteredVar.isValid()) {
+            uint val = meteredVar.toUInt();
+            if (val == 1 || val == 3) {
+                return true;
+            }
+        }
+        const QVariant connVar = nm.property("Connectivity");
+        if (connVar.isValid()) {
+            uint val = connVar.toUInt();
+            if (val != 4) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 UpdateManager::UpdateManager(QObject *parent)
     : QObject(parent) {
@@ -29,6 +55,8 @@ UpdateManager::UpdateManager(QObject *parent)
     connect(m_worker, &UpdateWorker::statusMessageChanged, this, &UpdateManager::handleStatusMessageChanged);
     connect(m_worker, &UpdateWorker::cleanFinished, this, &UpdateManager::handleCleanFinished);
     connect(m_worker, &UpdateWorker::autoremoveFinished, this, &UpdateManager::handleAutoremoveFinished);
+    connect(m_worker, &UpdateWorker::inPlaceApplyStarted, this, &UpdateManager::handleInPlaceApplyStarted);
+    connect(m_worker, &UpdateWorker::repoKeyImportRequested, this, &UpdateManager::handleRepoKeyImportRequested);
     connect(&m_model, &UpdateModel::revisionChanged, this, &UpdateManager::modelRevisionChanged);
 
     m_workerThread.start();
@@ -37,7 +65,9 @@ UpdateManager::UpdateManager(QObject *parent)
     m_dailyTimer = new QTimer(this);
     m_dailyTimer->setSingleShot(true);
     connect(m_dailyTimer, &QTimer::timeout, this, [this]() {
-        checkForUpdates(false);
+        if (!isNetworkMeteredOrOffline()) {
+            checkForUpdates(false);
+        }
         m_dailyTimer->start(msUntilNextNoon());
     });
     m_dailyTimer->start(msUntilNextNoon());
@@ -273,7 +303,8 @@ void UpdateManager::stageOfflineUpgrade() {
 
 void UpdateManager::startInPlaceUpgrade() {
     if (isBusy()) return;
-    m_isApplying = true;
+    m_isDownloading = true;
+    m_isApplying = false;
     m_downloadProgress = 0.0;
     m_transactionProgress = 0.0;
     m_progressStage = QStringLiteral("authenticating");
@@ -282,6 +313,7 @@ void UpdateManager::startInPlaceUpgrade() {
     m_activeProcessed = 0;
     m_activeTotal = 0;
     m_errorMessage.clear();
+    emit isDownloadingChanged();
     emit isApplyingChanged();
     emit isBusyChanged();
     emit downloadProgressChanged();
@@ -354,6 +386,23 @@ void UpdateManager::copyToClipboard(const QString &text) {
     if (auto *cb = QGuiApplication::clipboard()) {
         cb->setText(text);
     }
+}
+
+void UpdateManager::confirmRepoKey(bool accept) {
+    if (!m_hasPendingKeyPrompt || m_pendingKeyId.isEmpty()) {
+        return;
+    }
+    const QString keyId = m_pendingKeyId;
+    m_hasPendingKeyPrompt = false;
+    m_pendingKeyId.clear();
+    m_pendingKeyFingerprint.clear();
+    m_pendingKeyUserIds.clear();
+    m_pendingKeyUrl.clear();
+    emit pendingKeyPromptChanged();
+
+    QMetaObject::invokeMethod(m_worker, [this, keyId, accept]() {
+        m_worker->confirmRepoKey(keyId, accept);
+    }, Qt::QueuedConnection);
 }
 
 void UpdateManager::handleCheckStarted() {
@@ -478,7 +527,38 @@ void UpdateManager::handleProgressStageUpdated(const QString &stage, const QStri
     emit summaryChanged();
 }
 
+void UpdateManager::handleInPlaceApplyStarted() {
+    if (m_isDownloading || !m_isApplying) {
+        m_isDownloading = false;
+        m_isApplying = true;
+        emit isDownloadingChanged();
+        emit isApplyingChanged();
+        emit summaryChanged();
+    }
+}
+
+void UpdateManager::handleRepoKeyImportRequested(const QString &keyId, const QStringList &userIds,
+                                                 const QString &keyFingerprint, const QString &keyUrl,
+                                                 qint64 timestamp) {
+    Q_UNUSED(timestamp);
+    m_hasPendingKeyPrompt = true;
+    m_pendingKeyId = keyId;
+    m_pendingKeyFingerprint = keyFingerprint;
+    m_pendingKeyUserIds = userIds;
+    m_pendingKeyUrl = keyUrl;
+    emit pendingKeyPromptChanged();
+    emit summaryChanged();
+}
+
 void UpdateManager::handleOperationFinished(bool success, const QString &message) {
+    if (m_hasPendingKeyPrompt) {
+        m_hasPendingKeyPrompt = false;
+        m_pendingKeyId.clear();
+        m_pendingKeyFingerprint.clear();
+        m_pendingKeyUserIds.clear();
+        m_pendingKeyUrl.clear();
+        emit pendingKeyPromptChanged();
+    }
     bool wasApplying = m_isApplying;
     m_isDownloading = false;
     m_isApplying = false;
@@ -566,21 +646,21 @@ void UpdateManager::handleStatusMessageChanged(const QString &status) {
 void UpdateManager::recalculateTotals() {
     int secCount = 0;
     quint64 totalBytes = 0;
-    bool needsReboot = false;
+    bool needsOffline = false;
 
     for (const auto &item : m_model.items()) {
         totalBytes += item.downloadSize;
         if (item.advisoryType == QStringLiteral("security")) {
             secCount++;
         }
-        if (item.requiresReboot) {
-            needsReboot = true;
+        if (item.requiresReboot || item.requiresSessionRestart) {
+            needsOffline = true;
         }
     }
 
     m_securityCount = secCount;
     m_totalDownloadSize = totalBytes;
-    m_recommendedMethod = needsReboot ? QStringLiteral("offline") : QStringLiteral("inplace");
+    m_recommendedMethod = needsOffline ? QStringLiteral("offline") : QStringLiteral("inplace");
 
     emit updateCountChanged();
     emit hasUpdatesChanged();

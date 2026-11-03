@@ -6,6 +6,7 @@
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusObjectPath>
+#include <QDBusUnixFileDescriptor>
 #include <QList>
 #include <QObject>
 #include <QString>
@@ -32,12 +33,17 @@ public slots:
     void cleanAll();
     void cleanCache(const QString &cacheType = QStringLiteral("all"));
     void autoremove();
+    void confirmRepoKey(const QString &keyId, bool accept);
 
 signals:
     void checkStarted();
     void checkProgress(const QString &status, int percent);
     void checkFinished(const QList<qs::updatemanager::UpdateItem> &items, bool success, const QString &errorMsg);
     void changelogFetched(const QString &packageName, const QVariantList &entries);
+    void repoKeyImportRequested(const QString &keyId, const QStringList &userIds,
+                                const QString &keyFingerprint, const QString &keyUrl,
+                                qint64 timestamp);
+    void inPlaceApplyStarted();
     void downloadProgress(quint64 downloadedBytes, quint64 totalBytes, double fraction);
     void inPlaceProgress(const QString &nevra, int action, quint64 processed, quint64 total, double fraction);
     void progressStageUpdated(const QString &stage, const QString &stageDisplayName,
@@ -91,8 +97,12 @@ private:
     void connectTransactionSignals();
     void disconnectTransactionSignals();
     void verifyTransactionResult(const QString &fallbackErrMsg, const QString &errStr);
+    void acquireSystemdInhibition();
+    void releaseSystemdInhibition();
 
     QString m_sessionPath;
+    QDBusUnixFileDescriptor m_inhibitFd;
+    QString m_pendingKeyId;
     bool m_cancelled{false};
     bool m_transactionSignalsConnected{false};
     quint64 m_totalBytesToDownload{0};

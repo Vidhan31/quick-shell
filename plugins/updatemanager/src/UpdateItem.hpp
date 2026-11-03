@@ -50,3 +50,6 @@ public:
 };
 
 } // namespace qs::updatemanager
+
+Q_DECLARE_METATYPE(qs::updatemanager::UpdateItem)
+Q_DECLARE_METATYPE(QList<qs::updatemanager::UpdateItem>)

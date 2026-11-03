@@ -1,4 +1,5 @@
 #include "DbusTypes.hpp"
+#include "UpdateItem.hpp"
 
 namespace qs::updatemanager {
 
@@ -65,6 +66,11 @@ void registerDbusTypes() {
     qRegisterMetaType<QList<DbusTransactionItem>>("QList<DbusTransactionItem>");
     qDBusRegisterMetaType<DbusTransactionItem>();
     qDBusRegisterMetaType<QList<DbusTransactionItem>>();
+
+    qRegisterMetaType<UpdateItem>("UpdateItem");
+    qRegisterMetaType<QList<UpdateItem>>("QList<UpdateItem>");
+    qRegisterMetaType<UpdateItem>("qs::updatemanager::UpdateItem");
+    qRegisterMetaType<QList<UpdateItem>>("QList<qs::updatemanager::UpdateItem>");
 }
 
 } // namespace qs::updatemanager

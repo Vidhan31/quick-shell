@@ -16,6 +16,7 @@
 #include <QThread>
 #include <QTimer>
 #include <limits>
+#include <sys/statvfs.h>
 
 namespace qs::updatemanager {
 
@@ -335,7 +336,47 @@ void UpdateWorker::disconnectTransactionSignals() {
     m_transactionSignalsConnected = false;
 }
 
+void UpdateWorker::acquireSystemdInhibition() {
+    releaseSystemdInhibition();
+    QDBusInterface login1(QStringLiteral("org.freedesktop.login1"),
+                          QStringLiteral("/org/freedesktop/login1"),
+                          QStringLiteral("org.freedesktop.login1.Manager"),
+                          QDBusConnection::systemBus());
+    if (login1.isValid()) {
+        QDBusReply<QDBusUnixFileDescriptor> reply = login1.call(
+            QStringLiteral("Inhibit"),
+            QStringLiteral("shutdown:sleep:idle"),
+            QStringLiteral("Quickshell UpdateManager"),
+            QStringLiteral("Applying system updates"),
+            QStringLiteral("block"));
+        if (reply.isValid()) {
+            m_inhibitFd = reply.value();
+        }
+    }
+}
+
+void UpdateWorker::releaseSystemdInhibition() {
+    m_inhibitFd = QDBusUnixFileDescriptor();
+}
+
+void UpdateWorker::confirmRepoKey(const QString &keyId, bool accept) {
+    if (m_sessionPath.isEmpty() || keyId != m_pendingKeyId) {
+        return;
+    }
+    QDBusInterface repoIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
+                             QStringLiteral("org.rpm.dnf.v0.rpm.Repo"), QDBusConnection::systemBus());
+    if (repoIface.isValid()) {
+        QVariantMap opts;
+        opts[QStringLiteral("interactive")] = true;
+        repoIface.call(QStringLiteral("confirm_key_with_options"), keyId, accept, opts);
+    }
+    m_pendingKeyId.clear();
+}
+
 void UpdateWorker::closeSession() {
+    releaseSystemdInhibition();
+    m_pendingKeyId.clear();
+
     if (m_sessionPath.isEmpty()) {
         return;
     }
@@ -673,14 +714,39 @@ void UpdateWorker::fetchChangelog(const QString &packageName) {
         return;
     }
 
-    if (!openSession(true, true)) {
+    // Never disrupt an active session in transaction. Use an ephemeral session if busy or empty.
+    const bool busyTransaction = !m_sessionPath.isEmpty() && m_transactionSignalsConnected;
+    QString sessionToUse;
+    bool isEphemeral = false;
+
+    if (!busyTransaction && !m_sessionPath.isEmpty()) {
+        sessionToUse = m_sessionPath;
+    } else {
+        ensureDaemonActive(10000);
+        QDBusInterface sm(QStringLiteral("org.rpm.dnf.v0"),
+                          QStringLiteral("/org/rpm/dnf/v0"),
+                          QStringLiteral("org.rpm.dnf.v0.SessionManager"),
+                          QDBusConnection::systemBus());
+        sm.setTimeout(60000);
+        QVariantMap options;
+        options[QStringLiteral("load_system_repo")] = true;
+        options[QStringLiteral("load_available_repos")] = true;
+
+        QDBusReply<QDBusObjectPath> reply = sm.call(QStringLiteral("open_session"), options);
+        if (reply.isValid()) {
+            sessionToUse = reply.value().path();
+            isEphemeral = true;
+        }
+    }
+
+    if (sessionToUse.isEmpty()) {
         emit changelogFetched(packageName, {});
         return;
     }
 
     QVariantList entries;
     {
-        QDBusInterface rpmIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
+        QDBusInterface rpmIface(QStringLiteral("org.rpm.dnf.v0"), sessionToUse,
                                 QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"), QDBusConnection::systemBus());
         rpmIface.setTimeout(60000);
 
@@ -734,7 +800,14 @@ void UpdateWorker::fetchChangelog(const QString &packageName) {
         }
     }
 
-    closeSession();
+    if (isEphemeral) {
+        QDBusInterface sm(QStringLiteral("org.rpm.dnf.v0"),
+                          QStringLiteral("/org/rpm/dnf/v0"),
+                          QStringLiteral("org.rpm.dnf.v0.SessionManager"),
+                          QDBusConnection::systemBus());
+        sm.call(QStringLiteral("close_session"), QVariant::fromValue(QDBusObjectPath(sessionToUse)));
+    }
+
     emit changelogFetched(packageName, entries);
 }
 
@@ -769,6 +842,42 @@ static int countActionableTransactionItems(const QDBusMessage &reply) {
     return count;
 }
 
+static quint64 calculateTransactionDownloadSize(const QDBusMessage &reply) {
+    if (reply.arguments().isEmpty()) {
+        return 0;
+    }
+    const QVariant argVar = reply.arguments().at(0);
+    if (!argVar.canConvert<QDBusArgument>()) {
+        return 0;
+    }
+    const QDBusArgument arg = argVar.value<QDBusArgument>();
+    QList<DbusTransactionItem> transItems;
+    arg >> transItems;
+    quint64 total = 0;
+    for (const auto &item : transItems) {
+        total += item.objectData.value(QStringLiteral("download_size")).toULongLong();
+    }
+    return total;
+}
+
+static bool checkAvailableDiskSpace(const QString &mountPoint, quint64 requiredBytes, QString *errOut = nullptr) {
+    struct statvfs stat;
+    if (statvfs(mountPoint.toLocal8Bit().constData(), &stat) == 0) {
+        const quint64 freeBytes = static_cast<quint64>(stat.f_bavail) * static_cast<quint64>(stat.f_frsize);
+        const quint64 safetyMargin = 500ULL * 1024 * 1024; // 500 MB safety buffer
+        if (freeBytes < (requiredBytes + safetyMargin)) {
+            if (errOut) {
+                const double freeMb = static_cast<double>(freeBytes) / (1024.0 * 1024.0);
+                const double reqMb = static_cast<double>(requiredBytes + safetyMargin) / (1024.0 * 1024.0);
+                *errOut = QString::asprintf("Insufficient disk space on %s (%.0f MB free, %.0f MB required).",
+                                            mountPoint.toLocal8Bit().constData(), freeMb, reqMb);
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
 void UpdateWorker::stageOfflineUpgrade() {
     emit statusMessageChanged(QStringLiteral("Preparing offline upgrade staging..."));
     m_downloadedPerId.clear();
@@ -786,6 +895,7 @@ void UpdateWorker::stageOfflineUpgrade() {
     }
 
     connectTransactionSignals();
+    acquireSystemdInhibition();
 
     QDBusInterface rpmIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
                             QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"), QDBusConnection::systemBus());
@@ -833,6 +943,15 @@ void UpdateWorker::stageOfflineUpgrade() {
         return;
     }
 
+    const quint64 downloadBytes = calculateTransactionDownloadSize(resReply);
+    QString diskErr;
+    if (!checkAvailableDiskSpace(QStringLiteral("/"), downloadBytes, &diskErr)) {
+        closeSession();
+        emit statusMessageChanged(diskErr);
+        emit operationFinished(false, diskErr);
+        return;
+    }
+
     m_downloadedPerId.clear();
     m_totalPerId.clear();
     m_totalBytesToDownload = 0;
@@ -842,7 +961,7 @@ void UpdateWorker::stageOfflineUpgrade() {
     QVariantMap transOpts;
     transOpts[QStringLiteral("offline")] = true;
     transOpts[QStringLiteral("downloadonly")] = true;
-    transOpts[QStringLiteral("interactive")] = false;
+    transOpts[QStringLiteral("interactive")] = true;
 
     goalIface.setTimeout(7200000);
     QDBusPendingCall pcall = goalIface.asyncCall(QStringLiteral("do_transaction"), transOpts);
@@ -852,9 +971,16 @@ void UpdateWorker::stageOfflineUpgrade() {
         bool success = !w->isError();
         QString errMsg;
         if (!success) {
-            errMsg = QStringLiteral("Download failed: ") + w->error().message();
+            if (m_cancelled) {
+                errMsg = QStringLiteral("Download cancelled.");
+            } else {
+                errMsg = QStringLiteral("Download failed: ") + w->error().message();
+            }
         }
         closeSession();
+        if (m_cancelled) {
+            cleanOffline();
+        }
         if (!success) {
             emit operationFinished(false, errMsg);
         } else {
@@ -889,6 +1015,7 @@ void UpdateWorker::startInPlaceUpgrade() {
     }
 
     connectTransactionSignals();
+    acquireSystemdInhibition();
 
     QDBusInterface rpmIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
                             QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"), QDBusConnection::systemBus());
@@ -936,6 +1063,15 @@ void UpdateWorker::startInPlaceUpgrade() {
         return;
     }
 
+    const quint64 downloadBytes = calculateTransactionDownloadSize(resReply);
+    QString diskErr;
+    if (!checkAvailableDiskSpace(QStringLiteral("/"), downloadBytes, &diskErr)) {
+        closeSession();
+        emit statusMessageChanged(diskErr);
+        emit operationFinished(false, diskErr);
+        return;
+    }
+
     m_downloadedPerId.clear();
     m_totalPerId.clear();
     m_totalBytesToDownload = 0;
@@ -956,8 +1092,10 @@ void UpdateWorker::startInPlaceUpgrade() {
         QString errStr;
         if (!success) {
             errStr = w->error().message();
-            if (errStr.contains(QStringLiteral("Not authorized"), Qt::CaseInsensitive) ||
-                w->error().name().contains(QStringLiteral("PolicyKit"), Qt::CaseInsensitive)) {
+            if (m_cancelled) {
+                errMsg = QStringLiteral("Operation cancelled.");
+            } else if (errStr.contains(QStringLiteral("Not authorized"), Qt::CaseInsensitive) ||
+                       w->error().name().contains(QStringLiteral("PolicyKit"), Qt::CaseInsensitive)) {
                 errMsg = QStringLiteral("Authentication cancelled.");
             } else {
                 errMsg = QStringLiteral("Transaction failed: ") + errStr;
@@ -965,7 +1103,7 @@ void UpdateWorker::startInPlaceUpgrade() {
         }
         closeSession();
         if (!success) {
-            if (errMsg == QStringLiteral("Authentication cancelled.")) {
+            if (m_cancelled || errMsg == QStringLiteral("Authentication cancelled.")) {
                 emit statusMessageChanged(errMsg);
                 emit operationFinished(false, errMsg);
                 return;
@@ -1255,6 +1393,7 @@ void UpdateWorker::autoremove() {
     }
 
     connectTransactionSignals();
+    acquireSystemdInhibition();
 
     QDBusInterface rpmIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
                             QStringLiteral("org.rpm.dnf.v0.rpm.Rpm"), QDBusConnection::systemBus());
@@ -1432,20 +1571,9 @@ void UpdateWorker::onRepoKeyImportRequest(const QDBusObjectPath &session, const 
                                           const QStringList &userIds, const QString &keyFingerprint,
                                           const QString &keyUrl, qint64 timestamp) {
     Q_UNUSED(session);
-    Q_UNUSED(userIds);
-    Q_UNUSED(keyFingerprint);
-    Q_UNUSED(keyUrl);
-    Q_UNUSED(timestamp);
-    emit statusMessageChanged(QStringLiteral("Confirming repository GPG key: %1...").arg(keyId));
-    if (!m_sessionPath.isEmpty()) {
-        QDBusInterface repoIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
-                                 QStringLiteral("org.rpm.dnf.v0.rpm.Repo"), QDBusConnection::systemBus());
-        if (repoIface.isValid()) {
-            QVariantMap opts;
-            opts[QStringLiteral("interactive")] = true;
-            repoIface.call(QStringLiteral("confirm_key_with_options"), keyId, true, opts);
-        }
-    }
+    m_pendingKeyId = keyId;
+    emit statusMessageChanged(QStringLiteral("Repository signing key requires confirmation: %1").arg(keyId));
+    emit repoKeyImportRequested(keyId, userIds, keyFingerprint, keyUrl, timestamp);
 }
 
 void UpdateWorker::verifyTransactionResult(const QString &fallbackErrMsg, const QString &errStr) {
@@ -1496,6 +1624,7 @@ void UpdateWorker::onTransactionBeforeBegin(const QDBusObjectPath &session, qulo
     m_pkgItemProcessed = 0;
     m_pkgItemTotal = 0;
     m_currentAction = 0;
+    emit inPlaceApplyStarted();
     emit inPlaceProgress(QString(), 0, 0, total, 0.0);
     emit progressStageUpdated(QStringLiteral("installing"), QStringLiteral("Installing"), QString(), 0, total, 0.0);
 }

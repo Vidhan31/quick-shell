@@ -29,6 +29,9 @@ Item {
   readonly property string currentStep: service ? service.currentStep : ""
   readonly property int checkPercent: service ? (service.checkPercent || 0) : 0
   readonly property string errorMessage: service ? service.errorMessage : ""
+  readonly property bool hasPendingKeyPrompt: service ? (service.hasPendingKeyPrompt === true) : false
+  readonly property string pendingKeyId: service ? service.pendingKeyId : ""
+  readonly property string pendingKeyFingerprint: service ? service.pendingKeyFingerprint : ""
   property bool errorDetailsExpanded: false
 
   onErrorMessageChanged: {
@@ -38,19 +41,25 @@ Item {
   }
 
   readonly property bool isDependencyConflict: root.errorMessage.indexOf("Problem") !== -1 || root.errorMessage.indexOf("conflict") !== -1 || root.errorMessage.indexOf("requires") !== -1
+  readonly property bool isLockError: root.errorMessage.indexOf("lock") !== -1 || root.errorMessage.indexOf("Lock") !== -1
 
   readonly property string errorTitle: {
     if (!root.errorMessage) return "";
     if (root.isDependencyConflict) return "Dependency Conflict";
+    if (root.isLockError) return "Package Database Locked";
     if (root.errorMessage.indexOf("Authentication cancelled") !== -1) return "Authentication Cancelled";
+    if (root.errorMessage.indexOf("cancelled") !== -1 || root.errorMessage.indexOf("Cancelled") !== -1) return "Update Cancelled";
     if (root.errorMessage.indexOf("Resolution error") !== -1) return "Resolution Error";
+    if (root.errorMessage.indexOf("Insufficient disk space") !== -1) return "Disk Space Warning";
     return "Update Failed";
   }
 
   readonly property string errorSummary: {
     if (!root.errorMessage) return "";
     if (root.isDependencyConflict) return "Updates are held back by conflicting upstream repository packages.";
+    if (root.isLockError) return "Another package manager is currently active. Please wait for it to release the lock.";
     if (root.errorMessage.indexOf("Authentication cancelled") !== -1) return "Administrator authentication was cancelled.";
+    if (root.errorMessage.indexOf("cancelled") !== -1 || root.errorMessage.indexOf("Cancelled") !== -1) return "The operation was cancelled by the user.";
     const firstLine = root.errorMessage.split("\n")[0];
     return firstLine.length > 80 ? (firstLine.substring(0, 80) + "…") : firstLine;
   }
@@ -92,7 +101,7 @@ Item {
   }
 
   implicitWidth: 480
-  readonly property int preferredHeight: root.hasUpdates ? 600 : (root.isChecking ? 260 : 280)
+  readonly property int preferredHeight: root.hasPendingKeyPrompt ? 620 : (root.hasUpdates ? 600 : (root.isChecking ? 260 : 280))
   property int popupHeight: preferredHeight
 
   function syncHeight() {
@@ -234,6 +243,85 @@ Item {
       }
 
       Hairline { visible: root.hasUpdates && !root.isChecking }
+
+      Rectangle {
+        id: gpgBanner
+        visible: root.hasPendingKeyPrompt
+        width: parent.width
+        implicitHeight: gpgCol.implicitHeight + 16
+        height: visible ? implicitHeight : 0
+        color: Theme.warnBg
+        radius: Theme.radiusBase
+        border.width: 1
+        border.color: Qt.rgba(0.90, 0.63, 0.20, 0.45)
+
+        ColumnLayout {
+          id: gpgCol
+          anchors.fill: parent
+          anchors.margins: 8
+          spacing: 6
+
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+
+            Text {
+              Layout.alignment: Qt.AlignTop
+              text: "󰒃"
+              font.family: Theme.iconFont
+              font.pixelSize: Theme.iconBase
+              color: Theme.warn
+            }
+
+            ColumnLayout {
+              Layout.fillWidth: true
+              spacing: 2
+
+              Text {
+                text: "Trust Repository GPG Key?"
+                font.family: Theme.displayFont
+                font.pixelSize: Theme.fontSm
+                font.weight: Font.DemiBold
+                color: Theme.ink1
+              }
+
+              Text {
+                Layout.fillWidth: true
+                text: "Key: " + root.pendingKeyId + (root.pendingKeyFingerprint.length > 0 ? ("\nFingerprint: " + root.pendingKeyFingerprint) : "")
+                font.family: root.monoFont
+                font.pixelSize: Theme.fontXs
+                color: Theme.ink2
+                wrapMode: Text.WrapAnywhere
+              }
+            }
+          }
+
+          RowLayout {
+            Layout.alignment: Qt.AlignRight
+            spacing: 8
+
+            PrimaryButton {
+              text: "Trust & Import"
+              glyph: "󰄬"
+              fill: Theme.accent
+              ink: Theme.darkInk
+              onClicked: {
+                if (root.service) root.service.confirmRepoKey(true);
+              }
+            }
+
+            PrimaryButton {
+              text: "Reject"
+              glyph: "󰅖"
+              fill: Theme.surfaceElevated
+              ink: Theme.ink1
+              onClicked: {
+                if (root.service) root.service.confirmRepoKey(false);
+              }
+            }
+          }
+        }
+      }
 
       Rectangle {
         id: errorBanner

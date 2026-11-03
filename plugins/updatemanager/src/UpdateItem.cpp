@@ -105,14 +105,16 @@ QString UpdateItem::categoryKeyToLabel(const QString &key) {
 }
 
 bool UpdateItem::evaluateRebootRequired(const QString &pkgName, const QString &catKey) {
-    if (catKey == QStringLiteral("kernel") || catKey == QStringLiteral("firmware")) {
+    if (catKey == QStringLiteral("kernel") || catKey == QStringLiteral("firmware") ||
+        catKey == QStringLiteral("core")) {
         return true;
     }
     const QString n = pkgName.toLower();
     if (n.startsWith(QStringLiteral("glibc")) || n.startsWith(QStringLiteral("systemd")) ||
         n.startsWith(QStringLiteral("dbus")) || n.startsWith(QStringLiteral("dracut")) ||
         n.startsWith(QStringLiteral("grub2")) || n.startsWith(QStringLiteral("shim")) ||
-        n.startsWith(QStringLiteral("dnf5")) || n.startsWith(QStringLiteral("libdnf5"))) {
+        n.startsWith(QStringLiteral("dnf5")) || n.startsWith(QStringLiteral("libdnf5")) ||
+        n.startsWith(QStringLiteral("openssl")) || n.startsWith(QStringLiteral("gnutls"))) {
         return true;
     }
     return false;
@@ -125,7 +127,10 @@ bool UpdateItem::evaluateSessionRestartRequired(const QString &pkgName, const QS
     const QString n = pkgName.toLower();
     if (n.startsWith(QStringLiteral("mesa-")) || n.startsWith(QStringLiteral("kwin")) ||
         n.startsWith(QStringLiteral("plasma-")) || n.startsWith(QStringLiteral("pipewire")) ||
-        n.startsWith(QStringLiteral("wireplumber"))) {
+        n.startsWith(QStringLiteral("wireplumber")) || n.startsWith(QStringLiteral("qt6-")) ||
+        n.startsWith(QStringLiteral("qt5-")) || n.startsWith(QStringLiteral("wayland")) ||
+        n.startsWith(QStringLiteral("libdrm")) || n.startsWith(QStringLiteral("xwayland")) ||
+        n == QStringLiteral("sddm")) {
         return true;
     }
     return false;

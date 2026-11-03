@@ -55,6 +55,11 @@ class UpdateManager : public QObject {
     Q_PROPERTY(bool offlineStagedReady READ offlineStagedReady NOTIFY offlineStagedReadyChanged)
     Q_PROPERTY(QString lastCheckedText READ lastCheckedText NOTIFY lastCheckedTextChanged)
     Q_PROPERTY(int modelRevision READ modelRevision NOTIFY modelRevisionChanged)
+    Q_PROPERTY(bool hasPendingKeyPrompt READ hasPendingKeyPrompt NOTIFY pendingKeyPromptChanged)
+    Q_PROPERTY(QString pendingKeyId READ pendingKeyId NOTIFY pendingKeyPromptChanged)
+    Q_PROPERTY(QString pendingKeyFingerprint READ pendingKeyFingerprint NOTIFY pendingKeyPromptChanged)
+    Q_PROPERTY(QStringList pendingKeyUserIds READ pendingKeyUserIds NOTIFY pendingKeyPromptChanged)
+    Q_PROPERTY(QString pendingKeyUrl READ pendingKeyUrl NOTIFY pendingKeyPromptChanged)
 
 public:
     explicit UpdateManager(QObject *parent = nullptr);
@@ -99,6 +104,11 @@ public:
     [[nodiscard]] bool offlineStagedReady() const noexcept { return m_offlineStagedReady; }
     [[nodiscard]] QString lastCheckedText() const;
     [[nodiscard]] int modelRevision() const noexcept { return m_model.revision(); }
+    [[nodiscard]] bool hasPendingKeyPrompt() const noexcept { return m_hasPendingKeyPrompt; }
+    [[nodiscard]] QString pendingKeyId() const { return m_pendingKeyId; }
+    [[nodiscard]] QString pendingKeyFingerprint() const { return m_pendingKeyFingerprint; }
+    [[nodiscard]] QStringList pendingKeyUserIds() const { return m_pendingKeyUserIds; }
+    [[nodiscard]] QString pendingKeyUrl() const { return m_pendingKeyUrl; }
 
     Q_INVOKABLE void checkForUpdates(bool refresh = false);
     Q_INVOKABLE void fetchChangelog(const QString &packageName);
@@ -112,6 +122,7 @@ public:
     Q_INVOKABLE void autoremove();
     Q_INVOKABLE void clearErrorMessage();
     Q_INVOKABLE void copyToClipboard(const QString &text);
+    Q_INVOKABLE void confirmRepoKey(bool accept);
 
 signals:
     void summaryChanged();
@@ -138,6 +149,7 @@ signals:
     void offlineStagedReadyChanged();
     void lastCheckedTextChanged();
     void modelRevisionChanged();
+    void pendingKeyPromptChanged();
     void updatesAvailable(int count, int securityCount);
     void changelogReady(const QString &packageName);
     void operationSucceeded(const QString &message);
@@ -150,8 +162,12 @@ private slots:
     void handleChangelogFetched(const QString &packageName, const QVariantList &entries);
     void handleDownloadProgress(quint64 downloadedBytes, quint64 totalBytes, double fraction);
     void handleInPlaceProgress(const QString &nevra, int action, quint64 processed, quint64 total, double fraction);
+    void handleInPlaceApplyStarted();
     void handleProgressStageUpdated(const QString &stage, const QString &stageDisplayName,
                                   const QString &nevra, quint64 processed, quint64 total, double fraction);
+    void handleRepoKeyImportRequested(const QString &keyId, const QStringList &userIds,
+                                      const QString &keyFingerprint, const QString &keyUrl,
+                                      qint64 timestamp);
     void handleOperationFinished(bool success, const QString &message);
     void handleOfflineStagedReady(bool ready);
     void handleStatusMessageChanged(const QString &status);
@@ -172,6 +188,11 @@ private:
     bool m_isApplying{false};
     bool m_isCleaning{false};
     bool m_isAutoremoving{false};
+    bool m_hasPendingKeyPrompt{false};
+    QString m_pendingKeyId;
+    QString m_pendingKeyFingerprint;
+    QStringList m_pendingKeyUserIds;
+    QString m_pendingKeyUrl;
     int m_securityCount{0};
     quint64 m_totalDownloadSize{0};
     double m_downloadProgress{0.0};
