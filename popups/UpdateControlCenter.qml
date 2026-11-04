@@ -268,7 +268,7 @@ Item {
             Text {
               Layout.alignment: Qt.AlignTop
               text: "󰒃"
-              font.family: Theme.iconFont
+              font.family: Theme.mono
               font.pixelSize: Theme.iconBase
               color: Theme.warn
             }

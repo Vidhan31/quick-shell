@@ -425,7 +425,6 @@ PanelWindow {
           to: 0.0
           duration: Math.max(500, toastItem.timeoutMs)
           running: !toastItem.persistToast && !toastItem.replyActive && !toastItem.exiting && !toastItem.isHovered
-          paused: toastItem.isHovered || toastItem.replyActive
         }
 
         Timer {

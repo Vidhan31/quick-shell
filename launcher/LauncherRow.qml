@@ -151,6 +151,20 @@ Item {
   readonly property real pinSpace: row.isApp ? (pinBtn.width + Theme.spaceSm) : (row.hasBadge ? (badgeRect.width + Theme.spaceSm) : 0)
   readonly property real textSpace: Math.max(0, row.width - (Theme.launcherContentInset * 2 + Theme.launcherIconSize + Theme.launcherRowPadX + row.pinSpace))
 
+  TextMetrics {
+    id: nameMetrics
+    font.family: row.isCommand ? Theme.mono : Theme.displayFont
+    font.pixelSize: row.isCommand ? Theme.fontSm : Theme.fontMd
+    text: row.plainName
+  }
+
+  TextMetrics {
+    id: genericMetrics
+    font.family: row.isCommand ? Theme.mono : Theme.textFont
+    font.pixelSize: Theme.fontSm
+    text: row.plainGeneric
+  }
+
   Text {
     id: nameText
     anchors.left: appIcon.right
@@ -160,8 +174,8 @@ Item {
     width: row.isPath
       ? row.textSpace
       : (row.hasGeneric
-          ? Math.min(implicitWidth, Math.max(row.textSpace * 0.4, row.textSpace - genericText.implicitWidth - Theme.spaceMd))
-          : Math.min(implicitWidth, row.textSpace))
+          ? Math.min(nameMetrics.width, Math.max(row.textSpace * 0.4, row.textSpace - genericMetrics.width - Theme.spaceMd))
+          : Math.min(nameMetrics.width, row.textSpace))
     text: row.isCurrent ? row.richName : row.plainName
     textFormat: (row.isCurrent && row.hlName.length > 0) ? Text.StyledText : Text.PlainText
     font.family: row.isCommand ? Theme.mono : Theme.displayFont
