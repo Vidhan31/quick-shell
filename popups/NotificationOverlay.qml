@@ -464,15 +464,30 @@ PanelWindow {
           Behavior on opacity { OpacityAnimator { duration: 180; easing.type: Easing.OutCubic } }
 
           Rectangle {
-            id: countdownBar
+            id: countdownTrack
             visible: !toastItem.persistToast
             z: 3
             anchors.bottom: parent.bottom
+            anchors.bottomMargin: 4
             anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
             height: 2
-            width: parent.width * Math.max(0, Math.min(1.0, toastItem.progress))
-            color: toastItem.isCritical ? root.t.red : root.t.accent
-            opacity: 0.7
+            radius: 1
+            color: root.t.lineMuted
+            clip: true
+
+            Rectangle {
+              id: countdownBar
+              anchors.left: parent.left
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+              width: parent.width * Math.max(0, Math.min(1.0, toastItem.progress))
+              radius: 1
+              color: toastItem.isCritical ? root.t.red : root.t.accent
+              opacity: 0.85
+            }
           }
 
           DropArea {
