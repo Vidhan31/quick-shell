@@ -17,7 +17,7 @@ Item {
   readonly property var t: Theme
   readonly property string monoFont: Theme.mono
 
-  implicitWidth: 430
+  implicitWidth: Theme.popupWidthMd
   readonly property int preferredHeight: Math.max(120, contentCol.height + (card.padding * 2))
   property int popupHeight: 404
 
@@ -59,24 +59,11 @@ Item {
         height: 22
 
         Text {
-          id: colPidHeader
+          id: colNameHeader
           anchors.left: parent.left
           anchors.leftMargin: 8
-          anchors.verticalCenter: parent.verticalCenter
-          width: 52
-          text: "PID"
-          color: Theme.ink3
-          font.family: root.monoFont
-          font.pixelSize: Theme.fontXs
-          font.weight: Font.DemiBold
-        }
-
-        Text {
-          id: colNameHeader
-          anchors.left: colPidHeader.right
-          anchors.leftMargin: 8
-          anchors.right: colMemHeader.left
-          anchors.rightMargin: 8
+          anchors.right: colPrivHeader.left
+          anchors.rightMargin: 12
           anchors.verticalCenter: parent.verticalCenter
           text: "Name"
           color: Theme.ink3
@@ -87,13 +74,13 @@ Item {
         }
 
         Text {
-          id: colMemHeader
-          anchors.right: colKillHeader.left
-          anchors.rightMargin: 10
+          id: colPrivHeader
+          anchors.right: colRssHeader.left
+          anchors.rightMargin: 12
           anchors.verticalCenter: parent.verticalCenter
-          width: 105
+          width: 70
           horizontalAlignment: Text.AlignRight
-          text: "Memory Usage"
+          text: "Private"
           color: Theme.ink3
           font.family: Theme.textFont
           font.pixelSize: Theme.fontXs
@@ -101,13 +88,13 @@ Item {
         }
 
         Text {
-          id: colKillHeader
+          id: colRssHeader
           anchors.right: parent.right
-          anchors.rightMargin: 4
+          anchors.rightMargin: 8
           anchors.verticalCenter: parent.verticalCenter
-          width: 32
-          horizontalAlignment: Text.AlignHCenter
-          text: "Kill"
+          width: 70
+          horizontalAlignment: Text.AlignRight
+          text: "RSS"
           color: Theme.ink3
           font.family: Theme.textFont
           font.pixelSize: Theme.fontXs
@@ -140,11 +127,8 @@ Item {
           activeFocusOnTab: true
 
           readonly property string procName: rowDelegate.modelData ? rowDelegate.modelData.name : ""
-          readonly property string procPid: rowDelegate.modelData ? String(rowDelegate.modelData.mpid || rowDelegate.modelData.pid || "") : ""
-          readonly property int procRootPid: rowDelegate.modelData ? (rowDelegate.modelData.rootPid || rowDelegate.modelData.mpid || 0) : 0
+          readonly property string procPriv: rowDelegate.modelData ? root.formatRss(rowDelegate.modelData.priv) : "0K"
           readonly property string procRss: rowDelegate.modelData ? root.formatRss(rowDelegate.modelData.rss) : "0K"
-          readonly property string procMemPct: rowDelegate.modelData ? (rowDelegate.modelData.mem ? rowDelegate.modelData.mem.toFixed(1) : "0") + "%" : "0%"
-          readonly property string procMemText: procRss + " (" + procMemPct + ")"
           readonly property string tipTitle: rowDelegate.modelData ? (rowDelegate.modelData.name + (rowDelegate.modelData.count > 1 ? (" (" + rowDelegate.modelData.count + " processes)") : "")) : ""
           readonly property string tipSub: ""
 
@@ -192,24 +176,11 @@ Item {
           }
 
           Text {
-            id: cellPid
+            id: cellName
             anchors.left: parent.left
             anchors.leftMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            width: 52
-            text: rowDelegate.procPid
-            color: Theme.ink3
-            font.family: root.monoFont
-            font.pixelSize: Theme.fontXs
-            elide: Text.ElideRight
-          }
-
-          Text {
-            id: cellName
-            anchors.left: cellPid.right
-            anchors.leftMargin: 8
-            anchors.right: cellMem.left
-            anchors.rightMargin: 8
+            anchors.right: cellPriv.left
+            anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             text: rowDelegate.procName
             color: rowDelegate.index === 0 ? Theme.err : Theme.ink1
@@ -220,40 +191,29 @@ Item {
           }
 
           Text {
-            id: cellMem
-            anchors.right: cellKill.left
-            anchors.rightMargin: 10
+            id: cellPriv
+            anchors.right: cellRss.left
+            anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            width: 105
+            width: 70
             horizontalAlignment: Text.AlignRight
-            text: rowDelegate.procMemText
+            text: rowDelegate.procPriv
             color: Theme.ink2
             font.family: root.monoFont
             font.pixelSize: Theme.fontSm
           }
 
-          Item {
-            id: cellKill
+          Text {
+            id: cellRss
             anchors.right: parent.right
-            anchors.rightMargin: 4
+            anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            width: 32
-            height: parent.height
-
-            IconButton {
-              anchors.centerIn: parent
-              btnSize: 22
-              fs: Theme.iconXs
-              glyph: "󰅖"
-              fg: Theme.ink3
-              tooltip: "Kill " + (rowDelegate.modelData ? rowDelegate.modelData.name : "")
-              tooltipSub: "Topmost parent PID: " + rowDelegate.procRootPid
-              onClicked: {
-                if (root.monitor && rowDelegate.procRootPid > 1) {
-                  root.monitor.kill(rowDelegate.procRootPid);
-                }
-              }
-            }
+            width: 70
+            horizontalAlignment: Text.AlignRight
+            text: rowDelegate.procRss
+            color: Theme.ink3
+            font.family: root.monoFont
+            font.pixelSize: Theme.fontSm
           }
         }
       }

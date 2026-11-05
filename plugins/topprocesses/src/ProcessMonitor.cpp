@@ -374,7 +374,8 @@ void SamplerWorker::sample() {
 
         unsigned long long rssPages = parse_u64(p);
         proc.rssPagesKb = rssPages * static_cast<unsigned long long>(m_pageSizeKb);
-        proc.finalMemKb = proc.rssPagesKb;
+        proc.rssKb = proc.rssPagesKb;
+        proc.privKb = proc.rssPagesKb;
 
         unsigned long long procJiffies = utime + stime;
         proc.jiffies = procJiffies;
@@ -457,13 +458,14 @@ void SamplerWorker::sample() {
     procIndicesToResolve.reserve(128);
 
     for (int gIdx : groupsToResolve) {
-        m_groups[gIdx].pssResolved = true;
+        m_groups[gIdx].resolved = true;
         int pIdx = groupHead[gIdx];
         while (pIdx != -1) {
             auto &proc = m_rawProcs[pIdx];
 
-            if (proc.rssPagesKb < 16384) {
-                proc.finalMemKb = proc.rssPagesKb;
+            if (proc.rssPagesKb < 1024) {
+                proc.rssKb = proc.rssPagesKb;
+                proc.privKb = proc.rssPagesKb;
                 pIdx = nextMember[pIdx];
                 continue;
             }
@@ -471,8 +473,9 @@ void SamplerWorker::sample() {
             auto itPrev = std::lower_bound(m_prevProcs.begin(), m_prevProcs.end(), proc.pid,
                 [](const RawProc &p, int pid) { return p.pid < pid; });
             if (itPrev != m_prevProcs.end() && itPrev->pid == proc.pid &&
-                itPrev->rssPagesKb == proc.rssPagesKb && itPrev->finalMemKb > 0) {
-                proc.finalMemKb = itPrev->finalMemKb;
+                itPrev->rssPagesKb == proc.rssPagesKb && itPrev->privKb > 0) {
+                proc.rssKb = itPrev->rssKb;
+                proc.privKb = itPrev->privKb;
                 pIdx = nextMember[pIdx];
                 continue;
             }
@@ -495,7 +498,7 @@ void SamplerWorker::sample() {
         for (size_t w = 0; w < numWorkers; ++w) {
             m_pool->enqueue([&, procFd, total, numWorkers] {
                 char pbuf[64];
-                char smapsBuf[384];
+                char smapsBuf[1024];
                 while (true) {
                     size_t i = nextIndex.fetch_add(1, std::memory_order_relaxed);
                     if (i >= total) break;
@@ -508,10 +511,33 @@ void SamplerWorker::sample() {
                         close(smapsFd);
                         if (sn > 0) {
                             smapsBuf[sn] = '\0';
-                            const char *pssPtr = strstr(smapsBuf, "\nPss:");
-                            if (pssPtr) {
-                                m_rawProcs[pIdx].finalMemKb = std::strtoull(pssPtr + 5, nullptr, 10);
+                            unsigned long long rss = m_rawProcs[pIdx].rssPagesKb;
+                            unsigned long long priv = 0;
+                            bool hasRss = false;
+                            bool hasPriv = false;
+
+                            const char *p = smapsBuf;
+                            while (*p) {
+                                if (strncmp(p, "Rss:", 4) == 0) {
+                                    p += 4;
+                                    p = skip_space(p);
+                                    rss = parse_u64(p);
+                                    hasRss = true;
+                                } else if (strncmp(p, "Private_", 8) == 0) {
+                                    while (*p && *p != ':' && *p != '\n') ++p;
+                                    if (*p == ':') {
+                                        ++p;
+                                        p = skip_space(p);
+                                        priv += parse_u64(p);
+                                        hasPriv = true;
+                                    }
+                                }
+                                while (*p && *p != '\n') ++p;
+                                if (*p == '\n') ++p;
                             }
+
+                            m_rawProcs[pIdx].rssKb = hasRss ? rss : m_rawProcs[pIdx].rssPagesKb;
+                            m_rawProcs[pIdx].privKb = hasPriv ? priv : m_rawProcs[pIdx].rssPagesKb;
                         }
                     }
                 }
@@ -538,7 +564,8 @@ void SamplerWorker::sample() {
 
     for (int gIdx : groupsToResolve) {
         auto &g = m_groups[gIdx];
-        g.actualMem = 0;
+        g.rssKb = 0;
+        g.privKb = 0;
         g.repComm = nullptr;
         g.repPid = g.rootPid;
 
@@ -548,7 +575,8 @@ void SamplerWorker::sample() {
         int pIdx = groupHead[gIdx];
         while (pIdx != -1) {
             const auto &proc = m_rawProcs[pIdx];
-            g.actualMem += proc.finalMemKb;
+            g.rssKb += proc.rssKb;
+            g.privKb += proc.privKb;
 
             int cIdx = -1;
             for (int i = 0; i < numComms; ++i) {
@@ -563,16 +591,16 @@ void SamplerWorker::sample() {
                 commStats[cIdx].count = 0;
                 commStats[cIdx].totalMem = 0;
                 commStats[cIdx].repPid = proc.pid;
-                commStats[cIdx].maxMem = proc.finalMemKb;
+                commStats[cIdx].maxMem = proc.privKb;
             }
 
             if (cIdx >= 0) {
                 commStats[cIdx].count++;
-                commStats[cIdx].totalMem += proc.finalMemKb;
+                commStats[cIdx].totalMem += proc.privKb;
                 if (proc.pid == g.rootPid) {
                     commStats[cIdx].repPid = proc.pid;
-                } else if (commStats[cIdx].repPid != g.rootPid && proc.finalMemKb > commStats[cIdx].maxMem) {
-                    commStats[cIdx].maxMem = proc.finalMemKb;
+                } else if (commStats[cIdx].repPid != g.rootPid && proc.privKb > commStats[cIdx].maxMem) {
+                    commStats[cIdx].maxMem = proc.privKb;
                     commStats[cIdx].repPid = proc.pid;
                 }
             }
@@ -611,15 +639,16 @@ void SamplerWorker::sample() {
 
     m_items.clear();
     for (const auto &g : m_groups) {
-        if (!g.pssResolved) continue;
-        double memPct = (m_memTotalKb > 0) ? (100.0 * static_cast<double>(g.actualMem) / static_cast<double>(m_memTotalKb)) : 0.0;
+        if (!g.resolved) continue;
+        double memPct = (m_memTotalKb > 0) ? (100.0 * static_cast<double>(g.privKb) / static_cast<double>(m_memTotalKb)) : 0.0;
         double cpuPct = (deltaTotalJiffies > 0) ? (100.0 * static_cast<double>(g.cpuDelta) * static_cast<double>(m_nCpu) / static_cast<double>(deltaTotalJiffies)) : 0.0;
 
         ProcessItem item;
         item.name = g.repComm ? g.repComm : "";
         item.mem = memPct;
         item.cpu = cpuPct;
-        item.rss = g.actualMem;
+        item.rss = g.rssKb;
+        item.priv = g.privKb;
         item.count = g.count;
         item.mpid = g.repPid;
         item.rootPid = g.rootPid;
@@ -666,14 +695,19 @@ void SamplerWorker::sample() {
             maxMem = item.mem;
         }
         QString formattedRss = qs::processcore::formatRssKb(item.rss);
-        QString barLabel = formattedRss + QStringLiteral(" (") + QString::number(item.mem, 'f', 0) + QStringLiteral("%)");
+        QString formattedPriv = qs::processcore::formatRssKb(item.priv);
+        QString barLabel = formattedPriv + QStringLiteral(" (") + QString::number(item.mem, 'f', 0) + QStringLiteral("%)");
 
         QVariantMap map;
         map[QStringLiteral("name")] = QString::fromUtf8(item.name.data(), static_cast<qsizetype>(item.name.size()));
         map[QStringLiteral("mem")] = item.mem;
         map[QStringLiteral("cpu")] = item.cpu;
         map[QStringLiteral("rss")] = static_cast<qint64>(item.rss);
+        map[QStringLiteral("priv")] = static_cast<qint64>(item.priv);
+        map[QStringLiteral("privateMem")] = static_cast<qint64>(item.priv);
         map[QStringLiteral("formattedRss")] = formattedRss;
+        map[QStringLiteral("formattedPriv")] = formattedPriv;
+        map[QStringLiteral("formattedPrivate")] = formattedPriv;
         map[QStringLiteral("barLabel")] = barLabel;
         map[QStringLiteral("count")] = item.count;
         map[QStringLiteral("mpid")] = item.mpid;

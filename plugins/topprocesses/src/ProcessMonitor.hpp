@@ -21,7 +21,8 @@ struct RawProc {
     unsigned long long jiffies{0};
     unsigned long long cpuDelta{0};
     unsigned long long rssPagesKb{0};
-    unsigned long long finalMemKb{0};
+    unsigned long long rssKb{0};
+    unsigned long long privKb{0};
     char comm[16]{};
     int rootPid{0};
 };
@@ -29,12 +30,13 @@ struct RawProc {
 struct NewGroup {
     int rootPid{0};
     unsigned long long rssUpperBound{0};
-    unsigned long long actualMem{0};
+    unsigned long long rssKb{0};
+    unsigned long long privKb{0};
     unsigned long long cpuDelta{0};
     int count{0};
     int repPid{0};
     const char *repComm{nullptr};
-    bool pssResolved{false};
+    bool resolved{false};
 };
 
 struct ProcessItem {
@@ -42,6 +44,7 @@ struct ProcessItem {
     double mem{0.0};
     double cpu{0.0};
     unsigned long long rss{0};
+    unsigned long long priv{0};
     int count{0};
     int mpid{0};
     int rootPid{0};
