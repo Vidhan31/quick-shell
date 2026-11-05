@@ -641,7 +641,7 @@ void SamplerWorker::sample() {
     for (const auto &g : m_groups) {
         if (!g.resolved) continue;
         double memPct = (m_memTotalKb > 0) ? (100.0 * static_cast<double>(g.privKb) / static_cast<double>(m_memTotalKb)) : 0.0;
-        double cpuPct = (deltaTotalJiffies > 0) ? (100.0 * static_cast<double>(g.cpuDelta) * static_cast<double>(m_nCpu) / static_cast<double>(deltaTotalJiffies)) : 0.0;
+        double cpuPct = (deltaTotalJiffies > 0) ? (100.0 * static_cast<double>(g.cpuDelta) / static_cast<double>(deltaTotalJiffies)) : 0.0;
 
         ProcessItem item;
         item.name = g.repComm ? g.repComm : "";

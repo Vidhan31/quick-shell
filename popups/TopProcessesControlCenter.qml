@@ -79,7 +79,7 @@ Item {
           anchors.right: colRssHeader.left
           anchors.rightMargin: 12
           anchors.verticalCenter: parent.verticalCenter
-          width: 70
+          width: 54
           horizontalAlignment: Text.AlignRight
           text: "Private"
           color: Theme.ink3
@@ -90,12 +90,26 @@ Item {
 
         Text {
           id: colRssHeader
+          anchors.right: colCpuHeader.left
+          anchors.rightMargin: 12
+          anchors.verticalCenter: parent.verticalCenter
+          width: 54
+          horizontalAlignment: Text.AlignRight
+          text: "RSS"
+          color: Theme.ink3
+          font.family: Theme.textFont
+          font.pixelSize: Theme.fontXs
+          font.weight: Font.DemiBold
+        }
+
+        Text {
+          id: colCpuHeader
           anchors.right: pinButton.left
           anchors.rightMargin: 8
           anchors.verticalCenter: parent.verticalCenter
-          width: 70
+          width: 48
           horizontalAlignment: Text.AlignRight
-          text: "RSS"
+          text: "CPU"
           color: Theme.ink3
           font.family: Theme.textFont
           font.pixelSize: Theme.fontXs
@@ -147,6 +161,7 @@ Item {
           readonly property string procName: rowDelegate.modelData ? rowDelegate.modelData.name : ""
           readonly property string procPriv: rowDelegate.modelData ? root.formatRss(rowDelegate.modelData.priv) : "0K"
           readonly property string procRss: rowDelegate.modelData ? root.formatRss(rowDelegate.modelData.rss) : "0K"
+          readonly property string procCpu: rowDelegate.modelData && isFinite(rowDelegate.modelData.cpu) ? rowDelegate.modelData.cpu.toFixed(1) + "%" : "0.0%"
           readonly property string tipTitle: rowDelegate.modelData ? (rowDelegate.modelData.name + (rowDelegate.modelData.count > 1 ? (" (" + rowDelegate.modelData.count + " processes)") : "")) : ""
           readonly property string tipSub: ""
 
@@ -213,7 +228,7 @@ Item {
             anchors.right: cellRss.left
             anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            width: 70
+            width: 54
             horizontalAlignment: Text.AlignRight
             text: rowDelegate.procPriv
             color: Theme.ink2
@@ -223,13 +238,26 @@ Item {
 
           Text {
             id: cellRss
-            anchors.right: parent.right
-            anchors.rightMargin: 8
+            anchors.right: cellCpu.left
+            anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            width: 70
+            width: 54
             horizontalAlignment: Text.AlignRight
             text: rowDelegate.procRss
             color: Theme.ink3
+            font.family: root.monoFont
+            font.pixelSize: Theme.fontSm
+          }
+
+          Text {
+            id: cellCpu
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            width: 48
+            horizontalAlignment: Text.AlignRight
+            text: rowDelegate.procCpu
+            color: Theme.ink2
             font.family: root.monoFont
             font.pixelSize: Theme.fontSm
           }
