@@ -10,6 +10,7 @@ Item {
 
   property ProcessMonitor monitor: null
   property alias processMonitor: root.monitor
+  property var popupWindow: null
   property var processes: monitor ? monitor.processes : []
   property double maxMem: monitor ? monitor.maxMem : 1.0
   property string updatedAt: monitor ? monitor.updatedAt : ""
@@ -89,7 +90,7 @@ Item {
 
         Text {
           id: colRssHeader
-          anchors.right: parent.right
+          anchors.right: pinButton.left
           anchors.rightMargin: 8
           anchors.verticalCenter: parent.verticalCenter
           width: 70
@@ -99,6 +100,23 @@ Item {
           font.family: Theme.textFont
           font.pixelSize: Theme.fontXs
           font.weight: Font.DemiBold
+        }
+
+        IconButton {
+          id: pinButton
+          anchors.right: parent.right
+          anchors.rightMargin: 2
+          anchors.verticalCenter: parent.verticalCenter
+          btnSize: 22
+          fs: Theme.fontSm
+          fg: root.popupWindow && root.popupWindow.pinned ? Theme.accent : Theme.ink2
+          glyph: "󰐃"
+          tooltip: root.popupWindow && root.popupWindow.pinned ? "Unpin process monitor" : "Pin process monitor"
+          tooltipSub: root.popupWindow && root.popupWindow.pinned ? "Allow it to close when focus changes" : "Keep it open while using other windows"
+          onClicked: {
+            if (root.popupWindow)
+              root.popupWindow.setPinned(!root.popupWindow.pinned);
+          }
         }
       }
 

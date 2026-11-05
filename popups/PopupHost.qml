@@ -12,6 +12,8 @@ PopupWindow {
 
   property Item targetItem: null
   property string currentPopup: ""
+  property bool pinned: false
+  property bool reconfiguringGrabFocus: false
 
   // Debounce/race prevention for Wayland grabFocus dismissal
   property var lastClosedItem: null
@@ -32,7 +34,7 @@ PopupWindow {
   anchor.adjustment: PopupAdjustment.SlideX
 
   visible: false
-  grabFocus: true
+  grabFocus: currentPopup !== "proc" || !pinned
   color: "transparent"
 
   BackgroundEffect.blurRegion: Region {
@@ -93,6 +95,8 @@ PopupWindow {
   function close(): void {
     if (!visible && !pendingOpen) return;
     pendingOpen = false;
+    reconfiguringGrabFocus = false;
+    pinned = false;
     cleanupCurrent();
     lastClosedItem = targetItem;
     lastClosedPopup = currentPopup;
@@ -102,6 +106,21 @@ PopupWindow {
     visible = false;
     viewLoader.sourceComponent = null;
     host.popupClosed();
+  }
+
+  function setPinned(value: bool): void {
+    if (currentPopup !== "proc" || pinned === value) return;
+
+    pinned = value;
+    if (!visible) return;
+
+    reconfiguringGrabFocus = true;
+    visible = false;
+    Qt.callLater(() => {
+      if (!reconfiguringGrabFocus) return;
+      reconfiguringGrabFocus = false;
+      visible = true;
+    });
   }
 
   readonly property var registry: ({
@@ -184,10 +203,12 @@ PopupWindow {
     const now = Date.now();
     const isTargetSame = (targetItem === item);
     if (pendingOpen && isTargetSame) {
+      if (pinned && currentPopup === "proc") return;
       close();
       return;
     }
     if (visible && isTargetSame) {
+      if (pinned && currentPopup === "proc") return;
       close();
       return;
     }
@@ -207,6 +228,8 @@ PopupWindow {
   onVisibleChanged: {
     if (!visible) {
       pendingOpen = false;
+      if (reconfiguringGrabFocus) return;
+      pinned = false;
       if (targetItem !== null || currentPopup !== "") {
         cleanupCurrent();
         lastClosedItem = targetItem;
@@ -275,6 +298,7 @@ PopupWindow {
     TopProcessesControlCenter {
       anchors.fill: parent
       monitor: host.services ? host.services.processMonitor : null
+      popupWindow: host
     }
   }
 
