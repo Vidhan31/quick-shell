@@ -13,8 +13,8 @@ Item {
   signal closeRequested()
 
   implicitWidth: Theme.popupWidthSm
-  readonly property int preferredHeight: 330
-  property int popupHeight: 330
+  readonly property int preferredHeight: (root.power && root.power.canRebootToWindows) ? 376 : 330
+  property int popupHeight: (root.power && root.power.canRebootToWindows) ? 376 : 330
 
   function syncHeight(): void {
     popupHeight = preferredHeight;
@@ -240,6 +240,51 @@ Item {
         }
 
         ActionRow {
+          id: windowsRow
+          width: parent.width
+          height: 42
+          rad: Theme.radiusBase
+          visible: root.power ? root.power.canRebootToWindows : false
+          onClicked: {
+            root.pendingAction = "windows";
+          }
+
+          RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
+            spacing: 10
+
+            Text {
+              text: "󰍲"
+              font.family: Theme.mono
+              font.pixelSize: Theme.iconMd
+              color: Theme.teal
+            }
+
+            Column {
+              Layout.fillWidth: true
+              spacing: 1
+
+              Text {
+                text: "Windows 11"
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontBase
+                font.weight: Font.DemiBold
+                color: Theme.ink1
+              }
+
+              Text {
+                text: "Reboot directly into Windows"
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontXs
+                color: Theme.ink3
+              }
+            }
+          }
+        }
+
+        ActionRow {
           id: shutdownRow
           width: parent.width
           height: 42
@@ -292,7 +337,7 @@ Item {
         height: actionsCol.height
         radius: Theme.radiusCard
         color: Theme.inset
-        border.color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : Theme.accent)
+        border.color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : (root.pendingAction === "windows" ? Theme.teal : Theme.accent))
         border.width: 1
 
         ColumnLayout {
@@ -308,14 +353,14 @@ Item {
               Layout.preferredWidth: 38
               Layout.preferredHeight: 38
               radius: Theme.radiusBase
-              color: Qt.alpha(root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : Theme.accent), 0.15)
+              color: Qt.alpha(root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : (root.pendingAction === "windows" ? Theme.teal : Theme.accent)), 0.15)
 
               Text {
                 anchors.centerIn: parent
-                text: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : "󰍃")
+                text: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : (root.pendingAction === "windows" ? "󰍲" : "󰍃"))
                 font.family: Theme.mono
                 font.pixelSize: Theme.fontGlyphLg
-                color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : Theme.accent)
+                color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : (root.pendingAction === "windows" ? Theme.teal : Theme.accent))
               }
             }
 
@@ -325,7 +370,7 @@ Item {
 
               Text {
                 Layout.fillWidth: true
-                text: root.pendingAction === "shutdown" ? "Shut down system?" : (root.pendingAction === "reboot" ? "Restart system?" : "Log out of session?")
+                text: root.pendingAction === "shutdown" ? "Shut down system?" : (root.pendingAction === "reboot" ? "Restart system?" : (root.pendingAction === "windows" ? "Reboot to Windows 11?" : "Log out of session?"))
                 font.family: Theme.displayFont
                 font.pixelSize: Theme.fontBase
                 font.weight: Font.DemiBold
@@ -335,7 +380,7 @@ Item {
 
               Text {
                 Layout.fillWidth: true
-                text: root.pendingAction === "shutdown" ? "Power off the computer completely." : (root.pendingAction === "reboot" ? "Reboot the operating system." : "End current user session.")
+                text: root.pendingAction === "shutdown" ? "Power off the computer completely." : (root.pendingAction === "reboot" ? "Reboot the operating system." : (root.pendingAction === "windows" ? "Set next boot to Windows 11 and restart." : "End current user session."))
                 font.family: Theme.textFont
                 font.pixelSize: Theme.fontXs
                 color: Theme.ink3
@@ -346,7 +391,7 @@ Item {
 
           Text {
             Layout.fillWidth: true
-            text: "KDE will prompt to save unsaved documents."
+            text: root.pendingAction === "windows" ? "Subsequent boots will return to Fedora Linux." : "KDE will prompt to save unsaved documents."
             font.family: Theme.textFont
             font.pixelSize: Theme.fontXs
             color: Theme.ink2
@@ -373,9 +418,9 @@ Item {
             }
 
             PrimaryButton {
-              text: root.pendingAction === "shutdown" ? "Shut Down" : (root.pendingAction === "reboot" ? "Restart" : "Log Out")
-              glyph: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : "󰍃")
-              fill: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : Theme.accent)
+              text: root.pendingAction === "shutdown" ? "Shut Down" : (root.pendingAction === "reboot" ? "Restart" : (root.pendingAction === "windows" ? "Reboot to Windows" : "Log Out"))
+              glyph: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : (root.pendingAction === "windows" ? "󰍲" : "󰍃"))
+              fill: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : (root.pendingAction === "windows" ? Theme.teal : Theme.accent))
               ink: Theme.darkInk
               onClicked: {
                 const action = root.pendingAction;
@@ -385,6 +430,8 @@ Item {
                   root.power.shutdown();
                 } else if (action === "reboot" && root.power) {
                   root.power.reboot();
+                } else if (action === "windows" && root.power) {
+                  root.power.rebootToWindows();
                 } else if (action === "logout" && root.power) {
                   root.power.logout();
                 }

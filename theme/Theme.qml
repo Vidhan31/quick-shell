@@ -8,9 +8,11 @@ Singleton {
 
   readonly property color bg: "#0e1f1c"
   readonly property color surface: "#172e2b"
+  readonly property color popupGlass: Qt.rgba(0.055, 0.12, 0.105, 0.56)
   readonly property color inset: "#0b1816"
   readonly property color barBg: "#0e1f1c"
   readonly property color cardBorder: "#1e3732"
+  readonly property color popupBorder: Qt.rgba(0.31, 0.79, 0.63, 0.24)
   readonly property color line: "#25403b"
   readonly property color lineMuted: Qt.rgba(0.24, 0.40, 0.36, 0.25)
   readonly property color hoverFill: "#223b36"

@@ -1,7 +1,9 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import "../components"
+import "../theme"
 
 PopupWindow {
   id: host
@@ -32,6 +34,11 @@ PopupWindow {
   visible: false
   grabFocus: true
   color: "transparent"
+
+  BackgroundEffect.blurRegion: Region {
+    item: viewLoader.item
+    radius: Theme.radiusCard
+  }
 
   implicitWidth: (viewLoader.item && viewLoader.item.implicitWidth > 0) ? viewLoader.item.implicitWidth : 440
   implicitHeight: (viewLoader.item && viewLoader.item.implicitHeight > 0) ? viewLoader.item.implicitHeight : 320

@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import "../theme"
 
 PopupWindow {
@@ -17,6 +18,11 @@ PopupWindow {
 
   visible: false
   color: "transparent"
+
+  BackgroundEffect.blurRegion: Region {
+    item: tipCard
+    radius: Theme.radiusChip
+  }
 
   implicitWidth: tipCard.implicitWidth
   implicitHeight: tipCard.implicitHeight
@@ -61,7 +67,7 @@ PopupWindow {
     width: implicitWidth
     height: implicitHeight
     radius: Theme.radiusSm
-    color: Theme.surfaceElevated
+    color: Theme.popupGlass
     border.color: Theme.cardBorder
     border.width: 1
 

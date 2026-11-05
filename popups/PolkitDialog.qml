@@ -150,7 +150,7 @@ PanelWindow {
     id: card
     width: 410
     radius: Theme.radiusCard
-    color: Theme.bg
+    color: Theme.popupGlass
     border.color: (win.service && win.service.failed) ? Theme.err : Theme.cardBorder
     border.width: 1
 

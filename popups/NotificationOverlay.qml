@@ -91,6 +91,10 @@ PanelWindow {
   WlrLayershell.keyboardFocus: _kbHolders > 0 ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
   color: "transparent"
+  BackgroundEffect.blurRegion: Region {
+    item: toastCol
+    radius: Theme.radiusCard
+  }
   implicitWidth: Theme.popupWidthSm
   implicitHeight: toastCol.implicitHeight
   visible: activeList.length > 0 || activeJobsList.length > 0

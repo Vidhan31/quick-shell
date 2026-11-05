@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import Quickshell.Services.SystemTray
 import Quickshell.Widgets
 import "../theme"
@@ -380,6 +381,11 @@ Item {
     implicitHeight: tooltipBox.implicitHeight
     color: "transparent"
 
+    BackgroundEffect.blurRegion: Region {
+      item: tooltipBox
+      radius: Theme.radiusChip
+    }
+
     Rectangle {
       id: tooltipBox
       implicitWidth: Math.max(50, tooltipCol.implicitWidth + 16)
@@ -387,7 +393,7 @@ Item {
       width: implicitWidth
       height: implicitHeight
       radius: Theme.radiusChip
-      color: Theme.surface
+      color: Theme.popupGlass
       border.color: Theme.line
       border.width: 1
 
@@ -433,6 +439,11 @@ Item {
     implicitHeight: Math.max(contextMenuCard.implicitHeight, submenuCard.visible ? (submenuCard.y + submenuCard.implicitHeight) : 0)
     color: "transparent"
 
+    BackgroundEffect.blurRegion: Region {
+      item: contextMenuCard
+      radius: Theme.radiusCard
+    }
+
     onVisibleChanged: {
       if (!visible) {
         root.pendingMenuOpen = false;
@@ -456,7 +467,7 @@ Item {
         width: implicitWidth
         height: implicitHeight
         radius: Theme.radiusCard
-        color: Theme.bg
+        color: Theme.popupGlass
         border.color: Theme.cardBorder
         border.width: 1
 
@@ -647,7 +658,7 @@ Item {
         width: implicitWidth
         height: implicitHeight
         radius: Theme.radiusCard
-        color: Theme.bg
+        color: Theme.popupGlass
         border.color: Theme.cardBorder
         border.width: 1
 
@@ -828,12 +839,17 @@ Item {
     implicitHeight: passiveCard.implicitHeight
     color: "transparent"
 
+    BackgroundEffect.blurRegion: Region {
+      item: passiveCard
+      radius: Theme.radiusCard
+    }
+
     Rectangle {
       id: passiveCard
       implicitWidth: Math.max(140, passiveCol.implicitWidth + 24)
       implicitHeight: passiveCol.implicitHeight + 20
       radius: Theme.radiusCard
-      color: Theme.bg
+      color: Theme.popupGlass
       border.color: Theme.cardBorder
       border.width: 1
 

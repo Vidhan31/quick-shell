@@ -6,6 +6,13 @@ Item {
   id: root
 
   property var power: null
+  readonly property bool canRebootToWindows: root.power ? root.power.canRebootToWindows : false
+
+  function rebootToWindows(): void {
+    if (root.power) {
+      root.power.rebootToWindows();
+    }
+  }
 
   implicitWidth: iconText.implicitWidth
   implicitHeight: Math.max(20, iconText.implicitHeight)

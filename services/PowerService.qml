@@ -9,9 +9,17 @@ Item {
   readonly property bool canHibernate: false
   readonly property bool canPowerOff: true
   readonly property bool canReboot: true
+  readonly property bool canRebootToWindows: pm.canRebootToWindows
+  readonly property string windowsBootEntry: pm.windowsBootEntry
+  readonly property bool isRebooting: pm.isRebooting
+
+  signal rebootToWindowsFailed(string error)
+  signal operationFailed(string operation, string error)
 
   PowerManager {
     id: pm
+    onRebootToWindowsFailed: error => root.rebootToWindowsFailed(error)
+    onOperationFailed: (operation, reason) => root.operationFailed(operation, reason)
   }
 
   function shutdown(): void {
@@ -20,6 +28,14 @@ Item {
 
   function reboot(): void {
     pm.requestReboot();
+  }
+
+  function rebootToWindows(): void {
+    pm.requestRebootToWindows();
+  }
+
+  function refreshBootEntries(): void {
+    pm.refreshBootEntries();
   }
 
   function logout(): void {

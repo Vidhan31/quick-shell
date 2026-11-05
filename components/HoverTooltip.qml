@@ -64,7 +64,7 @@ Item {
     width: implicitWidth
     height: implicitHeight
     radius: Theme.radiusSm
-    color: Theme.surfaceElevated
+    color: Theme.popupGlass
     border.color: Theme.cardBorder
     border.width: 1
 

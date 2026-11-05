@@ -10,8 +10,8 @@ Rectangle {
   default property alias content: inner.data
 
   radius: Theme.radiusCard
-  color: Theme.bg
-  border.color: Theme.cardBorder
+  color: Theme.popupGlass
+  border.color: Theme.popupBorder
   border.width: 1
 
   Item {
