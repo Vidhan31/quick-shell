@@ -91,7 +91,6 @@ Item {
     }
   }
 
-  // Persistent flags across hot-reloads
   PersistentProperties {
     id: persist
     property bool dnd: false

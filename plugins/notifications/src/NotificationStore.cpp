@@ -63,8 +63,7 @@ void NotificationStore::setDnd(bool dnd) {
     }
     m_dnd = dnd;
     if (m_dnd) {
-        // DND on: drop non-critical toasts (critical still shows).
-        QList<NotificationEntry> keep;
+            QList<NotificationEntry> keep;
         keep.reserve(m_toasts.size());
         for (const auto &t : m_toasts) {
             if (t.urgency == 2) {
@@ -234,7 +233,6 @@ void NotificationStore::ingestSnapshot(const QVariantMap &snap, int id, const QV
     const int hi = findHistory(id);
     const int ti = findToast(id);
     if (hi != -1 || ti != -1) {
-        // replaces_id / same-id update: replace in place, refresh recency.
         if (hi != -1) {
             NotificationEntry &h = m_history[hi];
             const bool oldRead = h.read;
@@ -250,8 +248,7 @@ void NotificationStore::ingestSnapshot(const QVariantMap &snap, int id, const QV
             m_history.append(moved);
         }
         if (ti != -1) {
-            // Refresh toast copy (or the shared entry if history missed).
-            int idx = -1;
+                int idx = -1;
             for (int i = 0; i < m_toasts.size(); ++i) {
                 if (m_toasts[i].id == id) {
                     idx = i;
@@ -783,15 +780,12 @@ bool NotificationStore::refreshGroupedTimeAgo() {
     }
 
     if (staleIds.isEmpty()) {
-        // History may have shrunk; keep the cache aligned with reality.
-        if (seen.size() != m_groupedTimeAgo.size()) {
+            if (seen.size() != m_groupedTimeAgo.size()) {
             m_groupedTimeAgo = std::move(seen);
         }
         return false;
     }
 
-    // Repatch just the affected groups. Membership and ordering are untouched
-    // because only the timeAgo field of existing entries moved.
     QSet<QString> dirtyKeys;
     for (const auto &h : m_history) {
         if (!staleIds.contains(h.id)) {

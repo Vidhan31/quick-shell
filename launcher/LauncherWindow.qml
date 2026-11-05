@@ -240,7 +240,6 @@ PanelWindow {
         anchors.rightMargin: Theme.launcherContentInset - Theme.fieldPadX
         height: 40
 
-        // Behind the field: clicks on empty padding focus it.
         MouseArea {
           anchors.fill: parent
           cursorShape: Qt.IBeamCursor
@@ -386,7 +385,6 @@ PanelWindow {
               event.accepted = true;
               break;
             case Qt.Key_Tab:
-              // Reserved for the action panel.
               event.accepted = true;
               break;
             case Qt.Key_C:
@@ -430,7 +428,6 @@ PanelWindow {
               break;
             default:
               if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_K) {
-                // Reserved for the action panel.
                 event.accepted = true;
               }
               break;

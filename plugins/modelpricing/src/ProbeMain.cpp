@@ -1,6 +1,3 @@
-// modelpricing-probe — resolve model names against a models.dev payload:
-//   modelpricing-probe <config.json> <api.json> <model...>
-// Prints one compact JSON object to stdout.
 #include "ModelPricing.hpp"
 
 #include <QCoreApplication>

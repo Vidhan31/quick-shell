@@ -683,7 +683,6 @@ Item {
                     const summ = (notifItem.summaryText || "").trim();
                     const app = (groupDelegate.appName || "").trim().toLowerCase();
 
-                    // If in a multi-item group and summary is identical to the app name, don't repeat the app name
                     if (!notifItem.isSingleInGroup && summ.toLowerCase() === app) {
                       if (orig.length > 0 && orig.toLowerCase() !== app) return orig;
                       return notifItem.bodyText.length > 0 ? notifItem.bodyText.split("\n")[0] : summ;

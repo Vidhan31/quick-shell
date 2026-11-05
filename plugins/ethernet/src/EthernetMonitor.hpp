@@ -81,7 +81,6 @@ class EthernetMonitor : public QObject {
     QML_ELEMENT
     QML_NAMED_ELEMENT(EthernetMonitor)
 
-    // Full QVariantMap matching the schema for QML backwards compatibility
     Q_PROPERTY(QVariantMap ethData READ ethData NOTIFY stateChanged)
 
     Q_PROPERTY(bool ok READ isOk NOTIFY stateChanged)

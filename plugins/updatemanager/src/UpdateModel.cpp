@@ -180,7 +180,7 @@ QVariantList UpdateModel::getGroupKeys(const QString &groupBy) const {
         if (genCount > 0) {
             groups.append(makeGroup(QStringLiteral("general"), QStringLiteral("Package Updates"), genCount));
         }
-    } else { // default to repository
+    } else {
         QMap<QString, int> repoCounts;
         for (const auto &item : m_items) {
             const QString r = item.repoId.isEmpty() ? QStringLiteral("System Repositories") : item.repoId;
@@ -212,7 +212,7 @@ QVariantList UpdateModel::getItemsInGroup(const QString &groupBy, const QString 
             } else {
                 match = (t.compare(groupKey, Qt::CaseInsensitive) == 0);
             }
-        } else { // repository
+        } else {
             const QString r = item.repoId.isEmpty() ? QStringLiteral("System Repositories") : item.repoId;
             match = (r == groupKey);
         }

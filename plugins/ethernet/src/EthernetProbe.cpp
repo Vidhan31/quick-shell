@@ -63,7 +63,6 @@ static QString readSysfsTrimmed(const std::string &path) {
 }
 
 QStringList EthernetProbe::findEthernetInterfaces() {
-    // Fast path: primary interface on this hardware
     if (fs::exists("/sys/class/net/enp34s0/type")) {
         const QString t = readSysfsTrimmed("/sys/class/net/enp34s0/type");
         if (t == QStringLiteral("1")) {
@@ -97,7 +96,7 @@ QStringList EthernetProbe::findEthernetInterfaces() {
         }
 
         const QString devType = readSysfsTrimmed((entry.path() / "type").string());
-        if (devType == QStringLiteral("1")) { // ARPHRD_ETHER
+        if (devType == QStringLiteral("1")) {
             ifaces.append(QString::fromStdString(name));
         }
     }
@@ -240,7 +239,7 @@ bool EthernetProbe::queryNetworkManager(EthernetState &state) {
         if (!dev.isValid()) continue;
 
         const uint devType = dev.property("DeviceType").toUInt();
-        if (devType == 1) { // NM_DEVICE_TYPE_ETHERNET
+        if (devType == 1) {
             const QString ifaceName = dev.property("Interface").toString();
             if (ifaceName == state.iface || state.iface.isEmpty()) {
                 state.iface = ifaceName;
@@ -296,8 +295,7 @@ bool EthernetProbe::queryNetworkManager(EthernetState &state) {
                                 parseAddressData(getPropertyRaw(ip4Path.path(), QStringLiteral("org.freedesktop.NetworkManager.IP4Config"), QStringLiteral("AddressData")), state.ip);
                                 parseNameserverData(getPropertyRaw(ip4Path.path(), QStringLiteral("org.freedesktop.NetworkManager.IP4Config"), QStringLiteral("NameserverData")), state.dns);
 
-                                // If dns is still empty, check Nameservers (au)
-                                if (state.dns.isEmpty()) {
+                                                        if (state.dns.isEmpty()) {
                                     const QVariant nsVar = ip4.property("Nameservers");
                                     if (nsVar.canConvert<QList<uint>>()) {
                                         const auto nsList = nsVar.value<QList<uint>>();
@@ -379,7 +377,6 @@ void EthernetProbe::querySysfsAndPosixFallback(EthernetState &state) {
                     }
                 } else if (ifa->ifa_addr->sa_family == AF_INET6 && state.ipv6.isEmpty()) {
                     auto *sin6 = reinterpret_cast<struct sockaddr_in6 *>(ifa->ifa_addr);
-                    // Skip link-local fe80::
                     if (!IN6_IS_ADDR_LINKLOCAL(&sin6->sin6_addr)) {
                         char ip6Buf[INET6_ADDRSTRLEN];
                         if (::inet_ntop(AF_INET6, &sin6->sin6_addr, ip6Buf, sizeof(ip6Buf))) {
@@ -396,7 +393,7 @@ void EthernetProbe::querySysfsAndPosixFallback(EthernetState &state) {
         std::ifstream routeFile("/proc/net/route");
         if (routeFile.is_open()) {
             std::string line;
-            std::getline(routeFile, line); // Skip header
+            std::getline(routeFile, line);
             while (std::getline(routeFile, line)) {
                 std::istringstream iss(line);
                 std::string rIface;
@@ -404,7 +401,7 @@ void EthernetProbe::querySysfsAndPosixFallback(EthernetState &state) {
                 unsigned long gw = 0;
                 unsigned int flags = 0;
                 if (iss >> rIface >> std::hex >> dest >> gw >> flags) {
-                    if (rIface == ifaceStr && dest == 0 && (flags & 0x2)) { // RTF_GATEWAY
+                    if (rIface == ifaceStr && dest == 0 && (flags & 0x2)) {
                         struct in_addr gwAddr;
                         gwAddr.s_addr = static_cast<in_addr_t>(gw);
                         char gwBuf[INET_ADDRSTRLEN];
@@ -419,7 +416,6 @@ void EthernetProbe::querySysfsAndPosixFallback(EthernetState &state) {
         }
     }
 
-    // DNS fallback from /etc/resolv.conf
     if (state.dns.isEmpty()) {
         std::ifstream resolvFile("/etc/resolv.conf");
         if (resolvFile.is_open()) {
@@ -487,11 +483,9 @@ bool EthernetProbe::testInternetSocket(const QString &ipAddress, int timeoutMs) 
         return ok;
     };
 
-    // Primary: 1.1.1.1:53 (Cloudflare DNS)
     if (tryConnect("1.1.1.1", 53)) {
         return true;
     }
-    // Secondary fallback: 8.8.8.8:53 (Google DNS)
     return tryConnect("8.8.8.8", 53);
 }
 
@@ -499,7 +493,6 @@ PingResult EthernetProbe::pingHost(const QString &host, int timeoutMs) {
     PingResult result;
     result.target = host;
 
-    // Fast path: In-process ICMP socket (IPPROTO_ICMP)
     int sock = ::socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_ICMP);
     if (sock >= 0) {
         struct sockaddr_in dstAddr{};
@@ -676,7 +669,6 @@ bool EthernetProbe::queryNetlinkAndEthtool(EthernetState &state) {
         ::close(nl_fd);
     }
 
-    // Ethtool SIOCETHTOOL query for link speed.
     int sock = ::socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (sock >= 0) {
         struct ifreq ifr{};
@@ -713,7 +705,6 @@ bool EthernetProbe::queryNetworkManagerFast(EthernetState &state) {
         state.nmConnectivity = static_cast<int>(v.variant().toUInt());
     }
 
-    // Cache connection profile name and DNS across rapid queries
     static QString s_cachedConName;
     static QString s_cachedGateway;
     static QStringList s_cachedDns;
@@ -978,7 +969,6 @@ QVariantMap EthernetProbe::queryVnstat(const QString &iface, int billingDay) {
         return m;
     };
 
-    // 1. Today (since 12:00 AM)
     quint64 todayRx = 0, todayTx = 0;
     for (const auto &val : dayArray) {
         const QJsonObject d = val.toObject();
@@ -992,7 +982,6 @@ QVariantMap EthernetProbe::queryVnstat(const QString &iface, int billingDay) {
         }
     }
 
-    // 2. Rolling 24 Hours
     quint64 r24Rx = 0, r24Tx = 0;
     const qint64 cutoff24h = nowEpoch - 86400;
     for (const auto &val : hourArray) {
@@ -1008,8 +997,7 @@ QVariantMap EthernetProbe::queryVnstat(const QString &iface, int billingDay) {
         r24Tx = todayTx;
     }
 
-    // 3. This Week (since Monday)
-    const int dayOfWeek = todayDate.dayOfWeek(); // 1 = Monday, 7 = Sunday
+    const int dayOfWeek = todayDate.dayOfWeek();
     const QDate mondayDate = todayDate.addDays(-(dayOfWeek - 1));
     quint64 weekRx = 0, weekTx = 0;
     for (const auto &val : dayArray) {
@@ -1024,7 +1012,6 @@ QVariantMap EthernetProbe::queryVnstat(const QString &iface, int billingDay) {
         }
     }
 
-    // 4. Billing Cycle (since 25th)
     QDate cycleStartDate;
     if (todayDate.day() >= billingDay) {
         cycleStartDate = QDate(todayDate.year(), todayDate.month(), billingDay);
@@ -1047,7 +1034,6 @@ QVariantMap EthernetProbe::queryVnstat(const QString &iface, int billingDay) {
         }
     }
 
-    // 5. This Year (since Jan 1)
     quint64 yearRx = 0, yearTx = 0;
     bool foundYear = false;
     for (const auto &val : yearArray) {

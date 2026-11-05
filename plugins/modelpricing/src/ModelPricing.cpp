@@ -229,7 +229,7 @@ PriceIndex buildPriceIndex(const QJsonDocument &document,
             const QJsonObject model = mit.value().toObject();
             const QJsonValue costValue = model.value(QStringLiteral("cost"));
             if (!costValue.isObject()) {
-                continue; // Unknown pricing: unpriceable, skip the owner.
+                continue;
             }
             const QJsonObject cost = costValue.toObject();
             Owner owner;
@@ -326,7 +326,7 @@ PricingWorker::PricingWorker(QObject *parent)
 
 void PricingWorker::fetch(const PricingSettings &settings, const QString &etag) {
     if (m_reply != nullptr) {
-        return; // One flight at a time; the main object guards busy.
+        return;
     }
     m_settings = settings;
     if (m_nam == nullptr) {
@@ -525,7 +525,7 @@ ModelPricing::ModelPricing(QObject *parent)
     m_thread.start();
 
     m_autoRefreshTimer = new QTimer(this);
-    m_autoRefreshTimer->setInterval(15 * 60 * 1000); // Check every 15 minutes
+    m_autoRefreshTimer->setInterval(15 * 60 * 1000);
     connect(m_autoRefreshTimer, &QTimer::timeout, this, &ModelPricing::maybeAutoRefresh);
     m_autoRefreshTimer->start();
 }
@@ -582,7 +582,6 @@ void ModelPricing::onConfigLoaded(const PricingConfigResult &result) {
 
 bool ModelPricing::indexStale() const {
     const QDateTime now = QDateTime::currentDateTime();
-    // Only refresh after 12:00 PM local time
     if (now.time().hour() < 12) {
         return false;
     }
@@ -595,12 +594,10 @@ bool ModelPricing::indexStale() const {
         return true;
     }
 
-    // Only once a day: if already fetched today after 12:00 PM, not stale
     if (fetched.date() == now.date() && fetched.time().hour() >= 12) {
         return false;
     }
 
-    // If fetched before today, or fetched today prior to 12:00 PM, it's eligible to refresh
     return fetched.date() < now.date() || fetched.time().hour() < 12;
 }
 

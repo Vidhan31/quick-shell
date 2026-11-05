@@ -353,12 +353,11 @@ void SamplerWorker::sample() {
         proc.comm[commLen] = '\0';
 
         const char *p = closeParen + 2;
-        p = skip_field(p); // skip state
+        p = skip_field(p);
 
         proc.ppid = static_cast<int>(parse_u64(p));
         p = skip_space(p);
 
-        // Skip 9 fields (5 to 13)
         for (int i = 0; i < 9; ++i) {
             p = skip_field(p);
         }
@@ -369,7 +368,6 @@ void SamplerWorker::sample() {
         unsigned long long stime = parse_u64(p);
         p = skip_space(p);
 
-        // Skip 8 fields (16 to 23)
         for (int i = 0; i < 8; ++i) {
             p = skip_field(p);
         }
@@ -464,14 +462,12 @@ void SamplerWorker::sample() {
         while (pIdx != -1) {
             auto &proc = m_rawProcs[pIdx];
 
-            // 1. Helper processes with small RSS (< 16 MB): PSS is approximately RSS, bypass smaps
             if (proc.rssPagesKb < 16384) {
                 proc.finalMemKb = proc.rssPagesKb;
                 pIdx = nextMember[pIdx];
                 continue;
             }
 
-            // 2. Unchanged RSS since last sample: reuse cached PSS
             auto itPrev = std::lower_bound(m_prevProcs.begin(), m_prevProcs.end(), proc.pid,
                 [](const RawProc &p, int pid) { return p.pid < pid; });
             if (itPrev != m_prevProcs.end() && itPrev->pid == proc.pid &&

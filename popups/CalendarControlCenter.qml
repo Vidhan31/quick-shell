@@ -10,7 +10,7 @@ Item {
   property date today: new Date()
   property date selectedDate: today
   property int shownYear: -1
-  property int shownMonth: -1 // 0-11
+  property int shownMonth: -1
   property var cells: []
 
   property var holidayProvider: null

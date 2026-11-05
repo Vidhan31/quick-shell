@@ -339,7 +339,6 @@ PanelWindow {
         readonly property int urgencyVal: toast ? (toast.urgency ?? 1) : 1
         readonly property bool isCritical: toastItem.urgencyVal === 2
         readonly property bool isLow: toastItem.urgencyVal === 0
-        // Service-provided timeout (category + expireTimeout aware, 0 = persist).
         readonly property int timeoutMs: isCritical ? 10000 : (toast && toast.timeout > 0 ? toast.timeout : (isLow ? 3500 : 5000))
         readonly property bool persistToast: isCritical || (toast ? toast.timeout === 0 : false)
         readonly property string timeStr: {
@@ -360,14 +359,11 @@ PanelWindow {
         property bool isHovered: false
         property bool replyActive: false
         property bool _kbHeld: false
-        // Exit state: fade+slide on the render thread, then remove from model.
         property bool exiting: false
 
         function requestDismiss() {
           requestExit(null);
         }
-        // Play the exit fade/slide, then run cb (or plain dismiss).
-        // Captures ids/strings up front so delayed service calls stay valid.
         function requestExit(cb) {
           if (toastItem.exiting) return;
           toastItem.exiting = true;
@@ -420,8 +416,6 @@ PanelWindow {
           easing.type: Easing.OutCubic
         }
 
-        // Hover holds the toast; leaving restarts the countdown.
-        // Typing a reply also holds it.
         property real progress: 1.0
 
         NumberAnimation on progress {
@@ -437,7 +431,6 @@ PanelWindow {
           running: !toastItem.persistToast && !toastItem.replyActive && !toastItem.exiting
           onTriggered: toastItem.requestDismiss()
         }
-        // Lets the exit fade/slide play before removing from the model.
         property var _pendingExit: null
         Timer {
           id: exitTimer

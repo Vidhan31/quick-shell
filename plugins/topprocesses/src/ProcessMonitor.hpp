@@ -82,7 +82,6 @@ private:
     std::unique_ptr<SimpleThreadPool> m_pool;
     const char *m_gpuPath{nullptr};
 
-    // Persistent containers to avoid heap reallocations
     std::vector<RawProc> m_rawProcs;
     std::unordered_map<int, int> m_pidToIndex;
     std::unordered_map<int, unsigned long long> m_prevJiffies;

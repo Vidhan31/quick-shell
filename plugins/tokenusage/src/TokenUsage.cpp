@@ -73,8 +73,6 @@ bool checkJsonSupport(QSqlDatabase &db) {
     return query.next() && query.value(0).toInt() == 1;
 }
 
-// Per-model sums for one window. Zero-token models (plain user rows with
-// no model recorded) are skipped by the caller.
 bool queryModels(QSqlDatabase &db,
                  const QString &tableName,
                  qint64 startMs,
@@ -312,7 +310,6 @@ TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastDa
         result.error = firstError.isEmpty() ? QStringLiteral("Could not read OpenCode database") : firstError;
         return result;
     }
-    // Month models for the UI, largest first, capped.
     std::vector<std::pair<QString, TokenWindow>> ranked(monthModels.keyValueBegin(), monthModels.keyValueEnd());
     ranked.erase(std::remove_if(ranked.begin(),
                                 ranked.end(),

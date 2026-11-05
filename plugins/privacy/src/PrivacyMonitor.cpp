@@ -27,8 +27,7 @@ void PrivacyWorker::start() {
             if (!m_pwProcess || m_pwProcess->state() == QProcess::NotRunning) {
                 setupPwProcess();
             } else if (m_lastState.micActive) {
-                // Periodically re-evaluate active state to ensure no stale flags
-                evaluatePrivacyState();
+                            evaluatePrivacyState();
             } else {
                 m_pollTimer->stop();
             }
@@ -352,8 +351,7 @@ void PrivacyWorker::evaluatePrivacyState() {
         if (outClass == QLatin1String("Audio/Source") &&
             (inClass.startsWith(QLatin1String("Stream/Input/Audio")) || inClass == QLatin1String("Stream/Input"))) {
 
-            // Exclude monitor sources (e.g. system playback capture)
-            const bool isMonitor = (outProps.value(QStringLiteral("device.class")).toString() == QLatin1String("monitor")) ||
+                const bool isMonitor = (outProps.value(QStringLiteral("device.class")).toString() == QLatin1String("monitor")) ||
                                    outProps.value(QStringLiteral("node.name")).toString().endsWith(QLatin1String(".monitor")) ||
                                    inProps.value(QStringLiteral("stream.is-monitor")).toBool() ||
                                    inProps.value(QStringLiteral("node.name")).toString().endsWith(QLatin1String(".monitor"));

@@ -54,7 +54,6 @@ QString DockerSocketClient::findDockerSocket()
             return p;
         }
     }
-    // Default to rootless convention when nothing exists (error surfaces connect failure)
     const QString uidPath = QStringLiteral("/run/user/%1/docker.sock").arg(::getuid());
     if (QFileInfo::exists(uidPath)) {
         return uidPath;
@@ -105,7 +104,6 @@ static DockerContainer containerFromSummary(const QJsonObject &o)
     }
     c.image = o.value(QStringLiteral("Image")).toString();
     c.command = o.value(QStringLiteral("Command")).toString();
-    // Created is Unix seconds (double in JSON); keep as int64
     c.created = static_cast<qint64>(o.value(QStringLiteral("Created")).toDouble(0));
     c.state = o.value(QStringLiteral("State")).toString();
     c.status = o.value(QStringLiteral("Status")).toString();
@@ -403,7 +401,6 @@ ActionResult DockerSocketClient::prune(const QString &kind) const
     ActionResult a;
     a.statusCode = r.statusCode;
     a.ok = r.ok;
-    // Keep raw JSON for SpaceReclaimed + deleted lists; QML parses it.
     a.output = QString::fromUtf8(r.body);
     a.error = r.ok ? QString() : (r.error.isEmpty() ? r.apiMessage() : r.error);
     return a;

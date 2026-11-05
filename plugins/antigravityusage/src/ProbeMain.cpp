@@ -1,5 +1,3 @@
-// antigravity-probe — standalone diagnostic printing one JSON object:
-// {"ok":..,"configured":..,"error":..,"today":{"tokens":..},...}
 #include "AntigravityUsage.hpp"
 
 #include <QCoreApplication>

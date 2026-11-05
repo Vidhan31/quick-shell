@@ -35,7 +35,7 @@ Item {
 
   signal triggerRefreshAll()
 
-  property int currentTab: 0 // 0: Overview, 1: OpenCode, 2: Antigravity, 3: Cost
+  property int currentTab: 0
 
   onCurrentTabChanged: {
   }
@@ -62,7 +62,6 @@ Item {
   }
 
   function hideTip(): void {
-    // Retained for popup dismissal lifecycle compatibility
   }
 
   onSelectedMonthsChanged: root.syncRange()
@@ -122,9 +121,9 @@ Item {
   })
   readonly property double maxAgySourceTokens: (root.agySourceRows.length > 0 && root.agySourceRows[0].raw > 0) ? root.agySourceRows[0].raw : 1
 
-  property int overviewChartPeriod: 2 // 0: Today, 1: Week, 2: Month / Window
-  property int ocChartPeriod: 2 // 0: Today, 1: Week, 2: Month / Window
-  property int agyChartPeriod: 2 // 0: Today, 1: Week, 2: Month / Window
+  property int overviewChartPeriod: 2
+  property int ocChartPeriod: 2
+  property int agyChartPeriod: 2
 
   readonly property var donutPeriods: ["Today", "Week", root.selectedMonths === 1 ? "Month" : (root.selectedMonths + "m")]
 

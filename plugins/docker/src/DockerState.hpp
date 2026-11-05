@@ -27,13 +27,13 @@ inline QString formatBytes(qint64 bytes)
 struct DockerContainer {
     QString id;
     QString shortId;
-    QString name; // first entry of Names, leading '/' stripped
+    QString name;
     QString image;
     QString command;
     qint64 created{0};
-    QString state;  // running, exited, paused, created, dead ...
-    QString status; // human string e.g. "Up 3 hours"
-    QString health; // healthy/unhealthy/starting/none (v1.52+ only)
+    QString state;
+    QString status;
+    QString health;
     QVariantMap labels;
 
     QString project;
@@ -76,7 +76,7 @@ struct DockerProject {
     QString configFiles;
     int running{0};
     int total{0};
-    QList<DockerContainer> members; // grouped in C++ — QML just displays
+    QList<DockerContainer> members;
 
     bool operator==(const DockerProject &) const = default;
 
@@ -155,9 +155,9 @@ struct DockerState {
     QList<DockerImage> images;
     QList<DockerVolume> volumes;
 
-    QVariantMap df; // raw /system/df object (ActiveCount/TotalSize/...)
-    QVariantList cleanup; // C++-computed rows: {kind,label,detail}
-    QString reclaimSummary; // e.g. "5.10 GB reclaimable", empty when nothing
+    QVariantMap df;
+    QVariantList cleanup;
+    QString reclaimSummary;
 
     bool operator==(const DockerState &) const = default;
 

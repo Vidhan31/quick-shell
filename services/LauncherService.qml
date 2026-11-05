@@ -312,8 +312,6 @@ Item {
      not on PATH. Point this at any binary accepting
      <path> [--wait-after-command] [--title=X] -e cmd args. */
   readonly property string terminalPath: "/home/dev/AppImages/ghostty.appimage"
-  // Keep the terminal window open after the command exits, so its output and
-  // any error stay readable. False gives stock behaviour.
   readonly property bool holdTerminal: true
 
   readonly property int maxRows: 50
@@ -322,8 +320,6 @@ Item {
     id: iconResolver
   }
 
-  // All filesystem work lives here: shape detection, ~ expansion, the stat and
-  // the mimetype lookup. QML only decides what to show.
   PathProbe {
     id: probe
     onResultChanged: {

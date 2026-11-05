@@ -27,10 +27,8 @@ class TailscaleSocketClient : public qs::UnixHttpClient {
 public:
     explicit TailscaleSocketClient(QString socketPath = QString());
 
-    // Full state query (combines /status, /prefs, /serve-config, /services)
     bool fetchFullStatus(TailscaleState &outState) const;
 
-    // Preferences and Toggles via LocalAPI (PATCH /localapi/v0/prefs)
     bool setPref(const QString &key, const QJsonValue &val, QString *errOut = nullptr) const;
     bool setWantRunning(bool up, QString *errOut = nullptr) const;
     bool setSSH(bool enable, QString *errOut = nullptr) const;

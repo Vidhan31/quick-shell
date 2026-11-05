@@ -71,7 +71,6 @@ void EthernetWorker::setupDbusSubscriptions() {
     auto bus = QDBusConnection::systemBus();
     if (!bus.isConnected()) return;
 
-    // Listen to NetworkManager signals across any path (devices, active connections, settings)
     bus.connect(QStringLiteral("org.freedesktop.NetworkManager"),
                 QString(),
                 QStringLiteral("org.freedesktop.DBus.Properties"),
@@ -269,7 +268,7 @@ void EthernetWorker::startReconnectStage(const QString &target, const QString &v
     disconnect(proc, &QProcess::errorOccurred, this, nullptr);
     connect(proc, &QProcess::errorOccurred, this, [this, proc, target](QProcess::ProcessError err) {
         if (m_reconnectProc != proc || err != QProcess::FailedToStart) {
-            return; // any other error is followed by finished()
+            return;
         }
         finishReconnect(proc, target, false, proc->errorString());
     });
@@ -298,7 +297,7 @@ void EthernetWorker::reconnect(const QString &iface) {
         return;
     }
     if (m_reconnectProc) {
-        return; // a reconnect is already in flight; its result is still coming
+        return;
     }
     startReconnectStage(target, QStringLiteral("reapply"));
 }
@@ -422,7 +421,6 @@ void EthernetMonitor::copy(const QString &text) {
     if (QGuiApplication::clipboard()) {
         QGuiApplication::clipboard()->setText(text);
     }
-    // Update wl-copy asynchronously without blocking the UI thread
     auto *proc = new QProcess();
     QObject::connect(proc, &QProcess::finished, proc, &QObject::deleteLater);
     QObject::connect(proc, &QProcess::errorOccurred, proc, &QObject::deleteLater);

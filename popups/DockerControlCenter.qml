@@ -860,7 +860,6 @@ Item {
     id: row
     property var info: ({})
     property bool showTopLine: false
-    // Busy when any operation targets this container (action, remove, logs).
     readonly property bool rowBusy: root.busy && (row.info.id || "").length > 0 && root.busyContext.endsWith(":" + row.info.id)
     spacing: 0
 

@@ -37,13 +37,13 @@ Item {
 
   signal triggerRefresh()
 
-  property int currentTab: 0 // 0: Sharing, 1: Devices, 2: Settings
+  property int currentTab: 0
   property string pingingIp: ""
 
   property string launchTarget: "https+insecure://localhost:5137"
   property string launchPort: "443"
   property string launchPath: "/"
-  property string launchMode: "serve" // "serve" or "funnel"
+  property string launchMode: "serve"
   property bool initialTargetSynced: false
 
   readonly property bool connected: Boolean(root.tsData && root.tsData.connected)

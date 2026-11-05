@@ -34,8 +34,8 @@ void DockerWorker::start()
         connect(m_debounceTimer, &QTimer::timeout, this, [this]() { sample(false); });
     }
     setupFsWatcher();
-    sample(); // initial full state at quickshell startup
-    connectEvents(); // then stay current via the daemon's event stream
+    sample();
+    connectEvents();
 }
 
 void DockerWorker::stop()
@@ -171,7 +171,7 @@ void DockerWorker::onEventsReadyRead()
         }
         m_eventsBuffer.remove(0, headerEnd + 4);
         m_eventsHeadersParsed = true;
-        sample(); // (re)connected — catch up on anything missed while away
+        sample();
     }
 
     // Chunked framing: "<hex size>\r\n<payload>\r\n", payload is one JSON event.
@@ -185,7 +185,7 @@ void DockerWorker::onEventsReadyRead()
             m_eventsBuffer.remove(0, lineEnd + 2);
             continue;
         }
-        const int semi = line.indexOf(';'); // chunk extensions
+        const int semi = line.indexOf(';');
         if (semi != -1) {
             line = line.left(semi).trimmed();
         }
@@ -212,8 +212,7 @@ void DockerWorker::onEventsReadyRead()
             return;
         }
         if (chunkSize == 0) {
-            // Daemon closed the stream — reconnect; it re-samples.
-            closeEvents();
+                closeEvents();
             if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
                 m_reconnectTimer->start(1000);
             }
@@ -221,7 +220,7 @@ void DockerWorker::onEventsReadyRead()
         }
         const qint64 headerLen = lineEnd + 2;
         if (m_eventsBuffer.size() < headerLen + chunkSize + 2) {
-            break; // partial chunk — wait for more data
+            break;
         }
         if (m_eventsBuffer.mid(static_cast<int>(headerLen + chunkSize), 2) != "\r\n") {
             // Body not terminated by CRLF — the framing is desynchronised, so
@@ -233,7 +232,7 @@ void DockerWorker::onEventsReadyRead()
             return;
         }
         m_eventsBuffer.remove(0, static_cast<int>(headerLen + chunkSize + 2));
-        triggerSampleDebounced(); // coalesce bursts (e.g. project start/stop)
+        triggerSampleDebounced();
     }
 }
 
@@ -253,7 +252,7 @@ void DockerWorker::onEventsError(QLocalSocket::LocalSocketError)
     const bool wasConnected = m_eventsConnected;
     closeEvents();
     if (wasConnected) {
-        sample(); // connection lost — refresh once, reconnect keeps us live
+        sample();
     }
     const QString sockPath = m_client->socketPath();
     if (QFileInfo::exists(sockPath)) {
@@ -538,8 +537,6 @@ DockerMonitor::DockerMonitor(QObject *parent)
     m_worker = new DockerWorker(m_client);
     m_worker->moveToThread(&m_thread);
 
-    // Only auto-start when the monitor is meant to run (e.g. the popup's
-    // fallback monitor is constructed with running=false and must stay idle).
     connect(&m_thread, &QThread::started, this, [this]() {
         if (m_running) {
             QMetaObject::invokeMethod(m_worker, &DockerWorker::start, Qt::QueuedConnection);

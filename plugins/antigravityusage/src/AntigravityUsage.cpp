@@ -235,7 +235,6 @@ bool extractGenTurn(const QByteArray &data, QList<AgTurn> &outTurns) {
     }
     outTurns.append(turn);
 
-    // Retries in gen_metadata: field 17
     for (const ProtoField &f : inner) {
         if (f.id == 17 && f.wire == 2) {
             std::vector<ProtoField> retryFields;
@@ -292,7 +291,6 @@ bool extractStepTurn(const QByteArray &data, QList<AgTurn> &outTurns) {
     }
     outTurns.append(turn);
 
-    // Retries in steps: field 28
     for (const ProtoField &f : root) {
         if (f.id == 28 && f.wire == 2) {
             std::vector<ProtoField> retryFields;

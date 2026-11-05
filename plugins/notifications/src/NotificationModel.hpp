@@ -25,11 +25,11 @@ public:
         ImageRole,
         DesktopEntryRole,
         UrgencyRole,
-        TimeoutRole, // ms, 0 = persist (QML compat with old _wrapMap)
-        TimestampRole, // QDateTime
+        TimeoutRole,
+        TimestampRole,
         TimeAgoRole,
         ReadRole,
-        ActionsRole, // QVariantList of {identifier, text}
+        ActionsRole,
         HasInlineReplyRole,
         ReplyPlaceholderRole,
         HasActionIconsRole,

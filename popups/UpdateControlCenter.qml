@@ -115,7 +115,6 @@ Item {
   onVisibleChanged: {
     if (visible) {
       popupHeight = preferredHeight;
-      // Self-correct a stale manual choice when the popup opens.
       if (!root.offlineReady) {
         root.selectedMethod = root.recommendedMethod;
       }

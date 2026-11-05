@@ -127,24 +127,24 @@ QString UpdateManager::lastCheckedText() const {
 }
 
 QString UpdateManager::summaryGlyph() const {
-    if (m_offlineStagedReady) return QString::fromUtf8("󰜉"); // Reboot ready
-    if (m_progressStage == QLatin1String("authenticating")) return QString::fromUtf8("󰒃"); // Polkit shield
-    if (m_progressStage == QLatin1String("downloading") || m_isDownloading) return QString::fromUtf8("󰇚"); // Downloading
-    if (m_progressStage == QLatin1String("verifying")) return QString::fromUtf8("󰒃"); // Shield / verifying check
-    if (m_progressStage == QLatin1String("installing")) return QString::fromUtf8("󰚰"); // Installing package
-    if (m_progressStage == QLatin1String("upgrading")) return QString::fromUtf8("󰑐"); // Upgrading sync
-    if (m_progressStage == QLatin1String("removing")) return QString::fromUtf8("󰆴"); // Removing
-    if (m_progressStage == QLatin1String("downgrading")) return QString::fromUtf8("󰜉"); // Downgrading
-    if (m_progressStage == QLatin1String("reinstalling")) return QString::fromUtf8("󰑐"); // Reinstalling
-    if (m_progressStage == QLatin1String("cleanup") || m_isCleaning) return QString::fromUtf8("󰃢"); // Cleanup / broom
-    if (m_progressStage == QLatin1String("configuring")) return QString::fromUtf8("󰌢"); // Configuring / scriptlet
-    if (m_progressStage == QLatin1String("preparing") || m_progressStage == QLatin1String("resolving")) return QString::fromUtf8("󰑐"); // Preparing
-    if (m_isApplying) return QString::fromUtf8("󰑐"); // In-place upgrade
-    if (m_isAutoremoving) return QString::fromUtf8("󰆴"); // Autoremoving
-    if (m_isChecking) return QString::fromUtf8("󰑐"); // Checking
-    if (m_securityCount > 0) return QString::fromUtf8("󰒃"); // Security shield
-    if (hasUpdates()) return QString::fromUtf8("󰚰"); // Available updates
-    return QString::fromUtf8("󰚰"); // Up to date
+    if (m_offlineStagedReady) return QString::fromUtf8("󰜉");
+    if (m_progressStage == QLatin1String("authenticating")) return QString::fromUtf8("󰒃");
+    if (m_progressStage == QLatin1String("downloading") || m_isDownloading) return QString::fromUtf8("󰇚");
+    if (m_progressStage == QLatin1String("verifying")) return QString::fromUtf8("󰒃");
+    if (m_progressStage == QLatin1String("installing")) return QString::fromUtf8("󰚰");
+    if (m_progressStage == QLatin1String("upgrading")) return QString::fromUtf8("󰑐");
+    if (m_progressStage == QLatin1String("removing")) return QString::fromUtf8("󰆴");
+    if (m_progressStage == QLatin1String("downgrading")) return QString::fromUtf8("󰜉");
+    if (m_progressStage == QLatin1String("reinstalling")) return QString::fromUtf8("󰑐");
+    if (m_progressStage == QLatin1String("cleanup") || m_isCleaning) return QString::fromUtf8("󰃢");
+    if (m_progressStage == QLatin1String("configuring")) return QString::fromUtf8("󰌢");
+    if (m_progressStage == QLatin1String("preparing") || m_progressStage == QLatin1String("resolving")) return QString::fromUtf8("󰑐");
+    if (m_isApplying) return QString::fromUtf8("󰑐");
+    if (m_isAutoremoving) return QString::fromUtf8("󰆴");
+    if (m_isChecking) return QString::fromUtf8("󰑐");
+    if (m_securityCount > 0) return QString::fromUtf8("󰒃");
+    if (hasUpdates()) return QString::fromUtf8("󰚰");
+    return QString::fromUtf8("󰚰");
 }
 
 QColor UpdateManager::statusColor() const {

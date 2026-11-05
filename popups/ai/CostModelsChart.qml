@@ -31,7 +31,6 @@ Rectangle {
   property var logoFn: function(providerId) { return ""; }
   property string expandedModelName: ""
 
-  // Sum of priced rows only; unpriced (NaN) rows are excluded.
   readonly property double totalHypoSum: {
     let s = 0;
     if (root.models) {

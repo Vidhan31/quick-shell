@@ -118,8 +118,6 @@ Singleton {
   readonly property int launcherIconSize: 28
   readonly property int launcherRowPadX: 10
   readonly property int launcherRowInset: 4
-  // Shared by the icon, the text and the search field so one line runs down
-  // the card.
   readonly property int launcherContentInset: 16
   readonly property int launcherCardPadY: 12
   // Per-segment character cap for path rows. The basename is never trimmed;

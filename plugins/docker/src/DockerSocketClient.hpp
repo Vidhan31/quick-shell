@@ -39,7 +39,7 @@ public:
     ActionResult removeImage(const QString &name, bool force = false) const;
     ActionResult removeVolume(const QString &name, bool force = false) const;
 
-    ActionResult prune(const QString &kind) const; // containers|images|volumes|build
+    ActionResult prune(const QString &kind) const;
 
     // On-demand logs: follow=0, combined stdout+stderr => plain text (no 8-byte framing)
     LogsResult fetchLogs(const QString &id, int tail = 200) const;

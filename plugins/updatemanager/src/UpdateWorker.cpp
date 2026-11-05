@@ -38,15 +38,13 @@ bool UpdateWorker::ensureDaemonActive(int timeoutMs) {
         return true;
     }
 
-    // Trigger D-Bus activation (daemon runs as root via systemd; this needs no extra auth).
     {
         QDBusInterface dbusCtl(QStringLiteral("org.freedesktop.DBus"),
                                QStringLiteral("/org/freedesktop/DBus"),
                                QStringLiteral("org.freedesktop.DBus"),
                                QDBusConnection::systemBus());
         dbusCtl.setTimeout(30000);
-        // Best-effort: ignore result, poll below for actual registration.
-        dbusCtl.call(QStringLiteral("StartServiceByName"), QStringLiteral("org.rpm.dnf.v0"),
+            dbusCtl.call(QStringLiteral("StartServiceByName"), QStringLiteral("org.rpm.dnf.v0"),
                      static_cast<uint>(0));
     }
 
@@ -77,8 +75,7 @@ bool UpdateWorker::openSession(bool loadSystemRepo, bool loadAvailableRepos, QSt
                           QStringLiteral("/org/rpm/dnf/v0"),
                           QStringLiteral("org.rpm.dnf.v0.SessionManager"),
                           QDBusConnection::systemBus());
-        // Cold start after idle timeout is slow; allow ample time.
-        sm.setTimeout(120000);
+            sm.setTimeout(120000);
 
         if (!sm.isValid()) {
             lastErr = sm.lastError().message();
@@ -410,7 +407,7 @@ void UpdateWorker::checkForUpdates(bool refresh) {
     {
         QDBusInterface baseIface(QStringLiteral("org.rpm.dnf.v0"), m_sessionPath,
                                  QStringLiteral("org.rpm.dnf.v0.Base"), QDBusConnection::systemBus());
-        baseIface.setTimeout(600000); // 10 minutes max for metadata sync
+        baseIface.setTimeout(600000);
 
         if (refresh) {
             emit statusMessageChanged(QStringLiteral("Expiring repository cache..."));
@@ -864,7 +861,7 @@ static bool checkAvailableDiskSpace(const QString &mountPoint, quint64 requiredB
     struct statvfs stat;
     if (statvfs(mountPoint.toLocal8Bit().constData(), &stat) == 0) {
         const quint64 freeBytes = static_cast<quint64>(stat.f_bavail) * static_cast<quint64>(stat.f_frsize);
-        const quint64 safetyMargin = 500ULL * 1024 * 1024; // 500 MB safety buffer
+        const quint64 safetyMargin = 500ULL * 1024 * 1024;
         if (freeBytes < (requiredBytes + safetyMargin)) {
             if (errOut) {
                 const double freeMb = static_cast<double>(freeBytes) / (1024.0 * 1024.0);
@@ -1303,7 +1300,6 @@ void UpdateWorker::cleanCache(const QString &cacheType) {
         return;
     }
 
-    // Best-effort cleanup of unprivileged user cache (~/.cache/libdnf5)
     QProcess proc;
     proc.start(QStringLiteral("dnf5"), {QStringLiteral("clean"), type});
     proc.waitForFinished(5000);
@@ -1318,7 +1314,6 @@ void UpdateWorker::cleanCache(const QString &cacheType) {
 void UpdateWorker::autoremove() {
     emit statusMessageChanged(QStringLiteral("Checking for unused packages..."));
 
-    // Fast, locale-independent query using libdnf5's filter_unneeded via JSON output
     QProcess checkProc;
     checkProc.start(QStringLiteral("dnf5"), {QStringLiteral("list"), QStringLiteral("--autoremove"), QStringLiteral("--json")});
     if (!checkProc.waitForFinished(10000)) {
@@ -1544,7 +1539,7 @@ void UpdateWorker::onDownloadProgress(const QDBusObjectPath &session, const QStr
 void UpdateWorker::onDownloadEnd(const QDBusObjectPath &session, const QString &downloadId,
                                  uint transferStatus, const QString &message) {
     Q_UNUSED(session);
-    if (transferStatus == 2) { // 2 = ERROR
+    if (transferStatus == 2) {
         qWarning() << "UpdateWorker: Download error for" << downloadId << ":" << message;
         if (!message.isEmpty()) {
             emit statusMessageChanged(QStringLiteral("Download failed for %1: %2").arg(downloadId, message));
@@ -1603,14 +1598,12 @@ void UpdateWorker::verifyTransactionResult(const QString &fallbackErrMsg, const 
     closeSession();
 
     if (rawUpgrades.isEmpty()) {
-        // System is completely up to date: transaction actually succeeded and all packages installed cleanly!
         emit inPlaceProgress(QString(), 0, 1, 1, 1.0);
         emit progressStageUpdated(QString(), QString(), QString(), 1, 1, 1.0);
         emit statusMessageChanged(QStringLiteral("Updates installed successfully."));
         emit operationFinished(true, QStringLiteral("In-place update finished successfully."));
         QMetaObject::invokeMethod(this, &UpdateWorker::checkForUpdates, Qt::QueuedConnection, false);
     } else {
-        // Some or all updates are still pending - genuine transaction failure
         emit statusMessageChanged(fallbackErrMsg);
         emit operationFinished(false, fallbackErrMsg);
         QMetaObject::invokeMethod(this, &UpdateWorker::checkForUpdates, Qt::QueuedConnection, false);

@@ -15,7 +15,7 @@ struct HttpResponse {
     QByteArray headers;
     QByteArray body;
     bool ok{false}; // 2xx only. 304/409/403 are NOT ok — caller decides.
-    QString error;  // transport-level error (connect/read/malformed)
+    QString error;
 
     [[nodiscard]] QJsonDocument toJson() const {
         return QJsonDocument::fromJson(body);
@@ -39,7 +39,7 @@ struct HttpResponse {
 struct ActionResult {
     bool ok{false};
     int statusCode{0};
-    QString output; // api message or body text
+    QString output;
     QString error;
 
     ActionResult() = default;
@@ -60,8 +60,7 @@ public:
     [[nodiscard]] QString defaultHost() const;
     void setDefaultHost(const QString &host);
 
-    // Low-level HTTP over Unix Domain Socket (blocking, Connection: close)
-    HttpResponse request(const QString &method,
+        HttpResponse request(const QString &method,
                          const QString &path,
                          const QByteArray &body = QByteArray(),
                          int timeoutMs = 4000,

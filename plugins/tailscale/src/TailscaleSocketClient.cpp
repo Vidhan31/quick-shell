@@ -470,7 +470,6 @@ bool TailscaleSocketClient::copyToClipboard(const QString &text)
         QGuiApplication::clipboard()->setText(text);
     }
 
-    // Also run wl-copy to ensure persistence on Wayland compositor without blocking
     auto *proc = new QProcess();
     QObject::connect(proc, &QProcess::finished, proc, &QObject::deleteLater);
     QObject::connect(proc, &QProcess::errorOccurred, proc, &QObject::deleteLater);

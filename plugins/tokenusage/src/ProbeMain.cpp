@@ -1,5 +1,3 @@
-// tokenusage-probe — standalone diagnostic printing one JSON object:
-// {"ok":..,"configured":..,"error":..,"today":{"tokens":..,"cost":..},...}
 #include "TokenUsage.hpp"
 
 #include <QCoreApplication>

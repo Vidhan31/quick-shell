@@ -54,13 +54,12 @@ struct PricingFetchResult {
     bool ok = false;
     bool notModified = false;
     QString error;
-    QVariantMap index; // normalized model id -> entry map
+    QVariantMap index;
     int providerCount = 0;
     QString fetchedAtIso;
     QString etag;
 };
 
-// Lowercase + trim. The only normalization: no per-model special cases.
 QString normalizeModelId(const QString &name);
 
 // Exact match first, then one trailing tier-suffix strip. Returns false
@@ -156,16 +155,13 @@ public:
 
     void setConfigSource(const QUrl &url);
 
-    // Empty map when no official entry exists (caller shows no cost).
     Q_INVOKABLE QVariantMap priceForModel(const QString &name) const;
-    // NaN when no official entry exists.
     Q_INVOKABLE double costForModel(const QString &name,
                                     qlonglong input,
                                     qlonglong output,
                                     qlonglong cacheRead,
                                     qlonglong cacheWrite,
                                     qlonglong reasoning) const;
-    // Estimated USD saved through prompt caching for this model.
     Q_INVOKABLE double savingsForModel(const QString &name, qlonglong cacheRead) const;
     // Local cached logo file when present, else the remote URL (which also
     // enqueues a background download for next time).

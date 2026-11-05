@@ -133,25 +133,25 @@ std::vector<ProcInfo> ProcessWorker::scanProcFS() {
         p = skip_space(p);
 
         int ppid = static_cast<int>(parse_u64(p)); p = skip_space(p);
-        p = skip_field(p); // pgrp
-        p = skip_field(p); // session
-        p = skip_field(p); // tty_nr
-        p = skip_field(p); // tpgid
-        unsigned long long flags = parse_u64(p); p = skip_space(p); // flags
-        p = skip_field(p); // minflt
-        p = skip_field(p); // cminflt
-        p = skip_field(p); // majflt
-        p = skip_field(p); // cmajflt
-        p = skip_field(p); // utime
-        p = skip_field(p); // stime
-        p = skip_field(p); // cutime
-        p = skip_field(p); // cstime
-        p = skip_field(p); // priority
-        p = skip_field(p); // nice
-        p = skip_field(p); // num_threads
-        p = skip_field(p); // itrealvalue
-        p = skip_field(p); // starttime
-        p = skip_field(p); // vsize
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        unsigned long long flags = parse_u64(p); p = skip_space(p);
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);;
+        p = skip_field(p);
         unsigned long long rssPages = parse_u64(p);
 
         // Kernel threads have PPID 2 or PF_KTHREAD (0x00200000), or zombie
