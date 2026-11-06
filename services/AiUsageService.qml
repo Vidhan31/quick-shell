@@ -28,10 +28,13 @@ Item {
   readonly property bool ocConfigured: ocMonitor.configured
   readonly property bool agyConfigured: agyMonitor.configured
 
+  readonly property double baselineTokens: 0
+  readonly property double baselineCost: 0
+
   readonly property double totalTodayTokens: ocMonitor.todayTokens + agyMonitor.todayTokens
   readonly property double ocRatio: root.totalTodayTokens > 0 ? (ocMonitor.todayTokens / root.totalTodayTokens) : 0.5
 
-  readonly property double totalAllTokens: (ocMonitor ? ocMonitor.allTokens : 0) + (agyMonitor ? agyMonitor.allTokens : 0)
+  readonly property double totalAllTokens: root.baselineTokens + (ocMonitor ? ocMonitor.allTokens : 0) + (agyMonitor ? agyMonitor.allTokens : 0)
 
   readonly property double totalAllCost: {
     const tick = pricingMonitor ? pricingMonitor.modelCount : 0;
@@ -65,7 +68,7 @@ Item {
       }
     }
 
-    return sum;
+    return root.baselineCost + sum;
   }
 
   function compactTokens(value: double): string {
