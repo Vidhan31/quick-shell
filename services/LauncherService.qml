@@ -770,7 +770,7 @@ Item {
     const corpus = root.settings;
     if (!term) {
       const out = [];
-      const lim = Math.min(corpus.length, root.maxRows);
+      const lim = corpus.length;
       for (let i = 0; i < lim; i++) {
         out.push(viewOf(corpus[i], 0, [], []));
       }
@@ -790,7 +790,7 @@ Item {
     });
 
     const out = [];
-    const lim = Math.min(scored.length, root.maxRows);
+    const lim = scored.length;
     for (let i = 0; i < lim; i++) {
       const s = scored[i];
       out.push(viewOf(s.row, s.tier, s.hlName, s.hlGeneric));
@@ -906,7 +906,7 @@ Item {
     const corpus = root.apps;
 
     if (!q) {
-      root.rows = appRanker.rank("", root.maxRows);
+      root.rows = appRanker.rank("");
       root.selectedIndex = 0;
       return;
     }
@@ -926,7 +926,7 @@ Item {
       return;
     }
 
-    const scored = appRanker.rank(q, root.maxRows);
+    const scored = appRanker.rank(q);
     if (scored.length === 0) {
       root.rows = [commandRowFor(raw)];
       root.selectedIndex = 0;

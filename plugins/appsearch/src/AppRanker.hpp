@@ -31,8 +31,8 @@ public:
     ~AppRanker() override = default;
 
     Q_INVOKABLE void setApps(const QVariantList &apps);
-    Q_INVOKABLE QVariantList rank(const QString &query, int maxResults = 50);
-    Q_INVOKABLE QVariantList rank(const QVariantList &apps, const QString &query, int maxResults = 50);
+    Q_INVOKABLE QVariantList rank(const QString &query, int maxResults = 0);
+    Q_INVOKABLE QVariantList rank(const QVariantList &apps, const QString &query, int maxResults = 0);
 
 private:
     std::vector<AppEntry> m_apps;

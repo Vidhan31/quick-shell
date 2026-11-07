@@ -44,7 +44,7 @@ void AppRanker::setApps(const QVariantList &apps) {
 QVariantList AppRanker::rank(const QString &query, int maxResults) {
     const QString q = query.trimmed().toLower();
     if (q.isEmpty()) {
-        int limit = std::min(maxResults, static_cast<int>(m_apps.size()));
+        int limit = (maxResults > 0) ? std::min(maxResults, static_cast<int>(m_apps.size())) : static_cast<int>(m_apps.size());
         QVariantList results;
         results.reserve(limit);
         for (int i = 0; i < limit; ++i) {
@@ -124,13 +124,22 @@ QVariantList AppRanker::rank(const QString &query, int maxResults) {
         return QVariantList();
     }
 
-    int limit = std::min(maxResults, static_cast<int>(candidates.size()));
-    std::partial_sort(candidates.begin(), candidates.begin() + limit, candidates.end(),
-        [](const Candidate &a, const Candidate &b) {
-            if (a.tier != b.tier) return a.tier < b.tier;
-            if (a.app->nameLc != b.app->nameLc) return a.app->nameLc < b.app->nameLc;
-            return a.app->id < b.app->id;
-        });
+    int limit = (maxResults > 0) ? std::min(maxResults, static_cast<int>(candidates.size())) : static_cast<int>(candidates.size());
+    if (maxResults > 0 && limit < static_cast<int>(candidates.size())) {
+        std::partial_sort(candidates.begin(), candidates.begin() + limit, candidates.end(),
+            [](const Candidate &a, const Candidate &b) {
+                if (a.tier != b.tier) return a.tier < b.tier;
+                if (a.app->nameLc != b.app->nameLc) return a.app->nameLc < b.app->nameLc;
+                return a.app->id < b.app->id;
+            });
+    } else {
+        std::sort(candidates.begin(), candidates.end(),
+            [](const Candidate &a, const Candidate &b) {
+                if (a.tier != b.tier) return a.tier < b.tier;
+                if (a.app->nameLc != b.app->nameLc) return a.app->nameLc < b.app->nameLc;
+                return a.app->id < b.app->id;
+            });
+    }
 
     QVariantList results;
     results.reserve(limit);
