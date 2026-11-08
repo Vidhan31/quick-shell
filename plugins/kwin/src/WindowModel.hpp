@@ -58,9 +58,16 @@ public:
     [[nodiscard]] const QList<WindowRecord> &windows() const { return m_windows; }
     [[nodiscard]] QVariantList toVariantList() const;
 
+    void addRecord(const WindowRecord &record);
+    void updateRecord(const WindowRecord &record);
+    void removeRecord(const QString &id);
+    void clear();
+
     void updateRecords(const QList<WindowRecord> &newRecords);
 
 private:
+    [[nodiscard]] int findIndexById(const QString &id) const;
+
     QList<WindowRecord> m_windows;
 };
 

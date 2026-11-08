@@ -20,28 +20,21 @@ class KWinManager : public QObject {
 
 public:
     explicit KWinManager(QObject *parent = nullptr);
-    ~KWinManager() override;
+    ~KWinManager() override = default;
 
     [[nodiscard]] QAbstractItemModel *model() const;
     [[nodiscard]] QVariantList windows() const;
     [[nodiscard]] int count() const;
-    [[nodiscard]] bool available() const { return m_available; }
+    [[nodiscard]] bool available() const;
 
     Q_INVOKABLE void toggleWindow(const QString &windowId);
     Q_INVOKABLE void activateWindow(const QString &windowId);
     Q_INVOKABLE void minimizeWindow(const QString &windowId);
     Q_INVOKABLE void refresh();
 
-    static void handleDbusUpdatePacked(const QString &packed);
-
 Q_SIGNALS:
     void windowsChanged();
     void availableChanged();
-
-private:
-    void dispatchAction(const QString &action, const QString &windowId);
-
-    bool m_available{false};
 };
 
 } // namespace qs::plugins::kwin

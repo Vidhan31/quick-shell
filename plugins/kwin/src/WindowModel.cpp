@@ -87,6 +87,75 @@ QVariantList WindowModel::toVariantList() const {
     return list;
 }
 
+int WindowModel::findIndexById(const QString &id) const {
+    for (int i = 0; i < m_windows.size(); ++i) {
+        if (m_windows.at(i).id == id) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void WindowModel::addRecord(const WindowRecord &record) {
+    const int existingIdx = findIndexById(record.id);
+    if (existingIdx >= 0) {
+        updateRecord(record);
+        return;
+    }
+
+    const int newRow = m_windows.size();
+    beginInsertRows(QModelIndex(), newRow, newRow);
+    m_windows.append(record);
+    endInsertRows();
+}
+
+void WindowModel::updateRecord(const WindowRecord &record) {
+    const int idx = findIndexById(record.id);
+    if (idx < 0) {
+        addRecord(record);
+        return;
+    }
+
+    const WindowRecord &oldWin = m_windows.at(idx);
+    if (oldWin == record) {
+        return;
+    }
+
+    QList<int> changedRoles;
+    if (oldWin.active != record.active) changedRoles.append(ActiveRole);
+    if (oldWin.minimized != record.minimized) changedRoles.append(MinimizedRole);
+    if (oldWin.maximized != record.maximized) changedRoles.append(MaximizedRole);
+    if (oldWin.fullscreen != record.fullscreen) changedRoles.append(FullscreenRole);
+    if (oldWin.title != record.title) changedRoles.append(TitleRole);
+    if (oldWin.icon != record.icon) changedRoles.append(IconRole);
+    if (oldWin.appId != record.appId) changedRoles.append(AppIdRole);
+    changedRoles.append(WindowDataRole);
+
+    m_windows[idx] = record;
+    const QModelIndex modelIdx = index(idx, 0);
+    Q_EMIT dataChanged(modelIdx, modelIdx, changedRoles);
+}
+
+void WindowModel::removeRecord(const QString &id) {
+    const int idx = findIndexById(id);
+    if (idx < 0) {
+        return;
+    }
+
+    beginRemoveRows(QModelIndex(), idx, idx);
+    m_windows.removeAt(idx);
+    endRemoveRows();
+}
+
+void WindowModel::clear() {
+    if (m_windows.isEmpty()) {
+        return;
+    }
+    beginResetModel();
+    m_windows.clear();
+    endResetModel();
+}
+
 void WindowModel::updateRecords(const QList<WindowRecord> &newRecords) {
     if (m_windows.size() == newRecords.size()) {
         bool sameIds = true;
@@ -116,8 +185,8 @@ void WindowModel::updateRecords(const QList<WindowRecord> &newRecords) {
                 changedRoles.append(WindowDataRole);
 
                 m_windows[i] = newWin;
-                const QModelIndex idx = index(i, 0);
-                Q_EMIT dataChanged(idx, idx, changedRoles);
+                const QModelIndex modelIdx = index(i, 0);
+                Q_EMIT dataChanged(modelIdx, modelIdx, changedRoles);
             }
             return;
         }

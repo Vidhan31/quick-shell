@@ -1,11 +1,11 @@
 #include "KWinManager.hpp"
 
-#include <QCoreApplication>
+#include <QGuiApplication>
 #include <QTimer>
 #include <iostream>
 
 int main(int argc, char *argv[]) {
-    QCoreApplication app(argc, argv);
+    QGuiApplication app(argc, argv);
 
     qs::plugins::kwin::KWinManager manager;
 
