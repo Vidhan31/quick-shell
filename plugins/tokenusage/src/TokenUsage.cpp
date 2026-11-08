@@ -151,11 +151,13 @@ bool queryDaily(QSqlDatabase &db,
                 qint64 endMs,
                 const QString &tzModifier,
                 QMap<QString, TokenWindow> *out,
+                QMap<QPair<QString, QString>, TokenWindow> *dailyModels,
                 QString *error) {
     QSqlQuery query(db);
     query.setForwardOnly(true);
     const QString sql = QStringLiteral(
         "SELECT strftime('%Y-%m-%d', time_created / 1000, 'unixepoch', '%1') AS day,"
+        " COALESCE(json_extract(data,'$.modelID'), '(unknown)'),"
         " COALESCE(SUM(CAST(json_extract(data,'$.tokens.input') AS INTEGER)),0),"
         " COALESCE(SUM(CAST(json_extract(data,'$.tokens.output') AS INTEGER)),0),"
         " COALESCE(SUM(CAST(json_extract(data,'$.tokens.cache.read') AS INTEGER)),0),"
@@ -164,7 +166,7 @@ bool queryDaily(QSqlDatabase &db,
          " COALESCE(SUM(CAST(json_extract(data,'$.cost') AS REAL)),0)"
          " FROM %2"
          " WHERE json_valid(data) AND time_created >= ? AND time_created < ?"
-         " GROUP BY day").arg(tzModifier, tableName);
+         " GROUP BY day, json_extract(data,'$.modelID')").arg(tzModifier, tableName);
     query.prepare(sql);
     query.addBindValue(startMs);
     query.addBindValue(endMs);
@@ -177,13 +179,24 @@ bool queryDaily(QSqlDatabase &db,
         if (day.isEmpty()) {
             continue;
         }
+        QString model = query.value(1).toString().trimmed();
+        if (model.isEmpty()) {
+            model = QStringLiteral("(unknown)");
+        }
         TokenWindow &window = (*out)[day];
-        window.input += query.value(1).toLongLong();
-        window.output += query.value(2).toLongLong();
-        window.cacheRead += query.value(3).toLongLong();
-        window.cacheWrite += query.value(4).toLongLong();
-        window.reasoning += query.value(5).toLongLong();
-        window.cost += query.value(6).toDouble();
+        TokenWindow &modelWindow = (*dailyModels)[qMakePair(day, model)];
+        window.input += query.value(2).toLongLong();
+        window.output += query.value(3).toLongLong();
+        window.cacheRead += query.value(4).toLongLong();
+        window.cacheWrite += query.value(5).toLongLong();
+        window.reasoning += query.value(6).toLongLong();
+        window.cost += query.value(7).toDouble();
+        modelWindow.input += query.value(2).toLongLong();
+        modelWindow.output += query.value(3).toLongLong();
+        modelWindow.cacheRead += query.value(4).toLongLong();
+        modelWindow.cacheWrite += query.value(5).toLongLong();
+        modelWindow.reasoning += query.value(6).toLongLong();
+        modelWindow.cost += query.value(7).toDouble();
     }
     return true;
 }
@@ -196,6 +209,7 @@ bool collectFromDb(const QString &path,
                    QMap<QString, TokenWindow> *monthModels,
                    QMap<QString, TokenWindow> *allModels,
                    QMap<QString, TokenWindow> *dailyMap,
+                   QMap<QPair<QString, QString>, TokenWindow> *dailyModels,
                    QString *error) {
     const QString connectionName = QStringLiteral("tokenusage-%1").arg(g_connectionCounter.fetchAndAddOrdered(1));
     bool ok = false;
@@ -223,7 +237,8 @@ bool collectFromDb(const QString &path,
                     allTimeOk && queryModels(db, tableName, bounds.lastDaysStart, bounds.end, monthModels, error);
                 const bool allModelsOk =
                     modelsOk && queryModels(db, tableName, 0, bounds.end, allModels, error);
-                ok = allModelsOk && queryDaily(db, tableName, dailyStartMs, bounds.end, tzModifier, dailyMap, error);
+                ok = allModelsOk
+                    && queryDaily(db, tableName, dailyStartMs, bounds.end, tzModifier, dailyMap, dailyModels, error);
             }
             db.close();
         }
@@ -298,9 +313,10 @@ TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastDa
     QMap<QString, TokenWindow> monthModels;
     QMap<QString, TokenWindow> allModels;
     QMap<QString, TokenWindow> dailyMap;
+    QMap<QPair<QString, QString>, TokenWindow> dailyModels;
     for (const QString &path : result.dbPaths) {
         QString error;
-        if (collectFromDb(path, rollingBounds, dailyStartMs, tzModifier, &result, &monthModels, &allModels, &dailyMap, &error)) {
+        if (collectFromDb(path, rollingBounds, dailyStartMs, tzModifier, &result, &monthModels, &allModels, &dailyMap, &dailyModels, &error)) {
             ++readable;
         } else if (firstError.isEmpty()) {
             firstError = error;
@@ -378,6 +394,22 @@ TokenRefreshResult collectTokenUsage(const TokenWindowBounds &bounds, int lastDa
         dailyList.append(point);
     }
     result.dailyUsage = dailyList;
+
+    QVariantList dailyModelList;
+    for (auto it = dailyModels.constBegin(); it != dailyModels.constEnd(); ++it) {
+        QVariantMap item;
+        item.insert(QStringLiteral("date"), it.key().first);
+        item.insert(QStringLiteral("name"), it.key().second);
+        item.insert(QStringLiteral("tokens"), it.value().total());
+        item.insert(QStringLiteral("input"), it.value().input);
+        item.insert(QStringLiteral("output"), it.value().output);
+        item.insert(QStringLiteral("cacheRead"), it.value().cacheRead);
+        item.insert(QStringLiteral("cacheWrite"), it.value().cacheWrite);
+        item.insert(QStringLiteral("reasoning"), it.value().reasoning);
+        item.insert(QStringLiteral("cost"), it.value().cost);
+        dailyModelList.append(item);
+    }
+    result.dailyModelUsage = dailyModelList;
 
     result.ok = true;
     result.refreshedAt = refreshedAtIst();

@@ -52,6 +52,7 @@ struct TokenRefreshResult {
     QVariantList allModels;
     QVariantList monthSources;
     QVariantList dailyUsage;
+    QVariantList dailyModelUsage;
 };
 
 TokenWindowBounds computeWindowBounds();

@@ -67,6 +67,7 @@ int main(int argc, char *argv[]) {
     root[QStringLiteral("monthModels")] = models;
     root[QStringLiteral("allModels")] = allModels;
     root[QStringLiteral("dailyUsage")] = QJsonArray::fromVariantList(result.dailyUsage);
+    root[QStringLiteral("dailyModelUsage")] = QJsonArray::fromVariantList(result.dailyModelUsage);
     root[QStringLiteral("refreshedAt")] = result.refreshedAt;
 
     QTextStream out(stdout);

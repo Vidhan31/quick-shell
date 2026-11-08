@@ -540,6 +540,7 @@ bool collectFromAgDb(const QString &path,
                      QMap<QString, AgTokenWindow> *allModels,
                      QMap<QString, AgTokenWindow> *monthSources,
                      QMap<QDate, AgTokenWindow> *dailyMap,
+                     QMap<QPair<QDate, QString>, AgTokenWindow> *dailyModels,
                      QSet<QString> *seen,
                      QString *error) {
     const AgDbRead dbRead = readAgRows(path, sourceId, fileStem, error);
@@ -620,6 +621,12 @@ bool collectFromAgDb(const QString &path,
                 dw.output += turn.output;
                 dw.cacheRead += turn.cacheRead;
                 dw.reasoning += turn.reasoning;
+                const QString model = turn.model.isEmpty() ? QStringLiteral("(unknown)") : turn.model;
+                AgTokenWindow &modelWindow = (*dailyModels)[qMakePair(fileDay, model)];
+                modelWindow.input += turn.input;
+                modelWindow.output += turn.output;
+                modelWindow.cacheRead += turn.cacheRead;
+                modelWindow.reasoning += turn.reasoning;
             }
             if (inMonth) {
                 addTo(result->month);
@@ -712,6 +719,7 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastDays) {
     QMap<QString, AgTokenWindow> allModels;
     QMap<QString, AgTokenWindow> monthSources;
     QMap<QDate, AgTokenWindow> dailyMap;
+    QMap<QPair<QDate, QString>, AgTokenWindow> dailyModels;
     QSet<QString> seen;
     // Canonical paths guard against the same file reached through a symlink
     // (the T3 skills symlink is one such case) being counted twice.
@@ -765,6 +773,7 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastDays) {
                                 &allModels,
                                 &monthSources,
                                 &dailyMap,
+                                &dailyModels,
                                 &seen,
                                 &error)) {
                 ++readable;
@@ -846,6 +855,20 @@ AgRefreshResult collectAgUsage(const AgWindowBounds &bounds, int lastDays) {
         dailyList.append(point);
     }
     result.dailyUsage = dailyList;
+
+    QVariantList dailyModelList;
+    for (auto it = dailyModels.constBegin(); it != dailyModels.constEnd(); ++it) {
+        QVariantMap item;
+        item.insert(QStringLiteral("date"), it.key().first.toString(QStringLiteral("yyyy-MM-dd")));
+        item.insert(QStringLiteral("name"), it.key().second);
+        item.insert(QStringLiteral("tokens"), it.value().total());
+        item.insert(QStringLiteral("input"), it.value().input);
+        item.insert(QStringLiteral("output"), it.value().output);
+        item.insert(QStringLiteral("cacheRead"), it.value().cacheRead);
+        item.insert(QStringLiteral("reasoning"), it.value().reasoning);
+        dailyModelList.append(item);
+    }
+    result.dailyModelUsage = dailyModelList;
 
     result.ok = true;
     result.refreshedAt = agRefreshedAtIst();
