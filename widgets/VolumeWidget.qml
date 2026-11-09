@@ -31,6 +31,10 @@ Item {
     if (activeAudio) activeAudio.toggleMute();
   }
 
+  function toggleOutputPort(): void {
+    if (activeAudio) activeAudio.toggleOutputPort();
+  }
+
   Row {
     id: contentRow
     spacing: 5

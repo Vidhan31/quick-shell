@@ -16,6 +16,7 @@ Item {
 
   signal clicked(var mouse)
   signal rightClicked()
+  signal middleClicked()
 
   property string tooltip: ""
   property string tooltipSub: ""
@@ -114,6 +115,8 @@ Item {
       }
       if (mouse.button === Qt.RightButton) {
         root.rightClicked();
+      } else if (mouse.button === Qt.MiddleButton) {
+        root.middleClicked();
       } else {
         root.clicked(mouse);
       }

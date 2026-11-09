@@ -32,6 +32,13 @@ Item {
       if (lower.indexOf("webcam") !== -1 || lower.indexOf("camera") !== -1) return "󰄀";
       return "󰍬";
     }
+    if (root.activeAudio && root.activeAudio.activePort) {
+      const curDesc = (root.activeAudio.sinkName || "").toLowerCase();
+      if ((desc || "").toLowerCase() === curDesc) {
+        const port = (root.activeAudio.activePort || "").toLowerCase();
+        if (port.indexOf("headphone") !== -1) return "󰋋";
+      }
+    }
     const d = (desc || "").toLowerCase();
     if (d.indexOf("headphone") !== -1 || d.indexOf("headset") !== -1 ||
         d.indexOf("tune") !== -1 || d.indexOf("earphone") !== -1 ||
@@ -42,6 +49,10 @@ Item {
       return "󰽟";
     }
     return "󰓃";
+  }
+
+  Component.onCompleted: {
+    if (root.activeAudio) root.activeAudio.refreshPorts();
   }
 
   implicitWidth: Theme.popupWidthMd
@@ -162,6 +173,44 @@ Item {
                 to: 1.5
                 onMoved: val => {
                   if (root.activeAudio) root.activeAudio.setVolume(val);
+                }
+              }
+
+              SegmentedControl {
+                id: portSelector
+                width: parent.width
+                visible: Boolean(root.activeAudio && root.activeAudio.hasMultiplePorts)
+                implicitHeight: visible ? 34 : 0
+                items: {
+                  if (!root.activeAudio || !root.activeAudio.sinkPorts) return [];
+                  const res = [];
+                  const ports = root.activeAudio.sinkPorts;
+                  for (let i = 0; i < ports.length; i++) {
+                    const p = ports[i];
+                    if (!p) continue;
+                    const isHp = (p.name || "").indexOf("headphone") !== -1 || (p.description || "").toLowerCase().indexOf("headphone") !== -1;
+                    res.push({
+                      icon: isHp ? "󰋋" : "󰓃",
+                      label: p.description || p.name || "Port",
+                      portName: p.name
+                    });
+                  }
+                  return res;
+                }
+                current: {
+                  if (!root.activeAudio || !root.activeAudio.sinkPorts) return 0;
+                  const ports = root.activeAudio.sinkPorts;
+                  for (let i = 0; i < ports.length; i++) {
+                    if (ports[i] && ports[i].name === root.activeAudio.activePort) {
+                      return i;
+                    }
+                  }
+                  return 0;
+                }
+                onSelected: index => {
+                  if (portSelector.items && portSelector.items[index] && root.activeAudio) {
+                    root.activeAudio.setSinkPort(portSelector.items[index].portName);
+                  }
                 }
               }
 

@@ -489,9 +489,10 @@ ShellRoot {
           flat: true
           active: popupHost.isOpen(volHit)
           Accessible.name: "Audio volume"
-          acceptedButtons: Qt.LeftButton | Qt.RightButton
+          acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
           onClicked: popupHost.toggle(volHit, "vol")
           onRightClicked: volBarWidget.toggleMute()
+          onMiddleClicked: volBarWidget.toggleOutputPort()
 
           VolumeWidget {
             id: volBarWidget
