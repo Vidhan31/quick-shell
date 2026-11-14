@@ -537,6 +537,34 @@ Item {
     return openWithIndex(root.selectedIndex);
   }
 
+  /* Wraps command execution in an isolated transient systemd user scope (app.slice)
+     so child apps do not inherit quickshell.service's cgroup and survive shell restarts. */
+  function scopedArgv(rawArgv: var, unitId: string, desc: string, workingDir: string): var {
+    if (!rawArgv || rawArgv.length === 0) return null;
+    const cleanId = (unitId || "app").replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
+    const uniqueUnit = "app-qs-" + cleanId + "-" + Date.now();
+    const cmd = [
+      "systemd-run",
+      "--user",
+      "--scope",
+      "--slice=app.slice",
+      "-q",
+      "--unit=" + uniqueUnit
+    ];
+    if (desc) cmd.push("--description=" + desc);
+    if (workingDir) {
+      const c = probe.classify(workingDir);
+      if (c && c.exists && c.isDir) {
+        cmd.push("--working-directory=" + workingDir);
+      }
+    }
+    cmd.push("--");
+    for (let i = 0; i < rawArgv.length; i++) {
+      cmd.push(String(rawArgv[i]));
+    }
+    return cmd;
+  }
+
   function launchCommand(cmdText: string, inBackground: bool): void {
     if (!cmdText) return;
     if (inBackground) {
@@ -557,14 +585,17 @@ Item {
     cmd.push(shell);
     cmd.push("-c");
     cmd.push(cmdText);
-    Quickshell.execDetached({ command: cmd, unbindStdout: true });
+    const scoped = scopedArgv(cmd, "terminal", cmdText, home);
+    Quickshell.execDetached({ command: scoped || cmd, unbindStdout: true });
   }
 
   function launchCommandBackground(cmdText: string): void {
     const shell = String(Quickshell.env("SHELL") || "/usr/bin/zsh");
     const home = String(Quickshell.env("HOME") || "/home/dev");
+    const cmd = [shell, "-c", cmdText];
+    const scoped = scopedArgv(cmd, "cmd", cmdText, home);
     Quickshell.execDetached({
-      command: [shell, "-c", cmdText],
+      command: scoped || cmd,
       workingDirectory: home,
       unbindStdout: true
     });
@@ -574,7 +605,8 @@ Item {
     const dir = r.isDir ? r.abs : r.parent;
     const argv = terminalShellArgv(dir, r.abs);
     if (argv !== null) {
-      Quickshell.execDetached({ command: argv, unbindStdout: true });
+      const scoped = scopedArgv(argv, "file", r.abs, dir);
+      Quickshell.execDetached({ command: scoped || argv, unbindStdout: true });
     }
   }
 
@@ -582,7 +614,9 @@ Item {
     if (r.isDir) {
       probe.reveal(r.abs, true);
     } else {
-      Quickshell.execDetached({ command: ["xdg-open", r.abs], unbindStdout: true });
+      const cmd = ["xdg-open", r.abs];
+      const scoped = scopedArgv(cmd, "file", r.abs, "");
+      Quickshell.execDetached({ command: scoped || cmd, unbindStdout: true });
     }
   }
 
@@ -604,10 +638,22 @@ Item {
      runInTerminal. */
   function launchEntry(entry: var, title: string, inTerminal: bool): void {
     if (!entry) return;
+    const entryId = entry.id ? String(entry.id) : (entry.name ? String(entry.name) : "app");
+    const desc = title || (entry.name ? String(entry.name) : entryId);
     if (inTerminal || entry.runInTerminal) {
       const argv = terminalArgv(entry, title);
       if (argv !== null) {
-        Quickshell.execDetached({ command: argv, unbindStdout: true });
+        const scopedTerminal = scopedArgv(argv, entryId, desc, "");
+        Quickshell.execDetached({ command: scopedTerminal || argv, unbindStdout: true });
+        return;
+      }
+    }
+    const inner = entry.command;
+    if (inner && inner.length > 0) {
+      const wd = entry.workingDirectory ? String(entry.workingDirectory) : "";
+      const scoped = scopedArgv(inner, entryId, desc, wd);
+      if (scoped !== null) {
+        Quickshell.execDetached({ command: scoped, unbindStdout: true });
         return;
       }
     }

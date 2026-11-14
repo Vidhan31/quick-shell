@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import "../theme"
 import "../components"
 
@@ -13,8 +14,8 @@ Item {
   signal closeRequested()
 
   implicitWidth: Theme.popupWidthSm
-  readonly property int preferredHeight: (root.power && root.power.canRebootToWindows) ? 376 : 330
-  property int popupHeight: (root.power && root.power.canRebootToWindows) ? 376 : 330
+  readonly property int preferredHeight: (root.power && root.power.canRebootToWindows) ? 422 : 376
+  property int popupHeight: (root.power && root.power.canRebootToWindows) ? 422 : 376
 
   function syncHeight(): void {
     popupHeight = preferredHeight;
@@ -195,6 +196,50 @@ Item {
         }
 
         ActionRow {
+          id: quickshellRow
+          width: parent.width
+          height: 42
+          rad: Theme.radiusBase
+          onClicked: {
+            root.pendingAction = "quickshell";
+          }
+
+          RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
+            spacing: 10
+
+            Text {
+              text: "󰑓"
+              font.family: Theme.mono
+              font.pixelSize: Theme.iconMd
+              color: Theme.accent
+            }
+
+            Column {
+              Layout.fillWidth: true
+              spacing: 1
+
+              Text {
+                text: "Restart Quickshell"
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontBase
+                font.weight: Font.DemiBold
+                color: Theme.ink1
+              }
+
+              Text {
+                text: "Restart desktop shell interface"
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontXs
+                color: Theme.ink3
+              }
+            }
+          }
+        }
+
+        ActionRow {
           id: rebootRow
           width: parent.width
           height: 42
@@ -357,7 +402,7 @@ Item {
 
               Text {
                 anchors.centerIn: parent
-                text: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : (root.pendingAction === "windows" ? "󰍲" : "󰍃"))
+                text: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : (root.pendingAction === "windows" ? "󰍲" : (root.pendingAction === "quickshell" ? "󰑓" : "󰍃")))
                 font.family: Theme.mono
                 font.pixelSize: Theme.fontGlyphLg
                 color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : (root.pendingAction === "windows" ? Theme.teal : Theme.accent))
@@ -370,7 +415,7 @@ Item {
 
               Text {
                 Layout.fillWidth: true
-                text: root.pendingAction === "shutdown" ? "Shut down system?" : (root.pendingAction === "reboot" ? "Restart system?" : (root.pendingAction === "windows" ? "Reboot to Windows 11?" : "Log out of session?"))
+                text: root.pendingAction === "shutdown" ? "Shut down system?" : (root.pendingAction === "reboot" ? "Restart system?" : (root.pendingAction === "windows" ? "Reboot to Windows 11?" : (root.pendingAction === "quickshell" ? "Restart Quickshell?" : "Log out of session?")))
                 font.family: Theme.displayFont
                 font.pixelSize: Theme.fontBase
                 font.weight: Font.DemiBold
@@ -380,7 +425,7 @@ Item {
 
               Text {
                 Layout.fillWidth: true
-                text: root.pendingAction === "shutdown" ? "Power off the computer completely." : (root.pendingAction === "reboot" ? "Reboot the operating system." : (root.pendingAction === "windows" ? "Set next boot to Windows 11 and restart." : "End current user session."))
+                text: root.pendingAction === "shutdown" ? "Power off the computer completely." : (root.pendingAction === "reboot" ? "Reboot the operating system." : (root.pendingAction === "windows" ? "Set next boot to Windows 11 and restart." : (root.pendingAction === "quickshell" ? "Restart the desktop shell interface." : "End current user session.")))
                 font.family: Theme.textFont
                 font.pixelSize: Theme.fontXs
                 color: Theme.ink3
@@ -391,7 +436,7 @@ Item {
 
           Text {
             Layout.fillWidth: true
-            text: root.pendingAction === "windows" ? "Subsequent boots will return to Fedora Linux." : "KDE will prompt to save unsaved documents."
+            text: root.pendingAction === "windows" ? "Subsequent boots will return to Fedora Linux." : (root.pendingAction === "quickshell" ? "Open applications will not be closed." : "KDE will prompt to save unsaved documents.")
             font.family: Theme.textFont
             font.pixelSize: Theme.fontXs
             color: Theme.ink2
@@ -418,8 +463,8 @@ Item {
             }
 
             PrimaryButton {
-              text: root.pendingAction === "shutdown" ? "Shut Down" : (root.pendingAction === "reboot" ? "Restart" : (root.pendingAction === "windows" ? "Reboot to Windows" : "Log Out"))
-              glyph: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : (root.pendingAction === "windows" ? "󰍲" : "󰍃"))
+              text: root.pendingAction === "shutdown" ? "Shut Down" : (root.pendingAction === "reboot" ? "Restart" : (root.pendingAction === "windows" ? "Reboot to Windows" : (root.pendingAction === "quickshell" ? "Restart Quickshell" : "Log Out")))
+              glyph: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : (root.pendingAction === "windows" ? "󰍲" : (root.pendingAction === "quickshell" ? "󰑓" : "󰍃")))
               fill: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : (root.pendingAction === "windows" ? Theme.teal : Theme.accent))
               ink: Theme.darkInk
               onClicked: {
@@ -434,6 +479,18 @@ Item {
                   root.power.rebootToWindows();
                 } else if (action === "logout" && root.power) {
                   root.power.logout();
+                } else if (action === "quickshell") {
+                  if (root.power && typeof root.power.restartQuickshell === "function") {
+                    root.power.restartQuickshell();
+                  } else {
+                    Quickshell.execDetached({
+                      command: [
+                        "sh", "-c",
+                        "if systemctl --user is-active --quiet quickshell.service; then systemctl --user restart quickshell.service; else quickshell -p \"" + Quickshell.shellPath(".") + "\" & fi"
+                      ],
+                      unbindStdout: true
+                    });
+                  }
                 }
               }
             }
