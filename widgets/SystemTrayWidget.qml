@@ -101,9 +101,12 @@ Item {
     menu: root.activeMenu
     onChildrenChanged: {
       if (root.pendingMenuOpen && children && children.values.length > 0) {
-        root.pendingMenuOpen = false;
-        menuFallbackTimer.stop();
-        contextMenuPopup.visible = true;
+        Qt.callLater(() => {
+          if (!root.pendingMenuOpen || !menuOpener.children || menuOpener.children.values.length === 0) return;
+          root.pendingMenuOpen = false;
+          menuFallbackTimer.stop();
+          contextMenuPopup.visible = true;
+        });
       }
     }
   }
@@ -463,23 +466,23 @@ Item {
         anchors.top: parent.top
         property real maxItemWidth: 0
         implicitWidth: Math.max(160, maxItemWidth + 16)
-        implicitHeight: menuCol.implicitHeight + 16
+        implicitHeight: menuCol.implicitHeight + 8
         width: implicitWidth
         height: implicitHeight
         radius: Theme.radiusCard
-        color: Theme.popupGlass
+        color: Theme.surfaceElevated
         border.color: Theme.cardBorder
         border.width: 1
 
         Column {
           id: menuCol
           anchors.top: parent.top
-          anchors.topMargin: 8
+          anchors.topMargin: 4
           anchors.left: parent.left
-          anchors.leftMargin: 8
+          anchors.leftMargin: 4
           anchors.right: parent.right
-          anchors.rightMargin: 8
-          spacing: 2
+          anchors.rightMargin: 4
+          spacing: 1
 
           Repeater {
             model: menuOpener.children
@@ -494,7 +497,7 @@ Item {
               readonly property real contentWidth: visible ? (isSep ? 80 : (itemRow.implicitWidth + (entry && entry.hasChildren ? 36 : 24))) : 0
 
               visible: entry ? (entry.text !== "" || isSep) : false
-              implicitHeight: visible ? (isSep ? 7 : 26) : 0
+              implicitHeight: visible ? (isSep ? 7 : 24) : 0
               implicitWidth: contentWidth
               width: parent ? parent.width : implicitWidth
               height: implicitHeight
@@ -539,16 +542,14 @@ Item {
                 anchors.fill: parent
                 radius: 0
                 visible: !menuItem.isSep
-                color: (menuMouse.containsMouse || root.activeSubmenuItem === menuItem) && menuItem.entry && menuItem.entry.enabled ? Theme.hoverWash : "transparent"
-
-                Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+                color: (menuMouse.containsMouse || root.activeSubmenuItem === menuItem) && menuItem.entry && menuItem.entry.enabled ? Theme.selected : "transparent"
 
                 Row {
                   id: itemRow
                   anchors.left: parent.left
-                  anchors.leftMargin: 8
+                  anchors.leftMargin: 4
                   anchors.verticalCenter: parent.verticalCenter
-                  spacing: 8
+                  spacing: 6
 
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -580,7 +581,7 @@ Item {
 
                 Text {
                   anchors.right: parent.right
-                  anchors.rightMargin: 8
+                  anchors.rightMargin: 4
                   anchors.verticalCenter: parent.verticalCenter
                   text: "›"
                   color: (menuMouse.containsMouse || root.activeSubmenuItem === menuItem) ? Theme.ink1 : Theme.ink3
@@ -654,11 +655,11 @@ Item {
         property real maxItemWidth: 0
         visible: root.activeSubmenuItem !== null && submenuOpener.children && submenuOpener.children.values.length > 0
         implicitWidth: Math.max(140, maxItemWidth + 16)
-        implicitHeight: submenuCol.implicitHeight + 16
+        implicitHeight: submenuCol.implicitHeight + 8
         width: implicitWidth
         height: implicitHeight
         radius: Theme.radiusCard
-        color: Theme.popupGlass
+        color: Theme.surfaceElevated
         border.color: Theme.cardBorder
         border.width: 1
 
@@ -682,12 +683,12 @@ Item {
         Column {
           id: submenuCol
           anchors.top: parent.top
-          anchors.topMargin: 8
+          anchors.topMargin: 4
           anchors.left: parent.left
-          anchors.leftMargin: 8
+          anchors.leftMargin: 4
           anchors.right: parent.right
-          anchors.rightMargin: 8
-          spacing: 2
+          anchors.rightMargin: 4
+          spacing: 1
 
           Repeater {
             model: submenuOpener.children
@@ -702,7 +703,7 @@ Item {
               readonly property real contentWidth: visible ? (isSep ? 80 : (subItemRow.implicitWidth + (entry && entry.hasChildren ? 36 : 24))) : 0
 
               visible: entry ? (entry.text !== "" || isSep) : false
-              implicitHeight: visible ? (isSep ? 7 : 26) : 0
+              implicitHeight: visible ? (isSep ? 7 : 24) : 0
               implicitWidth: contentWidth
               width: parent ? parent.width : implicitWidth
               height: implicitHeight
@@ -747,16 +748,14 @@ Item {
                 anchors.fill: parent
                 radius: 0
                 visible: !subMenuItem.isSep
-                color: subMenuMouse.containsMouse && subMenuItem.entry && subMenuItem.entry.enabled ? Theme.hoverWash : "transparent"
-
-                Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+                color: subMenuMouse.containsMouse && subMenuItem.entry && subMenuItem.entry.enabled ? Theme.selected : "transparent"
 
                 Row {
                   id: subItemRow
                   anchors.left: parent.left
-                  anchors.leftMargin: 8
+                  anchors.leftMargin: 4
                   anchors.verticalCenter: parent.verticalCenter
-                  spacing: 8
+                  spacing: 6
 
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -788,7 +787,7 @@ Item {
 
                 Text {
                   anchors.right: parent.right
-                  anchors.rightMargin: 8
+                  anchors.rightMargin: 4
                   anchors.verticalCenter: parent.verticalCenter
                   text: "›"
                   color: subMenuMouse.containsMouse ? Theme.ink1 : Theme.ink3
@@ -849,7 +848,7 @@ Item {
       implicitWidth: Math.max(140, passiveCol.implicitWidth + 24)
       implicitHeight: passiveCol.implicitHeight + 20
       radius: Theme.radiusCard
-      color: Theme.popupGlass
+      color: Theme.surfaceElevated
       border.color: Theme.cardBorder
       border.width: 1
 
