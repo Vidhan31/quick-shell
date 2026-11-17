@@ -14,7 +14,7 @@ Item {
 
   signal triggerRefresh()
   implicitWidth: Theme.popupWidthLg
-  implicitHeight: 500
+  implicitHeight: 600
 
   function syncHeight(): void {}
 
@@ -37,6 +37,7 @@ Item {
   readonly property int totalCount: activeMonitor ? activeMonitor.totalCount : 0
 
   property bool confirmStopPrompt: false
+  property int currentTab: 0
 
   onConnectedChanged: {
     if (!root.connected)
@@ -204,7 +205,78 @@ Item {
 
     Item {
       Layout.fillWidth: true
-      Layout.preferredHeight: 14
+      Layout.preferredHeight: 10
+    }
+
+    RowLayout {
+      Layout.fillWidth: true
+      Layout.fillHeight: false
+      Layout.preferredHeight: 54
+      Layout.minimumHeight: 54
+      Layout.maximumHeight: 54
+      spacing: 1
+      visible: root.connected
+
+      Repeater {
+        model: [
+          { label: "Containers", value: root.runningCount + "/" + root.totalCount, tone: Theme.green },
+          { label: "Projects", value: root.projects.length, tone: Theme.accent },
+          { label: "Images", value: root.images.length, tone: Theme.teal },
+          { label: "Volumes", value: root.volumes.length, tone: Theme.violet }
+        ]
+
+        delegate: Rectangle {
+          id: metricCell
+          required property var modelData
+          Layout.fillWidth: true
+          color: Theme.inset
+
+          Rectangle {
+            width: 2
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            color: metricCell.modelData.tone
+          }
+
+          Column {
+            anchors.left: parent.left
+            anchors.leftMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+            Text {
+              text: metricCell.modelData.value
+              font.family: Theme.displayFont
+              font.pixelSize: Theme.fontXl
+              font.weight: Font.DemiBold
+              color: Theme.ink1
+            }
+            Text {
+              text: metricCell.modelData.label
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontXs
+              color: Theme.ink3
+            }
+          }
+        }
+      }
+    }
+
+    Item {
+      Layout.fillWidth: true
+      Layout.preferredHeight: 10
+      visible: root.connected
+    }
+
+    SegmentedControl {
+      Layout.fillWidth: true
+      visible: root.connected
+      items: [
+        { icon: "󰘬", label: "Operations", count: root.totalCount },
+        { icon: "󰆧", label: "Storage", count: root.images.length + root.volumes.length }
+      ]
+      current: root.currentTab
+      onSelected: function(index) { root.currentTab = index; }
     }
 
     Rectangle {
@@ -387,7 +459,7 @@ Item {
           id: composeSectionCol
           width: parent.width
           spacing: 4
-          visible: root.projects.length > 0
+          visible: root.currentTab === 0 && root.projects.length > 0
           SectionHeader {
             width: composeSectionCol.width
             label: "Compose projects · " + root.projects.length
@@ -406,6 +478,7 @@ Item {
         Column {
           width: parent.width
           spacing: 4
+          visible: root.currentTab === 0
           SectionHeader {
             width: parent.width
             label: "Standalone · " + root.standalone.length
@@ -443,6 +516,7 @@ Item {
         Column {
           width: parent.width
           spacing: 4
+          visible: root.currentTab === 1
           SectionHeader {
             width: parent.width
             label: "Images · " + root.images.length
@@ -468,35 +542,60 @@ Item {
                   }
                   RowLayout {
                     width: imageRow.width
-                    height: 40
-                    spacing: 8
-                  Column {
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 12
-                    spacing: 1
-                    Text {
-                      width: parent.width
-                      text: (imageRow.modelData.repo_tags && imageRow.modelData.repo_tags.length > 0) ? imageRow.modelData.repo_tags[0] : imageRow.modelData.short_id
-                      font.pixelSize: Theme.fontBase
-                      font.family: Theme.mono
-                      color: Theme.ink1
-                      elide: Text.ElideRight
+                    height: 54
+                    spacing: 10
+
+                    Rectangle {
+                      Layout.preferredWidth: 3
+                      Layout.fillHeight: true
+                      color: Theme.teal
                     }
-                    Text {
-                      width: parent.width
-                      text: imageRow.modelData.size_text
-                      font.pixelSize: Theme.fontXs
-                      font.family: Theme.mono
-                      color: Theme.ink3
+
+                    ColumnLayout {
+                      Layout.fillWidth: true
+                      Layout.leftMargin: 2
+                      spacing: 3
+
+                      Text {
+                        Layout.fillWidth: true
+                        text: (imageRow.modelData.repo_tags && imageRow.modelData.repo_tags.length > 0) ? imageRow.modelData.repo_tags[0] : imageRow.modelData.short_id
+                        font.pixelSize: Theme.fontBase
+                        font.family: Theme.mono
+                        color: Theme.ink1
+                        elide: Text.ElideRight
+                      }
+                      Text {
+                        Layout.fillWidth: true
+                        text: imageRow.modelData.size_text
+                        font.pixelSize: Theme.fontXs
+                        font.family: Theme.mono
+                        color: Theme.ink3
+                        elide: Text.ElideRight
+                      }
                     }
-                  }
-                  TextButton {
-                    Layout.rightMargin: 8
-                    text: "Remove"
-                    fs: Theme.fontSm
-                    fg: Theme.red
-                    enabledBtn: !(root.busy && (root.busyContext === "remove-image:" + ((imageRow.modelData.repo_tags && imageRow.modelData.repo_tags.length > 0) ? imageRow.modelData.repo_tags[0] : imageRow.modelData.id)))
-                      onClicked: root.activeMonitor.removeImage((imageRow.modelData.repo_tags && imageRow.modelData.repo_tags.length > 0) ? imageRow.modelData.repo_tags[0] : imageRow.modelData.id, false)
+
+                    Rectangle {
+                      Layout.preferredWidth: imageActions.implicitWidth + 4
+                      Layout.preferredHeight: 30
+                      Layout.rightMargin: 8
+                      radius: 3
+                      color: Theme.inset
+                      border.color: Theme.lineMuted
+                      border.width: 1
+
+                      Row {
+                        id: imageActions
+                        anchors.centerIn: parent
+                        IconButton {
+                          glyph: "󰆴"
+                          btnSize: 28
+                          fs: Theme.iconSm
+                          fg: Theme.red
+                          tooltip: "Remove image"
+                          dimmed: root.busy && root.busyContext === "remove-image:" + ((imageRow.modelData.repo_tags && imageRow.modelData.repo_tags.length > 0) ? imageRow.modelData.repo_tags[0] : imageRow.modelData.id)
+                          onClicked: root.activeMonitor.removeImage((imageRow.modelData.repo_tags && imageRow.modelData.repo_tags.length > 0) ? imageRow.modelData.repo_tags[0] : imageRow.modelData.id, false)
+                        }
+                      }
                     }
                   }
                 }
@@ -517,6 +616,7 @@ Item {
         Column {
           width: parent.width
           spacing: 4
+          visible: root.currentTab === 1
           SectionHeader {
             width: parent.width
             label: "Volumes · " + root.volumes.length
@@ -542,36 +642,60 @@ Item {
                   }
                   RowLayout {
                     width: volumeRow.width
-                    height: 40
-                    spacing: 8
-                  Column {
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 12
-                    spacing: 1
-                    Text {
-                      width: parent.width
-                      text: volumeRow.modelData.name
-                      font.pixelSize: Theme.fontBase
-                      font.family: Theme.mono
-                      color: Theme.ink1
-                      elide: Text.ElideRight
+                    height: 54
+                    spacing: 10
+
+                    Rectangle {
+                      Layout.preferredWidth: 3
+                      Layout.fillHeight: true
+                      color: Theme.violet
                     }
-                    Text {
-                      width: parent.width
-                      visible: (volumeRow.modelData.driver || "").length > 0
-                      text: volumeRow.modelData.driver
-                      font.family: Theme.textFont
-                      font.pixelSize: Theme.fontXs
-                      color: Theme.ink3
+
+                    ColumnLayout {
+                      Layout.fillWidth: true
+                      Layout.leftMargin: 2
+                      spacing: 3
+
+                      Text {
+                        Layout.fillWidth: true
+                        text: volumeRow.modelData.name
+                        font.pixelSize: Theme.fontBase
+                        font.family: Theme.mono
+                        color: Theme.ink1
+                        elide: Text.ElideRight
+                      }
+                      Text {
+                        Layout.fillWidth: true
+                        visible: (volumeRow.modelData.driver || "").length > 0
+                        text: volumeRow.modelData.driver
+                        font.family: Theme.textFont
+                        font.pixelSize: Theme.fontXs
+                        color: Theme.ink3
+                      }
                     }
-                  }
-                  TextButton {
-                    Layout.rightMargin: 8
-                    text: "Remove"
-                    fs: Theme.fontSm
-                    fg: Theme.red
-                    enabledBtn: !(root.busy && root.busyContext === "remove-volume:" + volumeRow.modelData.name)
-                      onClicked: root.activeMonitor.removeVolume(volumeRow.modelData.name, false)
+
+                    Rectangle {
+                      Layout.preferredWidth: volumeActions.implicitWidth + 4
+                      Layout.preferredHeight: 30
+                      Layout.rightMargin: 8
+                      radius: 3
+                      color: Theme.inset
+                      border.color: Theme.lineMuted
+                      border.width: 1
+
+                      Row {
+                        id: volumeActions
+                        anchors.centerIn: parent
+                        IconButton {
+                          glyph: "󰆴"
+                          btnSize: 28
+                          fs: Theme.iconSm
+                          fg: Theme.red
+                          tooltip: "Remove volume"
+                          dimmed: root.busy && root.busyContext === "remove-volume:" + volumeRow.modelData.name
+                          onClicked: root.activeMonitor.removeVolume(volumeRow.modelData.name, false)
+                        }
+                      }
                     }
                   }
                 }
@@ -592,6 +716,7 @@ Item {
         Column {
           width: parent.width
           spacing: 4
+          visible: root.currentTab === 1
           SectionHeader {
             width: parent.width
             label: "Cleanup unused" + (root.reclaimSummary.length > 0 ? " · " + root.reclaimSummary : "")
@@ -616,30 +741,62 @@ Item {
                   }
                   RowLayout {
                     width: cleanupRow.width
-                    height: 40
-                    spacing: 8
-                    Text {
+                    height: 54
+                    spacing: 10
+
+                    Rectangle {
+                      Layout.preferredWidth: 3
+                      Layout.fillHeight: true
+                      color: Theme.amber
+                    }
+
+                    ColumnLayout {
                       Layout.fillWidth: true
-                      Layout.leftMargin: 12
-                      text: cleanupRow.modelData.label
-                      font.family: Theme.textFont
-                      font.pixelSize: Theme.fontBase
-                      color: Theme.ink1
+                      Layout.leftMargin: 2
+                      spacing: 3
+
+                      Text {
+                        Layout.fillWidth: true
+                        text: cleanupRow.modelData.label
+                        font.family: Theme.textFont
+                        font.pixelSize: Theme.fontBase
+                        color: Theme.ink1
+                      }
+                      Text {
+                        Layout.fillWidth: true
+                        text: cleanupRow.modelData.detail
+                        font.pixelSize: Theme.fontXs
+                        font.family: Theme.mono
+                        color: Theme.ink3
+                        elide: Text.ElideRight
+                      }
                     }
-                    Text {
-                      text: cleanupRow.modelData.detail
-                      font.pixelSize: Theme.fontSm
-                      font.family: Theme.mono
-                      color: Theme.ink3
-                    }
-                    TextButton {
+
+                    Rectangle {
+                      Layout.preferredWidth: cleanupActions.implicitWidth + 4
+                      Layout.preferredHeight: 30
                       Layout.rightMargin: 8
-                      text: root.busyContext === "prune:" + cleanupRow.modelData.kind ? "Pruning…" : "Prune"
-                      fs: Theme.fontSm
-                      enabledBtn: !root.busy
-                      onClicked: {
-                        if (root.activeMonitor)
-                          root.activeMonitor.prune(cleanupRow.modelData.kind);
+                      radius: 3
+                      color: Theme.inset
+                      border.color: Theme.lineMuted
+                      border.width: 1
+
+                      Row {
+                        id: cleanupActions
+                        anchors.centerIn: parent
+                        IconButton {
+                          glyph: "󰃢"
+                          btnSize: 28
+                          fs: Theme.iconSm
+                          fg: Theme.amber
+                          tooltip: root.busyContext === "prune:" + cleanupRow.modelData.kind ? "Pruning" : "Prune " + cleanupRow.modelData.label
+                          dimmed: root.busy
+                          spinning: root.busyContext === "prune:" + cleanupRow.modelData.kind
+                          onClicked: {
+                            if (root.activeMonitor)
+                              root.activeMonitor.prune(cleanupRow.modelData.kind);
+                          }
+                        }
                       }
                     }
                   }
@@ -762,81 +919,133 @@ Item {
       id: groupCol
       width: group.width
 
-      Column {
+      RowLayout {
         width: groupCol.width
-        topPadding: 10
-        bottomPadding: 8
-        leftPadding: 12
-        rightPadding: 8
-        spacing: 4
-        RowLayout {
-          width: groupCol.width - 20
-          spacing: 8
+        height: 58
+        spacing: 10
+
+        Rectangle {
+          Layout.preferredWidth: 3
+          Layout.fillHeight: true
+          color: (group.project.running || 0) > 0 ? Theme.green : Theme.ink3
+        }
+
+        ColumnLayout {
+          Layout.fillWidth: true
+          Layout.leftMargin: 2
+          spacing: 3
+
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+
+            Text {
+              text: "󰘬"
+              font.family: Theme.mono
+              font.pixelSize: Theme.iconSm
+              color: Theme.accent
+            }
+
+            Text {
+              Layout.fillWidth: true
+              text: group.project.name || ""
+              font.family: Theme.displayFont
+              font.pixelSize: Theme.fontBase
+              font.weight: Font.DemiBold
+              color: Theme.ink1
+              elide: Text.ElideRight
+            }
+
+            Rectangle {
+              radius: 3
+              color: (group.project.running || 0) > 0 ? Theme.okBg : Theme.surfaceElevated
+              implicitWidth: projectState.implicitWidth + 12
+              implicitHeight: 20
+
+              Text {
+                id: projectState
+                anchors.centerIn: parent
+                text: (group.project.running || 0) + "/" + (group.project.total || 0) + " up"
+                font.pixelSize: Theme.fontXs
+                font.family: Theme.mono
+                color: (group.project.running || 0) > 0 ? Theme.green : Theme.ink3
+              }
+            }
+          }
+
           Text {
             Layout.fillWidth: true
-            text: group.project.name || ""
-            font.family: Theme.displayFont
-            font.pixelSize: Theme.fontBase
-            font.weight: Font.DemiBold
-            color: Theme.ink1
-            elide: Text.ElideRight
-          }
-          Text {
-            text: (group.project.running || 0) + "/" + (group.project.total || 0) + " up"
-            font.pixelSize: Theme.fontSm
+            visible: (group.project.config_files || "").length > 0
+            text: group.project.config_files
+            font.pixelSize: Theme.fontXs
             font.family: Theme.mono
-            color: (group.project.running || 0) > 0 ? Theme.green : Theme.ink3
+            color: Theme.ink3
+            elide: Text.ElideMiddle
           }
         }
-        Text {
-          visible: (group.project.config_files || "").length > 0
-          width: groupCol.width - 20
-          text: group.project.config_files
-          font.pixelSize: Theme.fontXs
-          font.family: Theme.mono
-          color: Theme.ink3
-          elide: Text.ElideMiddle
-        }
-        RowLayout {
-          width: groupCol.width - 20
-          spacing: 2
-          Item {
-            Layout.fillWidth: true
-          }
-          TextButton {
-            visible: (group.project.working_dir || "").length > 0
-            text: "Open folder"
-            fs: Theme.fontSm
-            fg: Theme.accent
-            onClicked: {
-              if (root.activeMonitor)
-                root.activeMonitor.openPath(group.project.working_dir);
-            }
-          }
-          TextButton {
+
+        Rectangle {
+          Layout.preferredWidth: group.groupBusy ? 58 : projectActions.implicitWidth + 4
+          Layout.preferredHeight: 30
+          Layout.rightMargin: 8
+          radius: 3
+          color: Theme.inset
+          border.color: Theme.lineMuted
+          border.width: 1
+
+          Row {
+            id: projectActions
+            anchors.centerIn: parent
             visible: !group.groupBusy
-            text: "Start all"
-            fs: Theme.fontSm
-            fg: Theme.green
-            enabledBtn: !root.busy
-            onClicked: {
-              if (root.activeMonitor)
-                root.activeMonitor.startProject(group.project.name);
+            spacing: 0
+
+            IconButton {
+              visible: (group.project.working_dir || "").length > 0
+              glyph: "󰉋"
+              btnSize: 28
+              fs: Theme.iconSm
+              fg: Theme.accent
+              tooltip: "Open project folder"
+              dimmed: root.busy
+              onClicked: {
+                if (root.activeMonitor)
+                  root.activeMonitor.openPath(group.project.working_dir);
+              }
+            }
+
+            IconButton {
+              visible: !group.groupBusy
+              glyph: "󰐊"
+              btnSize: 28
+              fs: Theme.iconSm
+              fg: Theme.green
+              tooltip: "Start all containers"
+              dimmed: root.busy
+              onClicked: {
+                if (root.activeMonitor)
+                  root.activeMonitor.startProject(group.project.name);
+              }
+            }
+
+            IconButton {
+              visible: !group.groupBusy
+              glyph: "󰏤"
+              btnSize: 28
+              fs: Theme.iconSm
+              fg: Theme.amber
+              tooltip: "Stop all containers"
+              dimmed: root.busy
+              onClicked: {
+                if (root.activeMonitor)
+                  root.activeMonitor.stopProject(group.project.name, 10);
+              }
             }
           }
-          TextButton {
-            visible: !group.groupBusy
-            text: "Stop all"
-            fs: Theme.fontSm
-            enabledBtn: !root.busy
-            onClicked: {
-              if (root.activeMonitor)
-                root.activeMonitor.stopProject(group.project.name, 10);
-            }
-          }
+
           Text {
             visible: group.groupBusy
-            text: "Working…"
+            anchors.centerIn: parent
+            text: "…"
             font.family: Theme.textFont
             font.pixelSize: Theme.fontSm
             color: Theme.accent
@@ -868,72 +1077,73 @@ Item {
       width: row.width
     }
 
-    Column {
+    RowLayout {
       width: row.width
-      topPadding: 8
-      bottomPadding: 8
-      leftPadding: 12
-      rightPadding: 8
-      spacing: 5
+      height: 58
+      spacing: 10
 
-      RowLayout {
-        width: row.width - 20
-        spacing: 8
-        Rectangle {
-          Layout.preferredWidth: 8
-          Layout.preferredHeight: 8
-          Layout.alignment: Qt.AlignVCenter
-          radius: 0
-          color: root.stateColor(row.info.state)
+      Rectangle {
+        Layout.preferredWidth: 3
+        Layout.fillHeight: true
+        color: root.stateColor(row.info.state)
+      }
+
+      ColumnLayout {
+        Layout.fillWidth: true
+        Layout.leftMargin: 2
+        spacing: 4
+
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: 8
+
+          Text {
+            Layout.fillWidth: true
+            text: row.info.name || ""
+            font.family: Theme.textFont
+            font.pixelSize: Theme.fontBase
+            font.weight: Font.DemiBold
+            color: Theme.ink1
+            elide: Text.ElideRight
+          }
+
+          Text {
+            text: root.stateWord(row.info.state)
+            font.family: Theme.textFont
+            font.pixelSize: Theme.fontSm
+            color: root.stateColor(row.info.state)
+          }
         }
+
         Text {
           Layout.fillWidth: true
-          text: row.info.name || ""
-          font.family: Theme.textFont
-          font.pixelSize: Theme.fontBase
-          font.weight: Font.DemiBold
-          color: Theme.ink1
+          text: (row.info.image || "") + " · " + (row.info.status || "")
+          font.pixelSize: Theme.fontXs
+          font.family: Theme.mono
+          color: Theme.ink3
           elide: Text.ElideRight
         }
-        Text {
-          text: root.stateWord(row.info.state)
-          font.family: Theme.textFont
-          font.pixelSize: Theme.fontSm
-          color: root.stateColor(row.info.state)
-        }
       }
 
-      Text {
-        width: row.width - 20
-        leftPadding: 16
-        text: (row.info.image || "") + " · " + (row.info.status || "")
-        font.pixelSize: Theme.fontXs
-        font.family: Theme.mono
-        color: Theme.ink3
-        elide: Text.ElideRight
-      }
+      Rectangle {
+        visible: !row.rowBusy
+        Layout.preferredWidth: containerActions.implicitWidth + 4
+        Layout.preferredHeight: 30
+        Layout.rightMargin: 8
+        radius: 3
+        color: Theme.inset
+        border.color: Theme.lineMuted
+        border.width: 1
 
-      RowLayout {
-        width: row.width - 20
-        spacing: 2
-        Item {
-          Layout.preferredWidth: 16
-          Layout.preferredHeight: 1
-        }
-        Text {
-          visible: row.rowBusy
-          text: "Working…"
-          font.family: Theme.textFont
-          font.pixelSize: Theme.fontSm
-          color: Theme.accent
-        }
         Row {
-          visible: !row.rowBusy
-          spacing: 2
+          id: containerActions
+          anchors.centerIn: parent
+          spacing: 0
+
           IconButton {
             visible: !(row.info.is_running || false)
             glyph: "󰐊"
-            btnSize: 26
+            btnSize: 28
             fs: Theme.iconSm
             fg: Theme.ok
             tooltip: "Start container"
@@ -943,7 +1153,7 @@ Item {
           IconButton {
             visible: (row.info.is_running || false)
             glyph: "󰏤"
-            btnSize: 26
+            btnSize: 28
             fs: Theme.iconSm
             fg: Theme.warn
             tooltip: "Stop container"
@@ -952,7 +1162,7 @@ Item {
           }
           IconButton {
             glyph: "󰌱"
-            btnSize: 26
+            btnSize: 28
             fs: Theme.iconSm
             fg: Theme.ink2
             tooltip: "View logs"
@@ -961,16 +1171,22 @@ Item {
           }
           IconButton {
             glyph: "󰑓"
-            btnSize: 26
+            btnSize: 28
             fs: Theme.iconSm
             fg: Theme.accent
             tooltip: "Restart container"
             dimmed: root.busy
             onClicked: root.activeMonitor.restartContainer(row.info.id, 10)
           }
+          Rectangle {
+            width: 1
+            height: 14
+            anchors.verticalCenter: parent.verticalCenter
+            color: Theme.line
+          }
           IconButton {
             glyph: "󰆴"
-            btnSize: 26
+            btnSize: 28
             fs: Theme.iconSm
             fg: Theme.err
             tooltip: "Remove container"
@@ -978,6 +1194,15 @@ Item {
             onClicked: root.activeMonitor.removeContainer(row.info.id, false)
           }
         }
+      }
+
+      Text {
+        visible: row.rowBusy
+        Layout.preferredWidth: 48
+        text: "Working…"
+        font.family: Theme.textFont
+        font.pixelSize: Theme.fontSm
+        color: Theme.accent
       }
     }
   }

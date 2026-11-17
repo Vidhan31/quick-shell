@@ -16,8 +16,7 @@ Item {
 
   readonly property color iconColor: {
     if (!root.connected) return Theme.inactive;
-    if (root.runningCount > 0) return Theme.ok;
-    return Theme.ink3;
+    return Theme.ok;
   }
 
   readonly property string activeLabel: {
