@@ -5,9 +5,18 @@ import "../theme"
 Rectangle {
   id: root
   signal edited(string text)
+  signal accepted()
+
   property string placeholder: ""
   property string initial: ""
   property bool clearable: false
+  property bool passwordToggle: false
+  property bool showPassword: false
+  property bool enabledInput: true
+  property alias text: input.text
+  property alias inputItem: input
+  property int echoMode: root.passwordToggle ? (root.showPassword ? TextInput.Normal : TextInput.Password) : TextInput.Normal
+  property int inputMethodHints: Qt.ImhNone
 
   implicitHeight: Theme.inputHeight
   implicitWidth: 200
@@ -21,20 +30,38 @@ Rectangle {
     if (input.text !== v) input.text = v;
   }
 
-  Component.onCompleted: input.text = root.initial
+  function forceFocus(): void {
+    input.forceActiveFocus();
+  }
+
+  function forceActiveFocus(): void {
+    input.forceActiveFocus();
+  }
+
+  Component.onCompleted: {
+    if (root.initial.length > 0 && input.text.length === 0) {
+      input.text = root.initial;
+    }
+  }
 
   TextInput {
     id: input
     anchors.fill: parent
     anchors.leftMargin: 10
-    anchors.rightMargin: (root.clearable && text.length > 0) ? 26 : 10
+    anchors.rightMargin: (root.clearable && text.length > 0) || root.passwordToggle ? 32 : 10
     verticalAlignment: TextInput.AlignVCenter
     font.family: Theme.mono
     font.pixelSize: Theme.fontBase
     color: Theme.ink1
+    selectionColor: Theme.accent
+    selectedTextColor: Theme.darkInk
     selectByMouse: true
     activeFocusOnTab: true
+    enabled: root.enabledInput
+    echoMode: root.echoMode
+    inputMethodHints: root.inputMethodHints
     onTextEdited: root.edited(text)
+    onAccepted: root.accepted()
 
     Accessible.role: Accessible.EditableText
     Accessible.name: root.placeholder
@@ -80,7 +107,7 @@ Rectangle {
 
   Rectangle {
     id: clearBtn
-    visible: root.clearable && input.text.length > 0
+    visible: root.clearable && input.text.length > 0 && !root.passwordToggle
     anchors.right: parent.right
     anchors.rightMargin: 5
     anchors.verticalCenter: parent.verticalCenter
@@ -121,8 +148,35 @@ Rectangle {
         }
         input.text = "";
         root.edited("");
-        input.forceActiveFocus();
       }
+    }
+  }
+
+  Rectangle {
+    id: eyeBtn
+    visible: root.passwordToggle
+    anchors.right: parent.right
+    anchors.rightMargin: 6
+    anchors.verticalCenter: parent.verticalCenter
+    width: 22
+    height: 22
+    radius: Theme.radiusXs
+    color: eyeMa.containsMouse ? Theme.hoverWash : "transparent"
+
+    Text {
+      anchors.centerIn: parent
+      text: root.showPassword ? "󰈈" : "󰈉"
+      font.family: Theme.mono
+      font.pixelSize: Theme.iconSm
+      color: eyeMa.containsMouse ? Theme.ink1 : Theme.ink3
+    }
+
+    MouseArea {
+      id: eyeMa
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.showPassword = !root.showPassword
     }
   }
 }

@@ -14,9 +14,6 @@ Item {
   property var audio: null
   readonly property var activeAudio: root.audio
 
-  readonly property var t: Theme
-  readonly property string monoFont: Theme.mono
-
   Process {
     id: settingsProc
     command: ["systemsettings", "kcm_pulseaudio"]
@@ -89,13 +86,13 @@ Item {
         PopupHeader {
           width: parent.width
           glyph: root.activeAudio ? root.activeAudio.sinkGlyph : "󰕾"
-          glyphColor: (root.activeAudio && root.activeAudio.muted) ? root.t.ink3 : root.t.accent
+          glyphColor: (root.activeAudio && root.activeAudio.muted) ? Theme.ink3 : Theme.accent
           title: "Audio"
           subtitle: "Easy Listening"
 
           IconButton {
             glyph: "󰒓"
-            fg: root.t.ink3
+            fg: Theme.ink3
             fs: Theme.iconBase
             tooltip: "Audio settings"
             onClicked: root.openAudioSettings()
@@ -118,7 +115,7 @@ Item {
               return Math.round(root.activeAudio.volume * 100) + "%";
             }
             actionGlyph: (root.activeAudio && root.activeAudio.muted) ? "󰝟" : ""
-            actionColor: root.t.err
+            actionColor: Theme.err
             actionTooltip: "Unmute output"
             onActionClicked: {
               if (root.activeAudio) root.activeAudio.toggleMute();
@@ -208,9 +205,9 @@ Item {
 
                   Text {
                     text: root.deviceIcon(sinkRow.modelData.description || sinkRow.modelData.name, false)
-                    font.family: root.t.mono
+                    font.family: Theme.mono
                     font.pixelSize: Theme.fontLg
-                    color: sinkRow.isCurrent ? root.t.accent : root.t.ink3
+                    color: sinkRow.isCurrent ? Theme.accent : Theme.ink3
                   }
 
                   Text {
@@ -219,16 +216,16 @@ Item {
                     font.family: Theme.mono
                     font.pixelSize: Theme.fontBase
                     font.weight: sinkRow.isCurrent ? Font.Medium : Font.Normal
-                    color: sinkRow.isCurrent ? root.t.ink1 : root.t.ink2
+                    color: sinkRow.isCurrent ? Theme.ink1 : Theme.ink2
                     elide: Text.ElideRight
                   }
 
                   Text {
                     visible: sinkRow.isCurrent
                     text: "✓"
-                    font.family: root.t.mono
+                    font.family: Theme.mono
                     font.pixelSize: Theme.fontBase
-                    color: root.t.accent
+                    color: Theme.accent
                   }
                 }
               }
@@ -253,7 +250,7 @@ Item {
               return Math.round(root.activeAudio.micVolume * 100) + "%";
             }
             actionGlyph: (root.activeAudio && root.activeAudio.micMuted) ? "󰍭" : ""
-            actionColor: root.t.err
+            actionColor: Theme.err
             actionTooltip: "Unmute microphone"
             onActionClicked: {
               if (root.activeAudio) root.activeAudio.toggleMicMute();
@@ -266,26 +263,22 @@ Item {
             muted: root.activeAudio ? root.activeAudio.micMuted : false
             from: 0.0
             to: 1.0
-            activeColor: root.t.green
+            activeColor: Theme.green
             onMoved: val => {
               if (root.activeAudio) root.activeAudio.setMicVolume(val);
             }
           }
 
           // Level meter bar beneath input slider
-          Rectangle {
+          ProgressBar {
             width: parent.width
-            height: 3
-            radius: 0
-            color: root.t.inset
-            visible: true
-
-            Rectangle {
-              height: parent.height
-              radius: 0
-              width: root.activeAudio && !root.activeAudio.micMuted ? Math.round(parent.width * Math.min(1.0, root.activeAudio.micVolume * 0.7)) : 0
-              color: root.t.tint(root.t.accent, 0.7)
-            }
+            implicitHeight: 3
+            from: 0.0
+            to: 1.0
+            value: root.activeAudio && !root.activeAudio.micMuted ? Math.min(1.0, root.activeAudio.micVolume * 0.7) : 0.0
+            fillColor: Theme.tint(Theme.accent, 0.7)
+            trackColor: Theme.inset
+            animated: false
           }
 
           Column {
@@ -322,9 +315,9 @@ Item {
 
                   Text {
                     text: root.deviceIcon(srcRow.modelData.description || srcRow.modelData.name, true)
-                    font.family: root.t.mono
+                    font.family: Theme.mono
                     font.pixelSize: Theme.fontLg
-                    color: srcRow.isCurrent ? root.t.green : root.t.ink3
+                    color: srcRow.isCurrent ? Theme.green : Theme.ink3
                   }
 
                   Text {
@@ -333,16 +326,16 @@ Item {
                     font.family: Theme.mono
                     font.pixelSize: Theme.fontBase
                     font.weight: srcRow.isCurrent ? Font.Medium : Font.Normal
-                    color: srcRow.isCurrent ? root.t.ink1 : root.t.ink2
+                    color: srcRow.isCurrent ? Theme.ink1 : Theme.ink2
                     elide: Text.ElideRight
                   }
 
                   Text {
                     visible: srcRow.isCurrent
                     text: "✓"
-                    font.family: root.t.mono
+                    font.family: Theme.mono
                     font.pixelSize: Theme.fontBase
-                    color: root.t.green
+                    color: Theme.green
                   }
                 }
               }
@@ -395,9 +388,9 @@ Item {
 
                   Text {
                     text: "󰓇"
-                    font.family: root.t.mono
+                    font.family: Theme.mono
                     font.pixelSize: Theme.fontLg
-                    color: (streamItem.modelData?.audio?.muted) ? root.t.ink3 : root.t.accent
+                    color: (streamItem.modelData?.audio?.muted) ? Theme.ink3 : Theme.accent
                   }
 
                   Column {
@@ -409,7 +402,7 @@ Item {
                       font.family: Theme.textFont
                       font.pixelSize: Theme.fontBase
                       font.weight: Font.Medium
-                      color: root.t.ink1
+                      color: Theme.ink1
                       elide: Text.ElideRight
                     }
 
@@ -418,7 +411,7 @@ Item {
                       text: root.activeAudio ? root.activeAudio.streamDescription(streamItem.modelData) : ""
                       font.family: Theme.mono
                       font.pixelSize: Theme.fontXs
-                      color: root.t.ink3
+                      color: Theme.ink3
                       elide: Text.ElideRight
                       width: parent.width
                     }
@@ -430,16 +423,16 @@ Item {
                       if (streamItem.modelData.audio.muted) return "Muted";
                       return Math.round(streamItem.modelData.audio.volume * 100) + "%";
                     }
-                    font.family: root.t.mono
+                    font.family: Theme.mono
                     font.pixelSize: Theme.fontSm
-                    color: (streamItem.modelData?.audio?.muted) ? root.t.ink3 : root.t.accent
+                    color: (streamItem.modelData?.audio?.muted) ? Theme.ink3 : Theme.accent
                   }
 
                   IconButton {
                     glyph: (streamItem.modelData?.audio?.muted) ? "󰝟" : "󰕾"
                     fs: Theme.iconSm
                     btnSize: 24
-                    fg: (streamItem.modelData?.audio?.muted) ? root.t.err : root.t.ink3
+                    fg: (streamItem.modelData?.audio?.muted) ? Theme.err : Theme.ink3
                     tooltip: (streamItem.modelData?.audio?.muted) ? "Unmute application" : "Mute application"
                     onClicked: {
                       if (root.activeAudio) root.activeAudio.toggleStreamMute(streamItem.modelData);

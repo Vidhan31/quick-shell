@@ -37,7 +37,7 @@ Rectangle {
 
     Behavior on width {
       enabled: root.animated
-      NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+      NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.OutQuad }
     }
   }
 }

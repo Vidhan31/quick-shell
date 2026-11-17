@@ -10,10 +10,16 @@ Rectangle {
   property color fill: Theme.accent
   property color ink: Theme.darkInk
   property bool enabledBtn: true
+  property bool circular: false
+  property int btnSize: 32
+  property int glyphSize: Theme.iconBase
+  property int glyphOffset: 0
+  property string tooltip: ""
+  property string tooltipSub: ""
 
-  implicitHeight: 32
-  implicitWidth: contentRow.implicitWidth + 20
-  radius: Theme.radiusBase
+  implicitHeight: root.circular ? root.btnSize : 32
+  implicitWidth: root.circular ? root.btnSize : (contentRow.implicitWidth + 20)
+  radius: root.circular ? (root.btnSize / 2) : Theme.radiusBase
   activeFocusOnTab: root.enabledBtn
 
   scale: (ma.pressed && root.enabledBtn) ? 0.985 : 1.0
@@ -25,7 +31,40 @@ Rectangle {
   Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
 
   Accessible.role: Accessible.Button
-  Accessible.name: root.text
+  Accessible.name: root.tooltip.length > 0 ? root.tooltip : (root.text.length > 0 ? root.text : root.glyph)
+  Accessible.description: root.tooltipSub
+
+  function findHost(): var {
+    let p = root.parent;
+    while (p) {
+      if (typeof p.showTip === "function") return p;
+      if (p.barWindow && typeof p.barWindow.showTip === "function") return p.barWindow;
+      p = p.parent;
+    }
+    return null;
+  }
+
+  function updateTip(): void {
+    const host = root.findHost();
+    if ((ma.containsMouse || root.activeFocus) && root.tooltip.length > 0 && root.enabledBtn) {
+      if (host && typeof host.showTip === "function") {
+        host.showTip(root, root.tooltip, root.tooltipSub);
+      }
+    } else {
+      if (host && typeof host.hideTip === "function") {
+        host.hideTip();
+      }
+    }
+  }
+
+  onActiveFocusChanged: updateTip()
+  onTooltipChanged: if (ma.containsMouse || root.activeFocus) updateTip()
+  Component.onDestruction: {
+    const host = root.findHost();
+    if (host && typeof host.hideTip === "function") {
+      host.hideTip();
+    }
+  }
 
   Keys.onReturnPressed: event => {
     if (root.enabledBtn) {
@@ -48,13 +87,15 @@ Rectangle {
     Text {
       visible: root.glyph.length > 0
       anchors.verticalCenter: parent.verticalCenter
+      anchors.horizontalCenterOffset: root.glyphOffset
       text: root.glyph
       font.family: Theme.mono
-      font.pixelSize: Theme.iconBase
+      font.pixelSize: root.glyphSize
       color: root.enabledBtn ? root.ink : Theme.ink3
     }
 
     Text {
+      visible: root.text.length > 0
       anchors.verticalCenter: parent.verticalCenter
       text: root.text
       font.family: Theme.textFont
@@ -69,7 +110,12 @@ Rectangle {
     anchors.fill: parent
     hoverEnabled: root.enabledBtn
     cursorShape: root.enabledBtn ? Qt.PointingHandCursor : Qt.ArrowCursor
+    onContainsMouseChanged: root.updateTip()
     onClicked: {
+      const host = root.findHost();
+      if (host && typeof host.hideTip === "function") {
+        host.hideTip();
+      }
       if (root.enabledBtn) root.clicked();
     }
   }

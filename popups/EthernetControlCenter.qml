@@ -23,7 +23,7 @@ Item {
   readonly property var cycleData: (vnstatData && vnstatData.billingCycle) ? vnstatData.billingCycle : null
   readonly property var yearData: (vnstatData && vnstatData.thisYear) ? vnstatData.thisYear : null
 
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
+  readonly property string monoFont: Theme.mono
   readonly property bool hasInternet: activeMonitor ? activeMonitor.hasInternet : false
   readonly property bool isCarrier: activeMonitor ? activeMonitor.carrier : false
   readonly property string currentStatus: activeMonitor ? activeMonitor.currentStatus : "offline"

@@ -187,74 +187,19 @@ Rectangle {
         Repeater {
           model: root.rangeOptions
 
-          Rectangle {
+          FilterPill {
             id: rPill
             required property var modelData
             required property int index
-            readonly property bool isSelected: rPill.modelData === root.selectedRange
 
-            width: rPillText.implicitWidth + 14
-            height: 20
-            radius: Theme.radiusChip
-            color: isSelected ? Theme.selected : (rPillMouse.containsMouse || rPill.activeFocus ? Theme.hoverFill : "transparent")
-            border.width: rPill.activeFocus ? Theme.focusRingWidth : 0
-            border.color: Theme.focusRing
-            activeFocusOnTab: true
-
-            Accessible.role: Accessible.Button
-            Accessible.name: rPill.modelData + " month timeline range"
-
-            Behavior on color { ColorAnimation { duration: Theme.durationFast } }
-            Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
-
-            function updateTip(): void {
-              const host = root.findHost();
-              if ((rPillMouse.containsMouse || rPill.activeFocus) && host && typeof host.showTip === "function") {
-                host.showTip(rPill, rPill.modelData + " month range", "Filter daily chart to past " + (rPill.modelData * 30) + " days");
-              } else if (host && typeof host.hideTip === "function") {
-                host.hideTip();
-              }
-            }
-
-            onActiveFocusChanged: updateTip()
-            Component.onDestruction: {
-              const host = root.findHost();
-              if (host && typeof host.hideTip === "function") {
-                host.hideTip();
-              }
-            }
-
-            Keys.onReturnPressed: event => {
+            text: rPill.modelData + "m"
+            selected: rPill.modelData === root.selectedRange
+            accessibleName: rPill.modelData + " month timeline range"
+            tooltip: rPill.modelData + " month range"
+            tooltipSub: "Filter daily chart to past " + (rPill.modelData * 30) + " days"
+            onClicked: {
               root.selectedRange = rPill.modelData;
               root.rangeSelected(rPill.modelData);
-              event.accepted = true;
-            }
-            Keys.onSpacePressed: event => {
-              root.selectedRange = rPill.modelData;
-              root.rangeSelected(rPill.modelData);
-              event.accepted = true;
-            }
-
-            Text {
-              id: rPillText
-              anchors.centerIn: parent
-              text: rPill.modelData + "m"
-              font.pixelSize: 11
-              font.weight: rPill.isSelected ? Font.DemiBold : Font.Normal
-              font.family: Theme.mono
-              color: rPill.isSelected ? Theme.ink1 : (rPillMouse.containsMouse ? Theme.ink2 : Theme.ink3)
-            }
-
-            MouseArea {
-              id: rPillMouse
-              anchors.fill: parent
-              cursorShape: Qt.PointingHandCursor
-              hoverEnabled: true
-              onContainsMouseChanged: rPill.updateTip()
-              onClicked: {
-                root.selectedRange = rPill.modelData;
-                root.rangeSelected(rPill.modelData);
-              }
             }
           }
         }

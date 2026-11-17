@@ -32,6 +32,8 @@ Singleton {
   readonly property color textSubtle: ink3
   readonly property color focusRing: "#7aa2f7"
   readonly property real focusRingWidth: 1.5
+  readonly property color sliderThumb: "#cbd5e1"
+  readonly property color tooltipBorder: Qt.rgba(1.0, 1.0, 1.0, 0.22)
 
   readonly property color accent: "#7aa2f7"
   readonly property color accentHover: "#89b4fa"
@@ -110,6 +112,7 @@ Singleton {
   readonly property int durationNormal: 140
   readonly property int durationSlow: 200
   readonly property int durationPulse: 600
+  readonly property int durationSpin: 800
   readonly property int easingStandard: Easing.OutCubic
 
   readonly property int launcherWidth: 680

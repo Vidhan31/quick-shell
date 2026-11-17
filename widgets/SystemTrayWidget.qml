@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import Quickshell.Services.SystemTray
 import Quickshell.Widgets
 import "../theme"
+import "../components"
 
 Item {
   id: root
@@ -530,11 +531,9 @@ Item {
                 anchors.fill: parent
                 visible: menuItem.isSep
 
-                Rectangle {
+                Hairline {
                   anchors.centerIn: parent
                   width: parent.width - 8
-                  height: 1
-                  color: Theme.line
                 }
               }
 
@@ -736,11 +735,9 @@ Item {
                 anchors.fill: parent
                 visible: subMenuItem.isSep
 
-                Rectangle {
+                Hairline {
                   anchors.centerIn: parent
                   width: parent.width - 8
-                  height: 1
-                  color: Theme.line
                 }
               }
 

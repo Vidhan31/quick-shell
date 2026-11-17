@@ -677,7 +677,7 @@ Item {
                           Text {
                             text: root.osIcon(peerRow.modelData.os)
                             font.family: root.t.mono
-                            font.pixelSize: 15
+                            font.pixelSize: Theme.iconMd
                             color: peerRow.modelData.online ? root.t.ink2 : root.t.ink3
                           }
                           Column {
@@ -899,7 +899,7 @@ Item {
                         Text {
                           text: "󰒍"
                           font.family: root.t.mono
-                          font.pixelSize: 15
+                          font.pixelSize: Theme.iconMd
                           color: root.tsData.ssh_enabled ? root.t.green : root.t.ink3
                         }
                         Text {
@@ -988,7 +988,7 @@ Item {
                       Text {
                         text: "󰖟"
                         font.family: root.t.mono
-                        font.pixelSize: 15
+                        font.pixelSize: Theme.iconMd
                         color: root.tsData.webclient_enabled ? root.t.accent : root.t.ink3
                       }
                       Text {
@@ -1033,7 +1033,7 @@ Item {
                       Text {
                         text: "󰌽"
                         font.family: root.t.mono
-                        font.pixelSize: 15
+                        font.pixelSize: Theme.iconMd
                         color: root.tsData.exit_node_enabled ? root.t.accent : root.t.ink3
                       }
                       Text {
@@ -1072,7 +1072,7 @@ Item {
                       Text {
                         text: "󰒃"
                         font.family: root.t.mono
-                        font.pixelSize: 15
+                        font.pixelSize: Theme.iconMd
                         color: root.tsData.shields_up ? root.t.red : root.t.ink3
                       }
                       Text {

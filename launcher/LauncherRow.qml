@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell.Widgets
 import "../theme"
+import "../components"
 
 // One launcher result row. Never focusable: QML focus must stay in the
 // search field while the window is open, or the focus-loss guard closes us.
@@ -307,50 +308,21 @@ Item {
     }
   }
 
-  Rectangle {
+  StatusPill {
     id: badgeRect
     z: 10
     anchors.right: parent.right
     anchors.rightMargin: Theme.launcherContentInset
     anchors.verticalCenter: parent.verticalCenter
     visible: row.hasBadge
-    height: 18
-    radius: Theme.radiusSm
-    color: {
-      if (row.isKillPaused) return Theme.tint(Theme.amber, 0.25);
-      if (row.isKillApp) return Theme.tint(Theme.accent, 0.25);
-      if (row.isKillUserService) return Theme.tint(Theme.teal, 0.25);
-      if (row.isKillSystemService) return Theme.tint(Theme.violet, 0.25);
-      if (row.isKillProcess) return Theme.tint(Theme.ink2, 0.18);
-      if (row.isCurrent) return Theme.tint(Theme.selected, 0.5);
-      return Theme.tint(Theme.surfaceElevated, 0.6);
-    }
-    border.color: {
-      if (row.isKillPaused) return Theme.amber;
-      if (row.isKillApp) return Theme.accent;
-      if (row.isKillUserService) return Theme.teal;
-      if (row.isKillSystemService) return Theme.violet;
-      if (row.isKillProcess) return Theme.ink2;
-      return Theme.line;
-    }
-    border.width: 1
-    implicitWidth: badgeText.implicitWidth + Theme.spaceSm * 2
-
-    Text {
-      id: badgeText
-      anchors.centerIn: parent
-      text: row.badgeLabel
-      font.family: Theme.displayFont
-      font.pixelSize: Theme.fontXs
-      font.weight: Font.Medium
-      color: {
-        if (row.isKillPaused) return Theme.amber;
-        if (row.isKillApp) return Theme.accent;
-        if (row.isKillUserService) return Theme.teal;
-        if (row.isKillSystemService) return Theme.violet;
-        if (row.isKillProcess) return Theme.ink2;
-        return Theme.ink3;
-      }
+    text: row.badgeLabel
+    tone: {
+      if (row.isKillPaused) return "warn";
+      if (row.isKillApp) return "accent";
+      if (row.isKillUserService) return "teal";
+      if (row.isKillSystemService) return "violet";
+      if (row.isKillProcess) return "muted";
+      return "accent";
     }
   }
 }

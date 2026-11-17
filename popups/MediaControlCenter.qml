@@ -32,9 +32,9 @@ Item {
   readonly property string formattedLength: activeMedia ? activeMedia.formattedLength : "--:--"
 
   readonly property color statusColor: {
-    if (!root.hasPlayer) return root.t.ink3;
-    if (root.isPlaying) return root.t.green;
-    return root.t.amber;
+    if (!root.hasPlayer) return Theme.ink3;
+    if (root.isPlaying) return Theme.green;
+    return Theme.amber;
   }
   readonly property string statusWord: {
     if (!root.hasPlayer) return "Not playing";
@@ -76,8 +76,6 @@ Item {
 
   implicitHeight: popupHeight
 
-  readonly property var t: Theme
-
   PopupCard {
     id: card
     anchors.fill: parent
@@ -97,9 +95,9 @@ Item {
       anchors.fill: parent
       gradient: Gradient {
         orientation: Gradient.Horizontal
-        GradientStop { position: 0.0; color: Qt.rgba(13 / 255, 17 / 255, 23 / 255, 0.84) }
-        GradientStop { position: 0.48; color: Qt.rgba(13 / 255, 17 / 255, 23 / 255, 0.70) }
-        GradientStop { position: 1.0; color: Qt.rgba(13 / 255, 17 / 255, 23 / 255, 0.52) }
+        GradientStop { position: 0.0; color: Theme.tint(Theme.bg, 0.84) }
+        GradientStop { position: 0.48; color: Theme.tint(Theme.bg, 0.70) }
+        GradientStop { position: 1.0; color: Theme.tint(Theme.bg, 0.52) }
       }
     }
 
@@ -153,7 +151,7 @@ Item {
               Layout.preferredWidth: 136
               Layout.preferredHeight: 136
               radius: 4
-              color: root.t.inset
+              color: Theme.inset
 
               Image {
                 id: artImage
@@ -169,9 +167,9 @@ Item {
                 anchors.centerIn: parent
                 visible: artImage.status !== Image.Ready
                 text: "󰝚"
-                font.family: root.t.mono
+                font.family: Theme.mono
                 font.pixelSize: 36
-                color: root.t.ink3
+                color: Theme.ink3
               }
             }
 
@@ -192,9 +190,9 @@ Item {
                 Layout.fillWidth: true
                 text: root.player ? (root.player.trackTitle || "No Title") : "No Media"
                 font.family: Theme.displayFont
-                font.pixelSize: 20
+                font.pixelSize: Theme.fontDisplay
                 font.weight: Font.DemiBold
-                color: root.t.ink1
+                color: Theme.ink1
                 elide: Text.ElideRight
                 maximumLineCount: 2
                 wrapMode: Text.Wrap
@@ -210,7 +208,7 @@ Item {
                 }
                 font.family: Theme.textFont
                 font.pixelSize: Theme.fontMd
-                color: root.t.ink2
+                color: Theme.ink2
                 elide: Text.ElideRight
                 maximumLineCount: 1
               }
@@ -229,7 +227,7 @@ Item {
                 }
                 font.family: Theme.textFont
                 font.pixelSize: Theme.fontSm
-                color: root.t.ink3
+                color: Theme.ink3
                 elide: Text.ElideRight
                 maximumLineCount: 1
               }
@@ -240,101 +238,26 @@ Item {
             width: parent.width
             spacing: 2
 
-            Item {
+            Slider {
               id: seekHit
               width: parent.width
-              height: 20
-              activeFocusOnTab: Boolean(root.player && root.player.canSeek && root.trackLength > 0)
-
-              Accessible.role: Accessible.Slider
-              Accessible.name: "Seek: " + root.formattedPosition
-
-              Keys.onLeftPressed: event => {
+              value: root.trackPos
+              from: 0.0
+              to: root.trackLength > 0 ? root.trackLength : 1.0
+              stepSize: 5.0
+              enabledSlider: Boolean(root.player && root.player.canSeek && root.trackLength > 0)
+              accessibleName: "Seek: " + root.formattedPosition
+              activeColor: Theme.accent
+              onMoved: val => {
+                root.seekTarget = val;
+              }
+              onCommitted: val => {
                 if (root.activeMedia && root.player && root.player.canSeek) {
-                  root.activeMedia.setTrackPos(Math.max(0, root.trackPos - 5));
-                  event.accepted = true;
+                  root.activeMedia.setTrackPos(val);
                 }
               }
-              Keys.onRightPressed: event => {
-                if (root.activeMedia && root.player && root.player.canSeek) {
-                  root.activeMedia.setTrackPos(Math.min(root.trackLength, root.trackPos + 5));
-                  event.accepted = true;
-                }
-              }
-
-              Rectangle {
-                id: seekTrack
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                height: 3
-                radius: 2
-                color: root.t.inset
-                border.color: seekHit.activeFocus ? root.t.focusRing : root.t.tint(root.t.cardBorder, 0.5)
-                border.width: seekHit.activeFocus ? root.t.focusRingWidth : 1
-                Behavior on border.color { ColorAnimation { duration: 100 } }
-
-                Rectangle {
-                  id: seekFill
-                  anchors.left: parent.left
-                  anchors.top: parent.top
-                  anchors.bottom: parent.bottom
-                  width: root.trackLength > 0 ? Math.min(parent.width, Math.max(0, parent.width * (root.trackPos / root.trackLength))) : 0
-                  radius: 2
-                  color: root.t.accent
-                }
-
-                Rectangle {
-                  id: seekThumb
-                  width: 14
-                  height: 14
-                  radius: 7
-                  color: (seekMouse.containsMouse || root.isSeeking) ? root.t.ink1 : "#cbd5e1"
-                  border.color: Qt.rgba(0, 0, 0, 0.3)
-                  border.width: 1
-                  anchors.verticalCenter: parent.verticalCenter
-                  x: Math.max(0, Math.min(parent.width - width, seekFill.width - width / 2))
-                  visible: true
-                  scale: (seekMouse.containsMouse || root.isSeeking) ? 1.15 : 1.0
-
-                  Behavior on scale { NumberAnimation { duration: root.t.durationFast } }
-                  Behavior on color { ColorAnimation { duration: root.t.durationFast } }
-                }
-              }
-
-              MouseArea {
-                id: seekMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: (root.player && root.player.canSeek && root.trackLength > 0) ? Qt.PointingHandCursor : Qt.ArrowCursor
-
-                function updatePos(mouseX: real): void {
-                  if (!root.player || !root.player.canSeek || root.trackLength <= 0) return;
-                  const ratio = Math.max(0, Math.min(1, mouseX / width));
-                  root.seekTarget = ratio * root.trackLength;
-                }
-
-                onPressed: mouse => {
-                  if (!root.player || !root.player.canSeek || root.trackLength <= 0) return;
-                  seekHit.forceActiveFocus();
-                  root.isSeeking = true;
-                  updatePos(mouse.x);
-                }
-
-                onPositionChanged: mouse => {
-                  if (root.isSeeking) {
-                    updatePos(mouse.x);
-                  }
-                }
-
-                onReleased: {
-                  if (root.isSeeking) {
-                    if (root.activeMedia && root.player && root.player.canSeek) {
-                      root.activeMedia.setTrackPos(root.seekTarget);
-                    }
-                    root.isSeeking = false;
-                  }
-                }
+              onDraggingChanged: dragging => {
+                root.isSeeking = dragging;
               }
             }
 
@@ -342,16 +265,16 @@ Item {
               width: parent.width
               Text {
                 text: root.formattedPosition
-                font.family: root.t.mono
+                font.family: Theme.mono
                 font.pixelSize: Theme.fontXs
-                color: root.t.ink2
+                color: Theme.ink2
               }
               Item { Layout.fillWidth: true }
               Text {
                 text: root.formattedLength
-                font.family: root.t.mono
+                font.family: Theme.mono
                 font.pixelSize: Theme.fontXs
-                color: root.t.ink3
+                color: Theme.ink3
               }
             }
           }
@@ -365,7 +288,7 @@ Item {
               glyph: "󰒝"
               fs: Theme.iconBase
               btnSize: 30
-              fg: (root.player && root.player.shuffle) ? root.t.accent : root.t.ink3
+              fg: (root.player && root.player.shuffle) ? Theme.accent : Theme.ink3
               dimmed: !(root.player && root.player.shuffleSupported && root.player.canControl)
               tooltip: (root.player && root.player.shuffle) ? "Shuffle on" : "Shuffle off"
               onClicked: {
@@ -390,66 +313,17 @@ Item {
 
             Item { Layout.preferredWidth: 8; Layout.preferredHeight: 1 }
 
-            Rectangle {
+            PrimaryButton {
               id: playPauseBtn
-              Layout.preferredWidth: 40
-              Layout.preferredHeight: 40
-              radius: 20
-              activeFocusOnTab: true
-              color: playMouse.pressed ? Qt.darker(root.t.accent, 1.2) : (playMouse.containsMouse || playPauseBtn.activeFocus) ? Qt.lighter(root.t.accent, 1.07) : root.t.accent
-              border.color: playPauseBtn.activeFocus ? root.t.ink1 : "transparent"
-              border.width: playPauseBtn.activeFocus ? 1.5 : 0
-              Behavior on color { ColorAnimation { duration: 90 } }
-              Behavior on border.color { ColorAnimation { duration: 90 } }
-
-              Accessible.role: Accessible.Button
-              Accessible.name: root.isPlaying ? "Pause" : "Play"
-
-              Keys.onReturnPressed: event => {
-                if (root.player && root.player.canTogglePlaying) {
-                  root.player.togglePlaying();
-                  event.accepted = true;
-                }
-              }
-              Keys.onSpacePressed: event => {
-                if (root.player && root.player.canTogglePlaying) {
-                  root.player.togglePlaying();
-                  event.accepted = true;
-                }
-              }
-
-              Text {
-                anchors.centerIn: parent
-                anchors.horizontalCenterOffset: root.isPlaying ? 0 : 1
-                text: root.isPlaying ? "󰏤" : "󰐊"
-                font.family: root.t.mono
-                font.pixelSize: Theme.iconLg
-                color: root.t.darkInk
-              }
-              MouseArea {
-                id: playMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: {
-                  const host = root.findHost();
-                  if (containsMouse) {
-                    if (host && typeof host.showTip === "function") {
-                      host.showTip(parent, root.isPlaying ? "Pause" : "Play", "");
-                    }
-                  } else {
-                    if (host && typeof host.hideTip === "function") {
-                      host.hideTip();
-                    }
-                  }
-                }
-                onClicked: {
-                  const host = root.findHost();
-                  if (host && typeof host.hideTip === "function") {
-                    host.hideTip();
-                  }
-                  if (root.player && root.player.canTogglePlaying) root.player.togglePlaying();
-                }
+              circular: true
+              btnSize: 40
+              glyph: root.isPlaying ? "󰏤" : "󰐊"
+              glyphSize: Theme.iconLg
+              glyphOffset: root.isPlaying ? 0 : 1
+              tooltip: root.isPlaying ? "Pause" : "Play"
+              enabledBtn: Boolean(root.player && root.player.canTogglePlaying)
+              onClicked: {
+                if (root.player && root.player.canTogglePlaying) root.player.togglePlaying();
               }
             }
 
@@ -472,7 +346,7 @@ Item {
               glyph: (root.player && root.player.loopState === MprisLoopState.Track) ? "󰑘" : "󰑖"
               fs: Theme.iconBase
               btnSize: 32
-              fg: (root.player && root.player.loopState !== MprisLoopState.None) ? root.t.accent : root.t.ink3
+              fg: (root.player && root.player.loopState !== MprisLoopState.None) ? Theme.accent : Theme.ink3
               dimmed: !(root.player && root.player.loopSupported && root.player.canControl)
               tooltip: "Repeat mode: " + (root.activeMedia ? root.activeMedia.loopWord() : "Off")
               onClicked: {
@@ -492,16 +366,16 @@ Item {
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
               text: "󰝚"
-              font.family: root.t.mono
+              font.family: Theme.mono
               font.pixelSize: 26
-              color: root.t.ink3
+              color: Theme.ink3
             }
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
               text: "No media playing"
               font.family: Theme.textFont
               font.pixelSize: Theme.fontBase
-              color: root.t.ink2
+              color: Theme.ink2
             }
           }
         }

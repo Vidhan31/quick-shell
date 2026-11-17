@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import "../theme"
+import "../components"
 
 PopupWindow {
   id: root
@@ -60,39 +61,9 @@ PopupWindow {
     currentTarget = null;
   }
 
-  Rectangle {
+  TooltipCard {
     id: tipCard
-    implicitWidth: Math.max(48, tipCol.implicitWidth + 16)
-    implicitHeight: tipCol.implicitHeight + 10
-    width: implicitWidth
-    height: implicitHeight
-    radius: 0
-    color: Theme.inset
-    border.color: Qt.rgba(1.0, 1.0, 1.0, 0.22)
-    border.width: 1
-
-    Column {
-      id: tipCol
-      anchors.centerIn: parent
-      spacing: 2
-
-      Text {
-        anchors.horizontalCenter: parent.horizontalCenter
-        text: root.text
-        color: Theme.ink1
-        font.pixelSize: Theme.fontSm
-        font.weight: Font.Medium
-        font.family: Theme.mono
-      }
-
-      Text {
-        anchors.horizontalCenter: parent.horizontalCenter
-        visible: root.subtext.length > 0
-        text: root.subtext
-        color: Theme.ink2
-        font.pixelSize: Theme.fontXs
-        font.family: Theme.mono
-      }
-    }
+    text: root.text
+    subtext: root.subtext
   }
 }

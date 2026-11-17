@@ -17,9 +17,6 @@ Item {
   readonly property var micApps: (privacyData && privacyData.microphone && privacyData.microphone.apps) ? privacyData.microphone.apps : []
   readonly property var micDevices: (privacyData && privacyData.microphone && privacyData.microphone.devices) ? privacyData.microphone.devices : []
 
-  readonly property var t: Theme
-  readonly property string monoFont: Theme.mono
-
   implicitWidth: Theme.popupWidthSm
   implicitHeight: mainCol.height + 28
 
@@ -90,7 +87,7 @@ Item {
 
         Text {
           text: "󰍬"
-          font.family: root.monoFont
+          font.family: Theme.mono
           font.pixelSize: Theme.iconLg
           color: Theme.warn
           anchors.verticalCenter: parent.verticalCenter
@@ -162,7 +159,7 @@ Item {
 
         Text {
           text: "󰄬"
-          font.family: root.monoFont
+          font.family: Theme.mono
           font.pixelSize: Theme.fontLg
           color: Theme.ok
           anchors.verticalCenter: parent.verticalCenter

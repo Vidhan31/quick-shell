@@ -80,21 +80,12 @@ Item {
       root.activeMonitor.stopService();
   }
 
-  property string toastMsg: ""
   property string logViewId: ""
   property string logViewName: ""
   property int logTail: 200
 
   function showToast(msg: string): void {
-    toastMsg = msg;
-    toastTimer.restart();
-  }
-
-  Timer {
-    id: toastTimer
-    interval: 3500
-    repeat: false
-    onTriggered: root.toastMsg = ""
+    toast.show(msg);
   }
 
   function stateColor(state: string): color {
@@ -833,17 +824,6 @@ Item {
       Layout.fillWidth: true
       Layout.preferredHeight: 10
     }
-
-    Text {
-      visible: root.toastMsg.length > 0
-      Layout.fillWidth: true
-      Layout.leftMargin: 2
-      wrapMode: Text.Wrap
-      font.family: Theme.textFont
-      font.pixelSize: Theme.fontSm
-      color: Theme.amber
-      text: root.toastMsg
-    }
   }
 
   Rectangle {
@@ -1220,5 +1200,9 @@ Item {
         color: Theme.accent
       }
     }
+  }
+
+  Toast {
+    id: toast
   }
 }

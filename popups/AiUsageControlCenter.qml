@@ -355,70 +355,17 @@ Item {
           Repeater {
             model: root.monthOptions
 
-            Rectangle {
+            FilterPill {
               id: uPill
               required property var modelData
               required property int index
-              readonly property bool isSelected: uPill.modelData === root.selectedMonths
 
-              width: uPillText.implicitWidth + 14
-              height: 20
-              radius: Theme.radiusChip
-              color: isSelected ? Theme.selected : (uPillMouse.containsMouse || uPill.activeFocus ? Theme.hoverFill : "transparent")
-              border.width: uPill.activeFocus ? Theme.focusRingWidth : 0
-              border.color: Theme.focusRing
-              activeFocusOnTab: true
-
-              Accessible.role: Accessible.Button
-              Accessible.name: uPill.modelData + " month rolling window"
-
-              Behavior on color { ColorAnimation { duration: Theme.durationFast } }
-              Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
-
-              function updateTip(): void {
-                const host = root.findHost();
-                if ((uPillMouse.containsMouse || uPill.activeFocus) && host && typeof host.showTip === "function") {
-                  host.showTip(uPill, uPill.modelData + " month window", "Show usage for last " + (uPill.modelData * 30) + " days");
-                } else if (host && typeof host.hideTip === "function") {
-                  host.hideTip();
-                }
-              }
-
-              onActiveFocusChanged: updateTip()
-              Component.onDestruction: {
-                const host = root.findHost();
-                if (host && typeof host.hideTip === "function") {
-                  host.hideTip();
-                }
-              }
-
-              Keys.onReturnPressed: event => {
-                root.selectedMonths = uPill.modelData;
-                event.accepted = true;
-              }
-              Keys.onSpacePressed: event => {
-                root.selectedMonths = uPill.modelData;
-                event.accepted = true;
-              }
-
-              Text {
-                id: uPillText
-                anchors.centerIn: parent
-                text: uPill.modelData + "m"
-                font.pixelSize: 11
-                font.weight: uPill.isSelected ? Font.DemiBold : Font.Normal
-                font.family: Theme.mono
-                color: uPill.isSelected ? Theme.ink1 : (uPillMouse.containsMouse ? Theme.ink2 : Theme.ink3)
-              }
-
-              MouseArea {
-                id: uPillMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: uPill.updateTip()
-                onClicked: root.selectedMonths = uPill.modelData
-              }
+              text: uPill.modelData + "m"
+              selected: uPill.modelData === root.selectedMonths
+              accessibleName: uPill.modelData + " month rolling window"
+              tooltip: uPill.modelData + " month window"
+              tooltipSub: "Show usage for last " + (uPill.modelData * 30) + " days"
+              onClicked: root.selectedMonths = uPill.modelData
             }
           }
         }

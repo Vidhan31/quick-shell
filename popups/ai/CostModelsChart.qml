@@ -357,7 +357,7 @@ Rectangle {
                   color: rowBox.modelData.src === "oc" ? Theme.teal : Theme.violet
 
                   Behavior on width {
-                    NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+                    NumberAnimation { duration: Theme.durationSlow; easing.type: Easing.OutCubic }
                   }
                 }
               }

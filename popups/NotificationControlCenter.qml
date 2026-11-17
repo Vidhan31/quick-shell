@@ -13,7 +13,7 @@ Item {
   property var jobService: null
   readonly property var jobsList: jobService ? (jobService.jobs || []) : []
   readonly property var activeJobsList: jobService ? (jobService.activeJobs || []) : []
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
+  readonly property string monoFont: Theme.mono
 
   signal closeRequested()
 
@@ -474,21 +474,15 @@ Item {
                   }
                 }
 
-                Rectangle {
+                ProgressBar {
                   visible: !jobRow.isStopped
                   width: parent.width
-                  height: 4
-                  radius: 0
-                  color: root.t.inset
-                  clip: true
-
-                  Rectangle {
-                    width: parent.width * Math.max(0, Math.min(100, jobRow.percentVal)) / 100
-                    height: parent.height
-                    radius: 0
-                    color: jobRow.isSuspended ? root.t.amber : root.t.accent
-                    Behavior on width { NumberAnimation { duration: 150 } }
-                  }
+                  implicitHeight: 4
+                  from: 0.0
+                  to: 100.0
+                  value: Math.max(0, Math.min(100, jobRow.percentVal))
+                  fillColor: jobRow.isSuspended ? Theme.amber : Theme.accent
+                  trackColor: Theme.inset
                 }
               }
             }

@@ -13,5 +13,9 @@ PopupCard 1.0 PopupCard.qml
 SectionCard 1.0 SectionCard.qml
 PopupHeader 1.0 PopupHeader.qml
 StatusPill 1.0 StatusPill.qml
+FilterPill 1.0 FilterPill.qml
+NoticeBanner 1.0 NoticeBanner.qml
+Slider 1.0 Slider.qml
 HoverTooltip 1.0 HoverTooltip.qml
+TooltipCard 1.0 TooltipCard.qml
 KeyBadge 1.0 KeyBadge.qml

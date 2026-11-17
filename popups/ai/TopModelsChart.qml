@@ -428,7 +428,7 @@ Rectangle {
                   }
 
                   Behavior on width {
-                    NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+                    NumberAnimation { duration: Theme.durationSlow; easing.type: Easing.OutCubic }
                   }
                 }
               }

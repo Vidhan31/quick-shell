@@ -88,7 +88,7 @@ Rectangle {
       from: 0
       to: 360
       loops: Animation.Infinite
-      duration: 800
+      duration: Theme.durationSpin
     }
   }
 

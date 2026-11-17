@@ -242,7 +242,7 @@ Item {
             text: root.shownMonth >= 0 ? root.monthNames[root.shownMonth] : ""
             color: root.t.ink1
             font.family: Theme.displayFont
-            font.pixelSize: 20
+            font.pixelSize: Theme.fontDisplay
             font.weight: Font.Medium
           }
           Text {
@@ -262,7 +262,7 @@ Item {
           text: "Today"
           bold: true
           fg: root.t.accent
-          fs: 11
+          fs: Theme.fontSm
           onClicked: root.goToday()
         }
 
@@ -353,8 +353,8 @@ Item {
               border.color: dayCell.isToday && !dayCell.isSelected ? root.t.accent : ((dayCell.isSelected && root.activeFocus) ? root.t.focusRing : "transparent")
               border.width: dayCell.isToday && !dayCell.isSelected ? 1 : ((dayCell.isSelected && root.activeFocus) ? 1.5 : 0)
 
-              Behavior on color { ColorAnimation { duration: 90 } }
-              Behavior on border.color { ColorAnimation { duration: 90 } }
+              Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+              Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
 
               Text {
                 anchors.centerIn: parent

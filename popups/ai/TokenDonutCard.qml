@@ -98,33 +98,10 @@ Rectangle {
         color: Theme.ink2
       }
 
-      Rectangle {
+      StatusPill {
         visible: root.cacheReadTokens > 0
-        radius: 0
-        color: Qt.rgba(Theme.violet.r, Theme.violet.g, Theme.violet.b, 0.12)
-        border.color: Qt.rgba(Theme.violet.r, Theme.violet.g, Theme.violet.b, 0.28)
-        border.width: 1
-        implicitWidth: cacheRow.width + 10
-        implicitHeight: 18
-
-        Row {
-          id: cacheRow
-          anchors.centerIn: parent
-          spacing: 3
-          Text {
-            text: "󱐋"
-            font.pixelSize: 9
-            font.family: Theme.mono
-            color: Theme.violet
-          }
-          Text {
-            text: root.cacheHitPctText + " cached"
-            font.pixelSize: 10
-            font.weight: Font.Medium
-            font.family: Theme.mono
-            color: Theme.violet
-          }
-        }
+        tone: "violet"
+        text: "󱐋 " + root.cacheHitPctText + " cached"
       }
 
       Item { Layout.fillWidth: true }

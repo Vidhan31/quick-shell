@@ -33,7 +33,6 @@ PanelWindow {
   property real cardOffset: 0
   property real cardScale: 0.96
   property real cardOpacity: 0.0
-  property bool showPlainPassword: false
 
   IconResolver {
     id: iconResolver
@@ -65,7 +64,7 @@ PanelWindow {
 
   onVisibleChanged: {
     if (visible) {
-      win.showPlainPassword = false;
+      passwordInput.showPassword = false;
       passwordInput.text = "";
       enterAnim.restart();
       armTimer.restart();
@@ -247,89 +246,23 @@ PanelWindow {
         elide: Text.ElideMiddle
       }
 
-      Rectangle {
-        id: inputWrap
+      InputField {
+        id: passwordInput
         Layout.fillWidth: true
-        Layout.preferredHeight: Theme.inputHeight
-        radius: Theme.radiusBase
-        color: Theme.inset
-        border.color: passwordInput.activeFocus
+        placeholder: win.service?.prompt || "Password"
+        passwordToggle: true
+        enabledInput: win.service?.isResponseRequired ?? false
+        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhSensitiveData | Qt.ImhHiddenText
+        echoMode: (passwordInput.showPassword || (win.service?.responseVisible ?? false))
+          ? TextInput.Normal : TextInput.Password
+        border.color: passwordInput.inputItem.activeFocus
           ? ((win.service && win.service.failed) ? Theme.err : Theme.focusRing)
           : ((win.service && win.service.failed) ? Theme.err : Theme.line)
-        border.width: passwordInput.activeFocus ? Theme.focusRingWidth : 1
+        onAccepted: win.submit()
 
-        Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
-
-        RowLayout {
-          anchors.fill: parent
-          anchors.leftMargin: 10
-          anchors.rightMargin: 6
-          spacing: Theme.spaceSm
-
-          Item {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-
-            TextInput {
-              id: passwordInput
-              anchors.fill: parent
-              verticalAlignment: TextInput.AlignVCenter
-
-              font.family: Theme.mono
-              font.pixelSize: Theme.fontBase
-              color: Theme.ink1
-              selectionColor: Theme.accent
-              selectedTextColor: Theme.darkInk
-              selectByMouse: true
-              activeFocusOnTab: true
-              enabled: win.service?.isResponseRequired ?? false
-              inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhSensitiveData | Qt.ImhHiddenText
-
-              echoMode: win.showPlainPassword
-                ? TextInput.Normal
-                : ((win.service?.responseVisible ?? false) ? TextInput.Normal : TextInput.Password)
-
-              onAccepted: win.submit()
-
-              Keys.onEscapePressed: event => {
-                win.cancel();
-                event.accepted = true;
-              }
-            }
-
-            Text {
-              anchors.left: parent.left
-              anchors.verticalCenter: parent.verticalCenter
-              text: win.service?.prompt || "Password"
-              font.family: Theme.textFont
-              font.pixelSize: Theme.fontBase
-              color: Theme.ink3
-              visible: passwordInput.text.length === 0 && !passwordInput.activeFocus
-            }
-          }
-
-          Rectangle {
-            Layout.preferredWidth: 22
-            Layout.preferredHeight: 22
-            radius: Theme.radiusXs
-            color: eyeMa.containsMouse ? Theme.hoverWash : "transparent"
-
-            Text {
-              anchors.centerIn: parent
-              text: win.showPlainPassword ? "󰈈" : "󰈉"
-              font.family: Theme.mono
-              font.pixelSize: Theme.iconSm
-              color: eyeMa.containsMouse ? Theme.ink1 : Theme.ink3
-            }
-
-            MouseArea {
-              id: eyeMa
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onClicked: win.showPlainPassword = !win.showPlainPassword
-            }
-          }
+        Keys.onEscapePressed: event => {
+          win.cancel();
+          event.accepted = true;
         }
       }
 

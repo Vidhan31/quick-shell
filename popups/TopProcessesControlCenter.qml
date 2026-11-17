@@ -15,9 +15,6 @@ Item {
   property double maxMem: monitor ? monitor.maxMem : 1.0
   property string updatedAt: monitor ? monitor.updatedAt : ""
 
-  readonly property var t: Theme
-  readonly property string monoFont: Theme.mono
-
   implicitWidth: Theme.popupWidthMd
   readonly property int preferredHeight: Math.max(120, contentCol.height + (card.padding * 2))
   property int popupHeight: 404
@@ -144,7 +141,7 @@ Item {
           objectProp: "mpid"
           comparisonMode: ObjectComparison.Identity
         }
-        delegate: Rectangle {
+        delegate: ActionRow {
           id: rowDelegate
           required property int index
           required property var modelData
@@ -152,61 +149,13 @@ Item {
           visible: rowDelegate.modelData !== null
           width: parent.width
           height: 32
-          radius: Theme.radiusSm
-          color: (rowMouse.containsMouse || rowDelegate.activeFocus) ? Theme.hoverFill : "transparent"
-          border.width: rowDelegate.activeFocus ? Theme.focusRingWidth : 0
-          border.color: Theme.focusRing
-          activeFocusOnTab: true
+          tooltip: rowDelegate.tipTitle
 
           readonly property string procName: rowDelegate.modelData ? rowDelegate.modelData.name : ""
           readonly property string procPriv: rowDelegate.modelData ? root.formatRss(rowDelegate.modelData.priv) : "0K"
           readonly property string procRss: rowDelegate.modelData ? root.formatRss(rowDelegate.modelData.rss) : "0K"
           readonly property string procCpu: rowDelegate.modelData && isFinite(rowDelegate.modelData.cpu) ? rowDelegate.modelData.cpu.toFixed(1) + "%" : "0.0%"
           readonly property string tipTitle: rowDelegate.modelData ? (rowDelegate.modelData.name + (rowDelegate.modelData.count > 1 ? (" (" + rowDelegate.modelData.count + " processes)") : "")) : ""
-          readonly property string tipSub: ""
-
-          Accessible.role: Accessible.ListItem
-          Accessible.name: tipTitle
-
-          Behavior on color { ColorAnimation { duration: Theme.durationFast } }
-          Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
-
-          function findHost(): var {
-            let p = rowDelegate.parent;
-            while (p) {
-              if (typeof p.showTip === "function") return p;
-              p = p.parent;
-            }
-            return null;
-          }
-
-          function updateTip(): void {
-            const host = rowDelegate.findHost();
-            if ((rowMouse.containsMouse || rowDelegate.activeFocus) && rowDelegate.modelData) {
-              if (host && typeof host.showTip === "function") {
-                host.showTip(rowDelegate, tipTitle, tipSub);
-              }
-            } else {
-              if (host && typeof host.hideTip === "function") {
-                host.hideTip();
-              }
-            }
-          }
-
-          onActiveFocusChanged: updateTip()
-          Component.onDestruction: {
-            const host = rowDelegate.findHost();
-            if (host && typeof host.hideTip === "function") {
-              host.hideTip();
-            }
-          }
-
-          MouseArea {
-            id: rowMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            onContainsMouseChanged: rowDelegate.updateTip()
-          }
 
           Text {
             id: cellName
@@ -232,7 +181,7 @@ Item {
             horizontalAlignment: Text.AlignRight
             text: rowDelegate.procPriv
             color: Theme.ink2
-            font.family: root.monoFont
+            font.family: Theme.mono
             font.pixelSize: Theme.fontSm
           }
 
@@ -245,7 +194,7 @@ Item {
             horizontalAlignment: Text.AlignRight
             text: rowDelegate.procRss
             color: Theme.ink3
-            font.family: root.monoFont
+            font.family: Theme.mono
             font.pixelSize: Theme.fontSm
           }
 
@@ -258,7 +207,7 @@ Item {
             horizontalAlignment: Text.AlignRight
             text: rowDelegate.procCpu
             color: Theme.ink2
-            font.family: root.monoFont
+            font.family: Theme.mono
             font.pixelSize: Theme.fontSm
           }
         }
@@ -273,7 +222,7 @@ Item {
           anchors.centerIn: parent
           text: "󰑓 loading…"
           color: Theme.ink3
-          font.family: root.monoFont
+          font.family: Theme.mono
           font.pixelSize: Theme.fontBase
         }
       }

@@ -13,7 +13,7 @@ PanelWindow {
 
   property var service: null
   property var jobService: null
-  readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
+  readonly property string monoFont: Theme.mono
 
   IconResolver {
     id: iconResolver
@@ -277,20 +277,14 @@ PanelWindow {
                   elide: Text.ElideMiddle
                 }
 
-                Rectangle {
+                ProgressBar {
                   width: parent.width
-                  height: 6
-                  radius: 0
-                  color: root.t.inset
-                  clip: true
-
-                  Rectangle {
-                    width: parent.width * Math.max(0, Math.min(100, jobItem.percentVal)) / 100
-                    height: parent.height
-                    radius: 0
-                    color: jobItem.isSuspended ? root.t.amber : root.t.accent
-                    Behavior on width { NumberAnimation { duration: 150 } }
-                  }
+                  implicitHeight: 6
+                  from: 0.0
+                  to: 100.0
+                  value: Math.max(0, Math.min(100, jobItem.percentVal))
+                  fillColor: jobItem.isSuspended ? Theme.amber : Theme.accent
+                  trackColor: Theme.inset
                 }
 
                 RowLayout {
@@ -513,7 +507,7 @@ PanelWindow {
           Behavior on x { XAnimator { duration: 190; easing.type: Easing.InOutCubic } }
           Behavior on opacity { OpacityAnimator { duration: 180; easing.type: Easing.OutCubic } }
 
-          Rectangle {
+          ProgressBar {
             id: countdownTrack
             visible: !toastItem.persistToast
             z: 3
@@ -523,21 +517,14 @@ PanelWindow {
             anchors.right: parent.right
             anchors.leftMargin: 10
             anchors.rightMargin: 10
-            height: 2
-            radius: 0
-            color: root.t.lineMuted
-            clip: true
-
-            Rectangle {
-              id: countdownBar
-              anchors.left: parent.left
-              anchors.top: parent.top
-              anchors.bottom: parent.bottom
-              width: parent.width * Math.max(0, Math.min(1.0, toastItem.progress))
-              radius: 0
-              color: toastItem.isCritical ? root.t.red : root.t.accent
-              opacity: 0.85
-            }
+            implicitHeight: 2
+            from: 0.0
+            to: 1.0
+            value: Math.max(0.0, Math.min(1.0, toastItem.progress))
+            fillColor: toastItem.isCritical ? root.t.red : root.t.accent
+            trackColor: root.t.lineMuted
+            animated: false
+            opacity: 0.85
           }
 
           DropArea {

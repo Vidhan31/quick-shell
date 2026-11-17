@@ -94,7 +94,7 @@ Item {
       radius: 0
       anchors.verticalCenter: parent.verticalCenter
       x: root.on ? parent.width - width - 3 : 3
-      color: root.on ? "#ffffff" : Theme.ink3
+      color: root.on ? Theme.ink1 : Theme.ink3
       scale: ma.pressed && root.enabledSwitch ? 0.92 : 1.0
 
       Behavior on x { NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.OutCubic } }

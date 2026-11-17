@@ -254,7 +254,7 @@ Item {
         color: Theme.warnBg
         radius: Theme.radiusBase
         border.width: 1
-        border.color: Qt.rgba(0.90, 0.63, 0.20, 0.45)
+        border.color: Theme.tint(Theme.amber, 0.45)
 
         ColumnLayout {
           id: gpgCol
@@ -333,7 +333,7 @@ Item {
         color: root.isDependencyConflict ? Theme.warnBg : Theme.errBg
         radius: Theme.radiusBase
         border.width: 1
-        border.color: root.isDependencyConflict ? Qt.rgba(0.90, 0.63, 0.20, 0.35) : Qt.rgba(0.91, 0.36, 0.36, 0.35)
+        border.color: root.isDependencyConflict ? Theme.tint(Theme.amber, 0.35) : Theme.tint(Theme.red, 0.35)
 
         ColumnLayout {
           id: errCol
@@ -945,7 +945,7 @@ Item {
                 Text {
                   text: root.selectedMethod === "offline" ? "󰄲" : "󰄱"
                   font.family: root.monoFont
-                  font.pixelSize: 18
+                  font.pixelSize: Theme.fontGlyphMd
                   color: root.selectedMethod === "offline" ? Theme.accent : Theme.ink3
                 }
 
@@ -1009,7 +1009,7 @@ Item {
                 Text {
                   text: root.selectedMethod === "inplace" ? "󰄲" : "󰄱"
                   font.family: root.monoFont
-                  font.pixelSize: 18
+                  font.pixelSize: Theme.fontGlyphMd
                   color: root.selectedMethod === "inplace" ? Theme.accent : Theme.ink3
                 }
 

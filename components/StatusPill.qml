@@ -15,6 +15,8 @@ Rectangle {
     if (root.tone === "warn") return Theme.amber;
     if (root.tone === "err") return Theme.red;
     if (root.tone === "violet") return Theme.violet;
+    if (root.tone === "teal") return Theme.teal;
+    if (root.tone === "muted") return Theme.ink2;
     return Theme.accent;
   }
 
@@ -23,6 +25,8 @@ Rectangle {
     if (root.tone === "warn") return Theme.warnBg;
     if (root.tone === "err") return Theme.errBg;
     if (root.tone === "violet") return Theme.violetBg;
+    if (root.tone === "teal") return Theme.tint(Theme.teal, 0.15);
+    if (root.tone === "muted") return Theme.tint(Theme.ink2, 0.15);
     return Theme.accentBg;
   }
 
