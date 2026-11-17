@@ -39,7 +39,7 @@ Item {
   }
 
   implicitWidth: Theme.popupWidthSm
-  implicitHeight: 388
+  implicitHeight: 420
 
   function findHost(): var {
     let p = root.parent;
@@ -231,25 +231,28 @@ Item {
 
       RowLayout {
         Layout.fillWidth: true
-        Layout.preferredHeight: 40
+        Layout.preferredHeight: 44
         spacing: 4
 
         Row {
           Layout.fillWidth: true
           Layout.alignment: Qt.AlignVCenter
-          spacing: 6
+          spacing: 8
           Text {
             text: root.shownMonth >= 0 ? root.monthNames[root.shownMonth] : ""
             color: root.t.ink1
             font.family: Theme.displayFont
-            font.pixelSize: Theme.fontMd
-            font.weight: Font.DemiBold
+            font.pixelSize: 20
+            font.weight: Font.Medium
           }
           Text {
             text: root.shownYear >= 0 ? root.shownYear : ""
             color: root.t.ink3
-            font.family: Theme.displayFont
-            font.pixelSize: Theme.fontMd
+            font.family: root.monoFont
+            font.pixelSize: Theme.fontSm
+            font.weight: Font.Medium
+            Layout.alignment: Qt.AlignBottom
+            Layout.bottomMargin: 5
           }
         }
 
@@ -286,7 +289,7 @@ Item {
 
       Hairline { Layout.fillWidth: true }
 
-      Item { Layout.preferredHeight: 12; Layout.fillWidth: true }
+      Item { Layout.preferredHeight: 10; Layout.fillWidth: true }
 
       Row {
         Layout.fillWidth: true
@@ -303,12 +306,11 @@ Item {
             Text {
               anchors.centerIn: parent
               text: parent.modelData
-              color: root.t.ink3
+              color: root.t.ink2
               font.family: Theme.textFont
               font.pixelSize: Theme.fontSm
-              font.bold: true
-              font.capitalization: Font.AllUppercase
-              font.letterSpacing: 0.8
+              font.weight: Font.DemiBold
+              font.letterSpacing: 0.4
             }
           }
         }
@@ -328,7 +330,7 @@ Item {
             id: dayCell
             required property var modelData
             width: 42
-            height: 36
+            height: 38
 
             readonly property bool isToday: root.sameDay(dayCell.modelData.date, root.today)
             readonly property bool isSelected: root.sameDay(dayCell.modelData.date, root.selectedDate)
@@ -337,20 +339,19 @@ Item {
             // never triggers a layout pass inside the Grid.
             Rectangle {
               anchors.centerIn: parent
-              width: 34
-              height: 32
-              radius: Theme.radiusBase
+              width: 36
+              height: 34
+              radius: 7
 
               color: {
-                if (dayCell.isToday) return root.t.accent;
-                if (dayCell.isSelected) return root.t.selected;
+                if (dayCell.isSelected) return root.t.accent;
                 if (cellHover.pressed && dayCell.modelData.inMonth) return root.t.pressWash;
                 if (cellHover.containsMouse && dayCell.modelData.inMonth) return root.t.hoverFill;
                 return "transparent";
               }
 
-              border.color: (dayCell.isSelected && root.activeFocus) ? root.t.focusRing : "transparent"
-              border.width: (dayCell.isSelected && root.activeFocus) ? 1.5 : 0
+              border.color: dayCell.isToday && !dayCell.isSelected ? root.t.accent : ((dayCell.isSelected && root.activeFocus) ? root.t.focusRing : "transparent")
+              border.width: dayCell.isToday && !dayCell.isSelected ? 1 : ((dayCell.isSelected && root.activeFocus) ? 1.5 : 0)
 
               Behavior on color { ColorAnimation { duration: 90 } }
               Behavior on border.color { ColorAnimation { duration: 90 } }
@@ -360,11 +361,11 @@ Item {
                 anchors.verticalCenterOffset: dayCell.modelData.hasEvent ? -2 : 0
                 text: dayCell.modelData.day
                 font.pixelSize: Theme.fontMd
-                font.weight: (dayCell.isToday || dayCell.isSelected) ? Font.DemiBold : Font.Normal
+                font.weight: (dayCell.isToday || dayCell.isSelected) ? Font.DemiBold : Font.Medium
                 font.family: Theme.roundedFont
                 color: {
-                  if (dayCell.isToday) return root.t.darkInk;
-                  if (dayCell.isSelected) return root.t.ink1;
+                  if (dayCell.isSelected) return root.t.darkInk;
+                  if (dayCell.isToday) return root.t.accent;
                   if (!dayCell.modelData.inMonth) return root.t.ink3;
                   if (dayCell.modelData.isWeekend) return root.t.red;
                   return root.t.ink1;
@@ -380,7 +381,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 3
-                color: dayCell.isToday ? root.t.darkInk : root.t.amber
+                color: dayCell.isSelected ? root.t.darkInk : root.t.amber
               }
             }
 
@@ -425,45 +426,46 @@ Item {
 
       Rectangle {
         Layout.fillWidth: true
-        Layout.leftMargin: 12
-        Layout.rightMargin: 12
-        Layout.topMargin: 10
-        Layout.bottomMargin: 10
-        Layout.preferredHeight: 1
-        color: root.t.line
-        visible: root.selectedEvents.length > 0
-      }
-
-      Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 38
-        visible: root.selectedEvents.length > 0
+        Layout.topMargin: 8
+        Layout.preferredHeight: 52
         radius: Theme.radiusChip
-        color: root.t.surface
+        color: root.t.inset
 
         RowLayout {
           anchors.fill: parent
-          anchors.leftMargin: 12
-          anchors.rightMargin: 12
-          spacing: 8
+          anchors.leftMargin: 11
+          anchors.rightMargin: 11
+          spacing: 10
 
           Rectangle {
-            Layout.preferredWidth: 5
-            Layout.preferredHeight: 5
-            radius: 0
-            color: root.t.amber
-            Layout.alignment: Qt.AlignVCenter
+            Layout.preferredWidth: 2
+            Layout.fillHeight: true
+            Layout.topMargin: 10
+            Layout.bottomMargin: 10
+            radius: 1
+            color: root.t.accent
           }
 
-          Text {
+          ColumnLayout {
             Layout.fillWidth: true
-            text: root.selectedEvents.join(", ")
-            color: root.t.ink1
-            font.family: Theme.textFont
-            font.pixelSize: Theme.fontBase
-            font.weight: Font.Medium
-            elide: Text.ElideRight
-            Layout.alignment: Qt.AlignVCenter
+            spacing: 2
+            Text {
+              Layout.fillWidth: true
+              text: Qt.locale().toString(root.selectedDate, "dddd, d MMMM")
+              color: root.t.ink1
+              font.family: Theme.displayFont
+              font.pixelSize: Theme.fontBase
+              font.weight: Font.DemiBold
+              elide: Text.ElideRight
+            }
+            Text {
+              Layout.fillWidth: true
+              text: root.selectedEvents.length > 0 ? root.selectedEvents.join(", ") : "No events"
+              color: root.selectedEvents.length > 0 ? root.t.ink2 : root.t.ink3
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontSm
+              elide: Text.ElideRight
+            }
           }
         }
       }
