@@ -61,8 +61,8 @@ Item {
 
 
   implicitWidth: Theme.popupWidthMd
-  readonly property int preferredHeight: Math.min(400, 28 + bodyCol.height)
-  property int popupHeight: 200
+  readonly property int preferredHeight: Math.min(360, Theme.cardPadding * 2 + bodyCol.height)
+  property int popupHeight: 240
 
   function syncHeight() {
     if (bodyCol.height > 0)
@@ -81,6 +81,27 @@ Item {
   PopupCard {
     id: card
     anchors.fill: parent
+    padding: 10
+
+    Image {
+      id: heroBackdrop
+      anchors.fill: parent
+      source: root.activeMedia ? root.activeMedia.trackArtUrl : ""
+      sourceSize: Qt.size(900, 700)
+      fillMode: Image.PreserveAspectCrop
+      asynchronous: true
+      opacity: status === Image.Ready ? 0.58 : 0
+    }
+
+    Rectangle {
+      anchors.fill: parent
+      gradient: Gradient {
+        orientation: Gradient.Horizontal
+        GradientStop { position: 0.0; color: Qt.rgba(13 / 255, 17 / 255, 23 / 255, 0.84) }
+        GradientStop { position: 0.48; color: Qt.rgba(13 / 255, 17 / 255, 23 / 255, 0.70) }
+        GradientStop { position: 1.0; color: Qt.rgba(13 / 255, 17 / 255, 23 / 255, 0.52) }
+      }
+    }
 
     Flickable {
       anchors.fill: parent
@@ -96,7 +117,7 @@ Item {
         SegmentedControl {
           visible: root.playerCount > 1
           width: parent.width
-          height: visible ? 32 : 0
+          height: visible ? 30 : 0
           items: {
             const out = [];
             for (let i = 0; i < root.playerList.length; i++) {
@@ -126,19 +147,19 @@ Item {
 
           RowLayout {
             width: parent.width
-            spacing: 12
+            spacing: 14
 
             ClippingRectangle {
-              Layout.preferredWidth: 64
-              Layout.preferredHeight: 64
-              radius: Theme.radiusBase
+              Layout.preferredWidth: 136
+              Layout.preferredHeight: 136
+              radius: 4
               color: root.t.inset
 
               Image {
                 id: artImage
                 anchors.fill: parent
                 source: root.activeMedia ? root.activeMedia.trackArtUrl : ""
-                sourceSize: Qt.size(128, 128)
+                sourceSize: Qt.size(272, 272)
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 visible: status === Image.Ready
@@ -149,26 +170,34 @@ Item {
                 visible: artImage.status !== Image.Ready
                 text: "󰝚"
                 font.family: root.t.mono
-                font.pixelSize: 24
+                font.pixelSize: 36
                 color: root.t.ink3
-                opacity: 0.8
               }
+            }
+
+            Rectangle {
+              Layout.preferredWidth: 2
+              Layout.preferredHeight: 76
+              radius: 1
+              color: root.statusColor
+              opacity: 0.9
             }
 
             ColumnLayout {
               Layout.fillWidth: true
               Layout.alignment: Qt.AlignVCenter
-              spacing: 2
+              spacing: 5
 
               Text {
                 Layout.fillWidth: true
                 text: root.player ? (root.player.trackTitle || "No Title") : "No Media"
                 font.family: Theme.displayFont
-                font.pixelSize: Theme.fontBase
+                font.pixelSize: 20
                 font.weight: Font.DemiBold
                 color: root.t.ink1
                 elide: Text.ElideRight
-                maximumLineCount: 1
+                maximumLineCount: 2
+                wrapMode: Text.Wrap
               }
 
               Text {
@@ -180,7 +209,7 @@ Item {
                   return "Unknown Artist";
                 }
                 font.family: Theme.textFont
-                font.pixelSize: Theme.fontSm
+                font.pixelSize: Theme.fontMd
                 color: root.t.ink2
                 elide: Text.ElideRight
                 maximumLineCount: 1
@@ -199,7 +228,7 @@ Item {
                   return parts.join(" · ");
                 }
                 font.family: Theme.textFont
-                font.pixelSize: Theme.fontXs
+                font.pixelSize: Theme.fontSm
                 color: root.t.ink3
                 elide: Text.ElideRight
                 maximumLineCount: 1
@@ -238,8 +267,8 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                height: 4
-                radius: 0
+                height: 3
+                radius: 2
                 color: root.t.inset
                 border.color: seekHit.activeFocus ? root.t.focusRing : root.t.tint(root.t.cardBorder, 0.5)
                 border.width: seekHit.activeFocus ? root.t.focusRingWidth : 1
@@ -251,15 +280,15 @@ Item {
                   anchors.top: parent.top
                   anchors.bottom: parent.bottom
                   width: root.trackLength > 0 ? Math.min(parent.width, Math.max(0, parent.width * (root.trackPos / root.trackLength))) : 0
-                  radius: 0
+                  radius: 2
                   color: root.t.accent
                 }
 
                 Rectangle {
                   id: seekThumb
-                  width: 12
-                  height: 12
-                  radius: 0
+                  width: 14
+                  height: 14
+                  radius: 7
                   color: (seekMouse.containsMouse || root.isSeeking) ? root.t.ink1 : "#cbd5e1"
                   border.color: Qt.rgba(0, 0, 0, 0.3)
                   border.width: 1
@@ -335,7 +364,7 @@ Item {
             IconButton {
               glyph: "󰒝"
               fs: Theme.iconBase
-              btnSize: 32
+              btnSize: 30
               fg: (root.player && root.player.shuffle) ? root.t.accent : root.t.ink3
               dimmed: !(root.player && root.player.shuffleSupported && root.player.canControl)
               tooltip: (root.player && root.player.shuffle) ? "Shuffle on" : "Shuffle off"
@@ -351,7 +380,7 @@ Item {
             IconButton {
               glyph: "󰒮"
               fs: Theme.iconMd
-              btnSize: 34
+              btnSize: 32
               dimmed: !(root.player && root.player.canGoPrevious)
               tooltip: "Previous track"
               onClicked: {
@@ -363,9 +392,9 @@ Item {
 
             Rectangle {
               id: playPauseBtn
-              Layout.preferredWidth: 44
-              Layout.preferredHeight: 34
-              radius: Theme.radiusChip
+              Layout.preferredWidth: 40
+              Layout.preferredHeight: 40
+              radius: 20
               activeFocusOnTab: true
               color: playMouse.pressed ? Qt.darker(root.t.accent, 1.2) : (playMouse.containsMouse || playPauseBtn.activeFocus) ? Qt.lighter(root.t.accent, 1.07) : root.t.accent
               border.color: playPauseBtn.activeFocus ? root.t.ink1 : "transparent"
@@ -394,7 +423,7 @@ Item {
                 anchors.horizontalCenterOffset: root.isPlaying ? 0 : 1
                 text: root.isPlaying ? "󰏤" : "󰐊"
                 font.family: root.t.mono
-                font.pixelSize: Theme.iconMd
+                font.pixelSize: Theme.iconLg
                 color: root.t.darkInk
               }
               MouseArea {
