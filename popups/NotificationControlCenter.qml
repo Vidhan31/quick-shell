@@ -17,6 +17,8 @@ Item {
 
   signal closeRequested()
 
+  property bool showSettings: false
+
   IconResolver {
     id: iconResolver
   }
@@ -74,12 +76,7 @@ Item {
     return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp") || lower.endsWith(".gif") || lower.endsWith(".svg");
   }
 
-  /* Grouped notification list from service. The service assigns new array
-     identities on every rebuild, including the 10s timeAgo tick, so a direct
-     bind suffices. Manual dep tickling here caused a binding loop against the
-     QML-owned cache. */
   readonly property var groupedList: service ? service.groupedList : []
-
   readonly property int totalCount: service ? (service.totalCount || 0) : 0
   readonly property int unreadCount: service ? (service.unreadCount || 0) : 0
   readonly property bool isDnd: service ? (service.dnd === true) : false
@@ -90,7 +87,7 @@ Item {
         const timeStr = Qt.formatTime(root.service.dndUntil, "hh:mm");
         return `Muted until ${timeStr} · ${root.totalCount} stored`;
       }
-      return root.totalCount > 0 ? `Muted · ${root.totalCount} stored` : "Muted · new ones held back";
+      return root.totalCount > 0 ? `Muted · ${root.totalCount} stored` : "Do Not Disturb active";
     }
     if (root.totalCount === 0) return "You're all caught up";
     if (root.unreadCount > 0) return `${root.totalCount} stored · ${root.unreadCount} new`;
@@ -98,11 +95,9 @@ Item {
   }
 
   implicitWidth: Theme.popupWidthMd
-  /* Hug the content when closed / opened, capped so overflow scrolls inside the card.
-     CRITICAL (Wayland / KWin): never shrink the height while the popup is
-     visible. Resizing an active xdg_popup makes KWin squish the surface buffer
-     and corrupt the input region grab, so popupHeight stays frozen while
-     visible and moves only when closed or opened. */
+
+  /* Wayland / KWin buffer height freeze: height adapts when opening, stays
+     frozen during display to prevent KWin surface grab corruption. */
   readonly property int preferredHeight: Math.min(640, Math.max(180, headerCol.height + scrollCol.height + 24))
   property int popupHeight: 180
   property bool isFrozen: false
@@ -140,127 +135,253 @@ Item {
   PopupCard {
     id: card
     anchors.fill: parent
+    padding: 12
 
     Column {
       id: headerCol
       anchors.top: parent.top
       anchors.left: parent.left
       anchors.right: parent.right
-      spacing: 0
+      spacing: 8
 
-      PopupHeader {
-        width: parent.width
-        glyph: root.isDnd ? "󰂛" : "󰂚"
-        glyphColor: root.totalCount > 0 ? (root.isDnd ? root.t.amber : root.t.accent) : root.t.ink3
-        title: "Notifications"
-        subtitle: root.subtitleText
-
-        IconButton {
-          visible: root.totalCount > 0
-          glyph: "󰃢"
-          fs: Theme.iconBase
-          tooltip: "Clear all notifications"
-          onClicked: {
-            if (root.service) root.service.clearAll();
-          }
-        }
-
-        ToggleSwitch {
-          on: root.isDnd
-          onColor: root.t.amber
-          tooltip: root.isDnd ? "Do Not Disturb (Active)" : "Do Not Disturb (Off)"
-          onToggled: {
-            if (root.service) root.service.toggleDnd();
-          }
-        }
-      }
-
+      // Main Header Bar
       RowLayout {
-        visible: root.isDnd
         width: parent.width
-        height: 24
-        spacing: 6
+        height: 32
+        spacing: 8
 
-        Text {
-          text: "Mute for:"
-          font.family: Theme.textFont
-          font.pixelSize: Theme.fontXs
-          color: root.t.ink3
-        }
+        Rectangle {
+          Layout.preferredWidth: 28
+          Layout.preferredHeight: 28
+          radius: 6
+          color: root.isDnd ? root.t.tint(root.t.amber, 0.14) : (root.totalCount > 0 ? root.t.accentBg : root.t.hoverWash)
+          border.color: root.isDnd ? root.t.tint(root.t.amber, 0.3) : (root.totalCount > 0 ? root.t.tint(root.t.accent, 0.3) : root.t.lineMuted)
+          border.width: 1
 
-        Item { Layout.fillWidth: true }
-
-        TextButton {
-          text: "1h"
-          fs: Theme.fontXs
-          onClicked: {
-            if (root.service) root.service.setDndTimed(60);
+          Text {
+            anchors.centerIn: parent
+            text: root.isDnd ? "󰂛" : (root.totalCount > 0 ? "󰂚" : "󰂜")
+            font.family: root.monoFont
+            font.pixelSize: 15
+            color: root.isDnd ? root.t.amber : (root.totalCount > 0 ? root.t.accent : root.t.ink3)
           }
         }
-        TextButton {
-          text: "2h"
-          fs: Theme.fontXs
-          onClicked: {
-            if (root.service) root.service.setDndTimed(120);
+
+        Column {
+          Layout.fillWidth: true
+          spacing: 1
+
+          Row {
+            spacing: 6
+            Text {
+              text: "Notifications"
+              font.family: Theme.displayFont
+              font.pixelSize: Theme.fontLg
+              font.weight: Font.SemiBold
+              color: root.t.ink1
+            }
+
+            Rectangle {
+              visible: root.totalCount > 0
+              anchors.verticalCenter: parent.verticalCenter
+              implicitWidth: countBadgeTxt.implicitWidth + 10
+              implicitHeight: 18
+              radius: 9
+              color: root.unreadCount > 0 ? root.t.accentBg : root.t.hoverWash
+              border.color: root.unreadCount > 0 ? root.t.tint(root.t.accent, 0.35) : root.t.lineMuted
+              border.width: 1
+
+              Text {
+                id: countBadgeTxt
+                anchors.centerIn: parent
+                text: root.unreadCount > 0 ? `${root.totalCount} · ${root.unreadCount} new` : root.totalCount.toString()
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontXs
+                font.weight: Font.SemiBold
+                color: root.unreadCount > 0 ? root.t.accent : root.t.ink2
+              }
+            }
+          }
+
+          Text {
+            text: root.subtitleText
+            font.family: Theme.textFont
+            font.pixelSize: Theme.fontXs
+            color: root.isDnd ? root.t.amber : root.t.ink3
+            elide: Text.ElideRight
           }
         }
-        TextButton {
-          text: "4h"
-          fs: Theme.fontXs
-          onClicked: {
-            if (root.service) root.service.setDndTimed(240);
+
+        // Action Toolbar
+        Row {
+          spacing: 2
+          Layout.alignment: Qt.AlignVCenter
+
+          IconButton {
+            visible: root.totalCount > 0
+            glyph: "󰆴"
+            fs: 14
+            btnSize: 28
+            fg: root.t.ink2
+            tooltip: "Clear all notifications"
+            onClicked: {
+              if (root.service) root.service.clearAll();
+            }
           }
-        }
-        TextButton {
-          text: "Tomorrow"
-          fs: Theme.fontXs
-          onClicked: {
-            if (root.service) {
-              const now = new Date();
-              const tmrw = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 8, 0, 0);
-              const diffMins = Math.max(1, Math.round((tmrw.getTime() - now.getTime()) / 60000));
-              root.service.setDndTimed(diffMins);
+
+          IconButton {
+            glyph: root.isDnd ? "󰂛" : "󰂚"
+            fs: 14
+            btnSize: 28
+            fg: root.isDnd ? root.t.amber : root.t.ink2
+            tooltip: root.isDnd ? "Do Not Disturb (Active)" : "Do Not Disturb (Off)"
+            onClicked: {
+              if (root.service) root.service.toggleDnd();
+            }
+          }
+
+          IconButton {
+            glyph: "󰒓"
+            fs: 14
+            btnSize: 28
+            fg: root.showSettings ? root.t.accent : root.t.ink3
+            tooltip: "Notification settings"
+            onClicked: {
+              root.showSettings = !root.showSettings;
             }
           }
         }
-        TextButton {
-          text: "Until off"
-          fs: Theme.fontXs
-          onClicked: {
-            if (root.service) root.service.setDndTimed(0);
+      }
+
+      // Collapsible DND Presets Bar
+      Rectangle {
+        visible: root.isDnd
+        width: parent.width
+        implicitHeight: dndPresetRow.implicitHeight + 8
+        radius: 6
+        color: root.t.tint(root.t.amber, 0.08)
+        border.color: root.t.tint(root.t.amber, 0.22)
+        border.width: 1
+
+        RowLayout {
+          id: dndPresetRow
+          anchors {
+            left: parent.left
+            right: parent.right
+            verticalCenter: parent.verticalCenter
+            leftMargin: 8
+            rightMargin: 8
+          }
+          spacing: 6
+
+          Text {
+            text: "Mute for:"
+            font.family: Theme.textFont
+            font.pixelSize: Theme.fontXs
+            font.weight: Font.Medium
+            color: root.t.amber
+          }
+
+          Item { Layout.fillWidth: true }
+
+          TextButton {
+            text: "1h"
+            fs: Theme.fontXs
+            fg: root.t.ink2
+            onClicked: {
+              if (root.service) root.service.setDndTimed(60);
+            }
+          }
+          TextButton {
+            text: "2h"
+            fs: Theme.fontXs
+            fg: root.t.ink2
+            onClicked: {
+              if (root.service) root.service.setDndTimed(120);
+            }
+          }
+          TextButton {
+            text: "4h"
+            fs: Theme.fontXs
+            fg: root.t.ink2
+            onClicked: {
+              if (root.service) root.service.setDndTimed(240);
+            }
+          }
+          TextButton {
+            text: "Tomorrow"
+            fs: Theme.fontXs
+            fg: root.t.ink2
+            onClicked: {
+              if (root.service) {
+                const now = new Date();
+                const tmrw = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 8, 0, 0);
+                const diffMins = Math.max(1, Math.round((tmrw.getTime() - now.getTime()) / 60000));
+                root.service.setDndTimed(diffMins);
+              }
+            }
+          }
+          TextButton {
+            text: "Until off"
+            fs: Theme.fontXs
+            fg: root.t.amber
+            onClicked: {
+              if (root.service) root.service.setDndTimed(0);
+            }
           }
         }
       }
 
-      /* Quickshell 0.3.1 takeover switch: when on, the
-         NotificationServer owns org.freedesktop.Notifications; when off,
-         the legacy passive monitor feeds the same UI. */
-      RowLayout {
-        visible: root.service != null
+      // Collapsible Settings Drawer
+      Rectangle {
+        visible: root.showSettings
         width: parent.width
-        height: 28
-        spacing: 8
+        implicitHeight: settingsCol.implicitHeight + 14
+        radius: 6
+        color: root.t.surfaceElevated
+        border.color: root.t.lineMuted
+        border.width: 1
 
-        Text {
-          text: "Quickshell takeover"
-          font.family: Theme.textFont
-          font.pixelSize: Theme.fontSm
-          color: (root.service && root.service.takeoverEnabled === true) ? root.t.accent : root.t.ink3
-        }
-        Item {
-          Layout.fillWidth: true
-          Layout.preferredHeight: 1
-        }
-        Text {
-          text: (root.service && root.service.takeoverEnabled === true) ? "On" : "Off"
-          font.family: Theme.textFont
-          font.pixelSize: Theme.fontSm
-          color: root.t.ink2
-        }
-        ToggleSwitch {
-          on: root.service && root.service.takeoverEnabled === true
-          onToggled: {
-            if (root.service) root.service.takeoverEnabled = !root.service.takeoverEnabled;
+        Column {
+          id: settingsCol
+          anchors {
+            top: parent.top
+            left: parent.left
+            right: parent.right
+            margins: 8
+          }
+          spacing: 6
+
+          RowLayout {
+            width: parent.width
+            spacing: 8
+
+            Column {
+              Layout.fillWidth: true
+              spacing: 1
+
+              Text {
+                text: "Quickshell takeover"
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontSm
+                font.weight: Font.Medium
+                color: (root.service && root.service.takeoverEnabled === true) ? root.t.accent : root.t.ink1
+              }
+              Text {
+                text: "Own org.freedesktop.Notifications D-Bus service"
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontXs
+                color: root.t.ink3
+              }
+            }
+
+            ToggleSwitch {
+              on: root.service && root.service.takeoverEnabled === true
+              tooltip: "Quickshell notification server takeover"
+              onToggled: {
+                if (root.service) root.service.takeoverEnabled = !root.service.takeoverEnabled;
+              }
+            }
           }
         }
       }
@@ -293,242 +414,257 @@ Item {
       Column {
         id: scrollCol
         width: parent.width
-        spacing: 0
+        spacing: 12
 
-      SectionCard {
-        visible: root.jobsList.length > 0
-        width: parent.width
-        implicitHeight: jobsCol.height + 20
-        height: implicitHeight
-        clip: true
+        // Tasks & Transfers Section
+        Rectangle {
+          visible: root.jobsList.length > 0
+          width: parent.width
+          implicitHeight: jobsCol.implicitHeight + 16
+          radius: 8
+          color: root.t.surfaceElevated
+          border.color: root.t.lineMuted
+          border.width: 1
 
-        Column {
-          id: jobsCol
-          anchors {
-            top: parent.top
-            left: parent.left
-            right: parent.right
-            margins: 10
-          }
-          spacing: 8
-
-          RowLayout {
-            width: parent.width
-            height: 28
+          Column {
+            id: jobsCol
+            anchors {
+              top: parent.top
+              left: parent.left
+              right: parent.right
+              margins: 10
+            }
             spacing: 8
 
-            Text {
-              text: "Tasks & Transfers"
-              font.family: Theme.displayFont
-              font.pixelSize: Theme.fontBase
-              font.weight: Font.DemiBold
-              color: root.t.ink1
-            }
-
-            Rectangle {
-              visible: root.activeJobsList.length > 0
-              Layout.preferredHeight: 18
-              implicitWidth: activeJobsCountText.implicitWidth + 10
-              radius: 0
-              color: root.t.accentBg
+            RowLayout {
+              width: parent.width
+              height: 22
+              spacing: 6
 
               Text {
-                id: activeJobsCountText
-                anchors.centerIn: parent
-                text: root.activeJobsList.length.toString()
-                font.family: Theme.roundedFont
-                font.pixelSize: Theme.fontXs
-                font.weight: Font.DemiBold
+                text: "󰇚"
+                font.family: root.monoFont
+                font.pixelSize: 14
                 color: root.t.accent
+              }
+
+              Text {
+                text: "Tasks & Transfers"
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontSm
+                font.weight: Font.SemiBold
+                color: root.t.ink1
+              }
+
+              Rectangle {
+                visible: root.activeJobsList.length > 0
+                implicitWidth: activeJobsCountTxt.implicitWidth + 8
+                implicitHeight: 16
+                radius: 8
+                color: root.t.accentBg
+
+                Text {
+                  id: activeJobsCountTxt
+                  anchors.centerIn: parent
+                  text: root.activeJobsList.length.toString()
+                  font.family: Theme.textFont
+                  font.pixelSize: Theme.fontXs
+                  font.weight: Font.SemiBold
+                  color: root.t.accent
+                }
+              }
+
+              Item { Layout.fillWidth: true }
+
+              Text {
+                visible: root.jobService && root.activeJobsList.length > 0 && root.jobService.formattedTotalSpeed.length > 0
+                text: root.jobService ? root.jobService.formattedTotalSpeed : ""
+                font.family: Theme.mono
+                font.pixelSize: Theme.fontXs
+                color: root.t.ink3
+              }
+
+              IconButton {
+                visible: root.jobsList.length > root.activeJobsList.length
+                glyph: "󰃢"
+                fs: 12
+                btnSize: 22
+                tooltip: "Clear finished tasks"
+                onClicked: {
+                  if (root.jobService) root.jobService.clearFinished();
+                }
               }
             }
 
-            Item { Layout.fillWidth: true }
+            Repeater {
+              model: root.jobsList
+
+              delegate: Rectangle {
+                id: jobRow
+                required property var modelData
+                required property int index
+
+                readonly property var job: jobRow.modelData
+                readonly property int jobId: job ? (job.id || 0) : 0
+                readonly property string appName: job ? (job.appName || "Task") : "Task"
+                readonly property string desktopEntry: job ? (job.desktopEntry || "") : ""
+                readonly property string appIcon: job ? (job.appIcon || "") : ""
+                readonly property string summaryText: job ? (job.summary || "Task Progress") : ""
+                readonly property string bodyText: job ? (job.body || "") : ""
+                readonly property int percentVal: job ? (job.percent || 0) : 0
+                readonly property string speedText: job ? (job.formattedSpeed || "") : ""
+                readonly property bool isSuspended: job ? (job.isSuspended === true) : false
+                readonly property bool isStopped: job ? (job.isStopped === true) : false
+                readonly property int errorCode: job ? (job.errorCode || 0) : 0
+                readonly property bool canSuspend: job ? (job.suspendable === true) : false
+
+                readonly property string resolvedAppIcon: root.resolveAppIcon(desktopEntry, appName, appIcon)
+
+                width: parent.width
+                implicitHeight: jobRowCol.implicitHeight + 14
+                radius: 6
+                color: root.t.inset
+                border.color: root.t.lineMuted
+                border.width: 1
+
+                Column {
+                  id: jobRowCol
+                  anchors {
+                    top: parent.top
+                    left: parent.left
+                    right: parent.right
+                    margins: 8
+                  }
+                  spacing: 6
+
+                  RowLayout {
+                    width: parent.width
+                    spacing: 8
+
+                    Rectangle {
+                      Layout.preferredWidth: 24
+                      Layout.preferredHeight: 24
+                      radius: 4
+                      color: root.t.surface
+                      IconImage {
+                        anchors.centerIn: parent
+                        width: 14
+                        height: 14
+                        source: jobRow.resolvedAppIcon
+                        asynchronous: true
+                      }
+                    }
+
+                    Column {
+                      Layout.fillWidth: true
+                      spacing: 1
+                      Text {
+                        width: parent.width
+                        text: jobRow.summaryText
+                        font.family: Theme.textFont
+                        font.pixelSize: Theme.fontSm
+                        font.weight: Font.Medium
+                        color: root.t.ink1
+                        elide: Text.ElideRight
+                      }
+                      Text {
+                        width: parent.width
+                        text: jobRow.isStopped ? (jobRow.errorCode !== 0 ? "Failed" : "Finished") : (jobRow.isSuspended ? "Paused" : (jobRow.speedText.length > 0 ? (jobRow.speedText + (jobRow.bodyText.length > 0 ? " · " + jobRow.bodyText : "")) : (jobRow.bodyText.length > 0 ? jobRow.bodyText : "In progress")))
+                        font.family: Theme.textFont
+                        font.pixelSize: Theme.fontXs
+                        color: jobRow.isStopped ? (jobRow.errorCode !== 0 ? root.t.red : root.t.ink3) : (jobRow.isSuspended ? root.t.amber : root.t.ink3)
+                        elide: Text.ElideMiddle
+                      }
+                    }
+
+                    IconButton {
+                      visible: !jobRow.isStopped && jobRow.canSuspend
+                      glyph: jobRow.isSuspended ? "󰐊" : "󰏤"
+                      fs: 11
+                      btnSize: 22
+                      tooltip: jobRow.isSuspended ? "Resume" : "Pause"
+                      onClicked: {
+                        if (root.jobService) {
+                          if (jobRow.isSuspended) root.jobService.resumeJob(jobRow.jobId);
+                          else root.jobService.suspendJob(jobRow.jobId);
+                        }
+                      }
+                    }
+
+                    IconButton {
+                      glyph: "󰅖"
+                      fs: 11
+                      btnSize: 22
+                      tooltip: jobRow.isStopped ? "Remove" : "Cancel"
+                      onClicked: {
+                        if (root.jobService) {
+                          if (jobRow.isStopped) root.jobService.removeJob(jobRow.jobId);
+                          else root.jobService.cancelJob(jobRow.jobId);
+                        }
+                      }
+                    }
+                  }
+
+                  ProgressBar {
+                    visible: !jobRow.isStopped
+                    width: parent.width
+                    implicitHeight: 3
+                    radius: 1.5
+                    from: 0.0
+                    to: 100.0
+                    value: Math.max(0, Math.min(100, jobRow.percentVal))
+                    fillColor: jobRow.isSuspended ? Theme.amber : Theme.accent
+                    trackColor: Theme.surface
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Empty State
+        Item {
+          visible: root.totalCount === 0 && root.jobsList.length === 0
+          width: parent.width
+          height: 140
+
+          Column {
+            anchors.centerIn: parent
+            spacing: 6
 
             Text {
-              visible: root.jobService && root.activeJobsList.length > 0 && root.jobService.formattedTotalSpeed.length > 0
-              text: root.jobService ? root.jobService.formattedTotalSpeed : ""
-              font.family: Theme.mono
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: "󰂜"
+              font.family: root.monoFont
+              font.pixelSize: 28
+              color: root.t.ink3
+              opacity: 0.6
+            }
+
+            Text {
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: "All Caught Up"
+              font.family: Theme.displayFont
+              font.pixelSize: Theme.fontBase
+              font.weight: Font.SemiBold
+              color: root.t.ink2
+            }
+
+            Text {
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: "No notifications to show"
+              font.family: Theme.textFont
               font.pixelSize: Theme.fontXs
               color: root.t.ink3
             }
-
-            IconButton {
-              visible: root.jobsList.length > root.activeJobsList.length
-              glyph: "󰃢"
-              fs: 13
-              btnSize: 24
-              tooltip: "Clear finished tasks"
-              onClicked: {
-                if (root.jobService) root.jobService.clearFinished();
-              }
-            }
-          }
-
-          Repeater {
-            model: root.jobsList
-
-            delegate: Rectangle {
-              id: jobRow
-              required property var modelData
-              required property int index
-
-              readonly property var job: jobRow.modelData
-              readonly property int jobId: job ? (job.id || 0) : 0
-              readonly property string appName: job ? (job.appName || "Task") : "Task"
-              readonly property string desktopEntry: job ? (job.desktopEntry || "") : ""
-              readonly property string appIcon: job ? (job.appIcon || "") : ""
-              readonly property string summaryText: job ? (job.summary || "Task Progress") : ""
-              readonly property string bodyText: job ? (job.body || "") : ""
-              readonly property int percentVal: job ? (job.percent || 0) : 0
-              readonly property string speedText: job ? (job.formattedSpeed || "") : ""
-              readonly property bool isSuspended: job ? (job.isSuspended === true) : false
-              readonly property bool isStopped: job ? (job.isStopped === true) : false
-              readonly property int errorCode: job ? (job.errorCode || 0) : 0
-              readonly property bool canSuspend: job ? (job.suspendable === true) : false
-
-              readonly property string resolvedAppIcon: root.resolveAppIcon(desktopEntry, appName, appIcon)
-
-              width: parent.width
-              implicitHeight: jobRowCol.implicitHeight + 14
-              radius: Theme.radiusBase
-              color: root.t.inset
-              border.color: root.t.cardBorder
-              border.width: 1
-
-              Column {
-                id: jobRowCol
-                anchors {
-                  top: parent.top
-                  left: parent.left
-                  right: parent.right
-                  margins: 8
-                }
-                spacing: 6
-
-                RowLayout {
-                  width: parent.width
-                  spacing: 8
-
-                  Rectangle {
-                    Layout.preferredWidth: 24
-                    Layout.preferredHeight: 24
-                    radius: Theme.radiusBase
-                    color: root.t.inset
-                    IconImage {
-                      anchors.centerIn: parent
-                      width: 14
-                      height: 14
-                      source: jobRow.resolvedAppIcon
-                      asynchronous: true
-                    }
-                  }
-
-                  Column {
-                    Layout.fillWidth: true
-                    spacing: 1
-                    Text {
-                      width: parent.width
-                      text: jobRow.summaryText
-                      font.family: Theme.textFont
-                      font.pixelSize: Theme.fontSm
-                      font.weight: Font.DemiBold
-                      color: root.t.ink1
-                      elide: Text.ElideRight
-                    }
-                    Text {
-                      width: parent.width
-                      text: jobRow.isStopped ? (jobRow.errorCode !== 0 ? "Failed" : "Finished") : (jobRow.isSuspended ? "Paused" : (jobRow.speedText.length > 0 ? (jobRow.speedText + (jobRow.bodyText.length > 0 ? " · " + jobRow.bodyText : "")) : (jobRow.bodyText.length > 0 ? jobRow.bodyText : "In progress")))
-                      font.family: Theme.textFont
-                      font.pixelSize: Theme.fontXs
-                      color: jobRow.isStopped ? (jobRow.errorCode !== 0 ? root.t.red : root.t.ink3) : (jobRow.isSuspended ? root.t.amber : root.t.ink3)
-                      elide: Text.ElideMiddle
-                    }
-                  }
-
-                  IconButton {
-                    visible: !jobRow.isStopped && jobRow.canSuspend
-                    glyph: jobRow.isSuspended ? "󰐊" : "󰏤"
-                    fs: 11
-                    btnSize: 22
-                    tooltip: jobRow.isSuspended ? "Resume" : "Pause"
-                    onClicked: {
-                      if (root.jobService) {
-                        if (jobRow.isSuspended) root.jobService.resumeJob(jobRow.jobId);
-                        else root.jobService.suspendJob(jobRow.jobId);
-                      }
-                    }
-                  }
-
-                  IconButton {
-                    glyph: "󰅖"
-                    fs: 11
-                    btnSize: 22
-                    tooltip: jobRow.isStopped ? "Remove" : "Cancel"
-                    onClicked: {
-                      if (root.jobService) {
-                        if (jobRow.isStopped) root.jobService.removeJob(jobRow.jobId);
-                        else root.jobService.cancelJob(jobRow.jobId);
-                      }
-                    }
-                  }
-                }
-
-                ProgressBar {
-                  visible: !jobRow.isStopped
-                  width: parent.width
-                  implicitHeight: 4
-                  from: 0.0
-                  to: 100.0
-                  value: Math.max(0, Math.min(100, jobRow.percentVal))
-                  fillColor: jobRow.isSuspended ? Theme.amber : Theme.accent
-                  trackColor: Theme.inset
-                }
-              }
-            }
           }
         }
-      }
-      Item {
-        visible: root.jobsList.length > 0 && root.totalCount > 0
-        width: 1
-        height: 8
-      }
 
-      Item {
-        visible: root.totalCount === 0 && root.jobsList.length === 0
-        width: parent.width
-        height: visible ? 64 : 0
-        Column {
-          anchors.centerIn: parent
-          spacing: 3
-          Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: "No notifications"
-            font.family: Theme.displayFont
-            font.pixelSize: Theme.fontBase
-            color: root.t.ink2
-          }
-          Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: "You're all caught up"
-            font.family: Theme.textFont
-            font.pixelSize: Theme.fontSm
-            color: root.t.ink3
-          }
-        }
-      }
-
-      Column {
-        id: contentCol
-        visible: root.totalCount > 0
-        width: parent.width
-        spacing: 8
-
+        // Notification Groups Stream
         Repeater {
           model: root.groupedList
 
-          delegate: SectionCard {
+          delegate: Column {
             id: groupDelegate
             required property var modelData
             required property int index
@@ -541,7 +677,6 @@ Item {
             readonly property bool isExpanded: group ? (group.expanded === true) : false
 
             readonly property var visibleItems: isExpanded ? notifsList : notifsList.slice(0, 2)
-
             readonly property string groupDesktopEntry: group ? (group.desktopEntry || "") : ""
             readonly property string resolvedAppIcon: root.resolveAppIcon(groupDesktopEntry, appName, appIcon)
 
@@ -554,133 +689,204 @@ Item {
               return root.service ? root.service.timeAgo(newest.timestamp) : (newest ? (newest.timeAgo || "") : "");
             }
 
-            width: contentCol.width
-            implicitHeight: groupCol.height + 20
-            height: implicitHeight
-            clip: true
-
-            Column {
-              id: groupCol
-              anchors {
-                top: parent.top
-                left: parent.left
-                right: parent.right
-                margins: 10
+            readonly property string groupOrigin: {
+              if (!notifsList || notifsList.length === 0) return "";
+              const orig = notifsList[0].originName || "";
+              if (orig.length > 0 && orig.toLowerCase() !== groupDelegate.appName.toLowerCase()) {
+                return orig;
               }
-              spacing: 8
+              return "";
+            }
 
-              RowLayout {
-                visible: groupDelegate.totalGroupCount > 1
-                width: parent.width
-                height: 20
-                spacing: 6
+            width: scrollCol.width
+            spacing: 6
 
-                IconImage {
-                  visible: groupDelegate.resolvedAppIcon.length > 0
-                  Layout.preferredWidth: 16
-                  Layout.preferredHeight: 16
-                  Layout.alignment: Qt.AlignVCenter
-                  source: groupDelegate.resolvedAppIcon
-                  asynchronous: true
-                }
+            // Group Header Bar (Only shown when 2+ items belong to this app)
+            RowLayout {
+              visible: groupDelegate.totalGroupCount > 1
+              width: parent.width
+              height: 24
+              spacing: 6
+
+              IconImage {
+                visible: groupDelegate.resolvedAppIcon.length > 0
+                Layout.preferredWidth: 16
+                Layout.preferredHeight: 16
+                Layout.alignment: Qt.AlignVCenter
+                source: groupDelegate.resolvedAppIcon
+                asynchronous: true
+              }
+
+              Text {
+                visible: !groupDelegate.resolvedAppIcon
+                text: groupDelegate.appName.charAt(0).toUpperCase()
+                font.family: Theme.roundedFont
+                font.pixelSize: Theme.fontSm
+                font.weight: Font.DemiBold
+                color: root.t.accent
+              }
+
+              Text {
+                text: groupDelegate.appName
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontSm
+                font.weight: Font.SemiBold
+                color: root.t.ink1
+              }
+
+              // Count Badge
+              Rectangle {
+                implicitWidth: groupCountTxt.implicitWidth + 8
+                implicitHeight: 16
+                radius: 8
+                color: root.t.accentBg
+
                 Text {
-                  visible: !groupDelegate.resolvedAppIcon
-                  text: groupDelegate.appName.charAt(0).toUpperCase()
-                  font.family: Theme.roundedFont
-                  font.pixelSize: Theme.fontSm
-                  font.weight: Font.DemiBold
+                  id: groupCountTxt
+                  anchors.centerIn: parent
+                  text: groupDelegate.totalGroupCount.toString()
+                  font.family: Theme.textFont
+                  font.pixelSize: Theme.fontXs
+                  font.weight: Font.SemiBold
                   color: root.t.accent
                 }
-                Text {
-                  text: groupDelegate.appName
-                  font.family: Theme.textFont
-                  font.pixelSize: Theme.fontSm
-                  font.weight: Font.DemiBold
-                  color: root.t.ink1
-                }
-                Text {
-                  text: "· " + groupDelegate.totalGroupCount
-                  font.family: Theme.textFont
-                  font.pixelSize: Theme.fontXs
-                  font.weight: Font.DemiBold
-                  color: root.t.ink3
-                }
-                Text {
-                  visible: groupDelegate.latestTime.length > 0
-                  text: "· " + groupDelegate.latestTime
-                  font.family: Theme.textFont
-                  font.pixelSize: Theme.fontXs
-                  color: root.t.ink3
-                }
-                Item {
-                  Layout.fillWidth: true
-                }
-                TextButton {
-                  visible: groupDelegate.totalGroupCount > 2
-                  text: groupDelegate.isExpanded ? "Show less" : `Show ${groupDelegate.totalGroupCount - 2} more`
-                  fs: Theme.fontXs
-                  fg: root.t.ink3
-                  onClicked: {
-                    if (root.service) root.service.toggleGroupExpanded(groupDelegate.appName);
+              }
+
+              // Origin Device Tag (e.g. phone via KDE Connect)
+              Rectangle {
+                visible: groupDelegate.groupOrigin.length > 0
+                implicitWidth: origTagRow.implicitWidth + 8
+                implicitHeight: 16
+                radius: 4
+                color: root.t.hoverWash
+                border.color: root.t.lineMuted
+                border.width: 1
+
+                Row {
+                  id: origTagRow
+                  anchors.centerIn: parent
+                  spacing: 3
+
+                  Text {
+                    text: "󰄡"
+                    font.family: root.monoFont
+                    font.pixelSize: 10
+                    color: root.t.ink3
                   }
-                }
-                TextButton {
-                  text: "Clear"
-                  fs: Theme.fontXs
-                  fg: root.t.red
-                  onClicked: {
-                    if (root.service && groupDelegate.appName) root.service.clearApp(groupDelegate.appName);
+
+                  Text {
+                    text: groupDelegate.groupOrigin
+                    font.family: Theme.textFont
+                    font.pixelSize: Theme.fontXs
+                    color: root.t.ink2
                   }
                 }
               }
 
-              Hairline {
-                visible: groupDelegate.totalGroupCount > 1
-                width: parent.width
-                color: root.t.lineMuted
+              Text {
+                visible: groupDelegate.latestTime.length > 0
+                text: "· " + groupDelegate.latestTime
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontXs
+                color: root.t.ink3
               }
+
+              Item { Layout.fillWidth: true }
+
+              TextButton {
+                visible: groupDelegate.totalGroupCount > 2
+                text: groupDelegate.isExpanded ? "Show less" : `+${groupDelegate.totalGroupCount - 2} more`
+                fs: Theme.fontXs
+                fg: root.t.accent
+                onClicked: {
+                  if (root.service) root.service.toggleGroupExpanded(groupDelegate.appName);
+                }
+              }
+
+              TextButton {
+                text: "Clear"
+                fs: Theme.fontXs
+                fg: root.t.ink3
+                onClicked: {
+                  if (root.service && groupDelegate.appName) root.service.clearApp(groupDelegate.appName);
+                }
+              }
+            }
+
+            // Stack of Notification Cards
+            Column {
+              width: parent.width
+              spacing: 6
 
               Repeater {
                 model: groupDelegate.visibleItems
 
-                delegate: Column {
-                  id: notifItem
+                delegate: Rectangle {
+                  id: notifCard
                   required property var modelData
                   required property int index
 
-                  readonly property var notif: notifItem.modelData
+                  readonly property var notif: notifCard.modelData
                   readonly property string notifIcon: notif ? (notif.notifIcon || "") : ""
                   readonly property string originName: notif ? (notif.originName || "") : ""
                   readonly property bool hasDefaultAction: notif ? (notif.hasDefaultAction === true) : false
                   readonly property string summaryText: notif ? (notif.summary || "Notification") : ""
                   readonly property string bodyText: notif ? (notif.body || "") : ""
                   readonly property string imageSrc: notif ? (notif.image || "") : ""
-                  readonly property var actionsList: notif ? (notif.actions || []) : []
+                  readonly property var rawActionsList: notif ? (notif.actions || []) : []
+                  readonly property bool hasReplyAction: {
+                    for (let i = 0; i < rawActionsList.length; i++) {
+                      const id = String(rawActionsList[i].identifier || "").toLowerCase();
+                      const txt = String(rawActionsList[i].text || "").toLowerCase();
+                      if (id === "reply" || id === "inline-reply" || txt === "reply") return true;
+                    }
+                    return false;
+                  }
+                  readonly property string replyActionIdentifier: {
+                    for (let i = 0; i < rawActionsList.length; i++) {
+                      const id = String(rawActionsList[i].identifier || "").toLowerCase();
+                      const txt = String(rawActionsList[i].text || "").toLowerCase();
+                      if (id === "reply" || id === "inline-reply" || txt === "reply") return rawActionsList[i].identifier;
+                    }
+                    return "inline-reply";
+                  }
+                  readonly property var actionsList: {
+                    if (!hasReplyAction) return rawActionsList;
+                    const filtered = [];
+                    for (let i = 0; i < rawActionsList.length; i++) {
+                      const id = String(rawActionsList[i].identifier || "").toLowerCase();
+                      const txt = String(rawActionsList[i].text || "").toLowerCase();
+                      if (id !== "reply" && id !== "inline-reply" && txt !== "reply") {
+                        filtered.push(rawActionsList[i]);
+                      }
+                    }
+                    return filtered;
+                  }
                   readonly property string timeStr: {
                     void root.service.timeTick;
                     return root.service ? root.service.timeAgo(notif.timestamp) : "Just now";
                   }
                   readonly property int urgencyVal: notif ? (notif.urgency ?? 1) : 1
-                  readonly property bool isCritical: notifItem.urgencyVal === 2
-                  readonly property bool isLow: notifItem.urgencyVal === 0
-                  readonly property bool hasInlineReply: notif ? notif.hasInlineReply === true : false
+                  readonly property bool isCritical: notifCard.urgencyVal === 2
+                  readonly property bool isLow: notifCard.urgencyVal === 0
+                  readonly property bool showReplyField: (notif && notif.hasInlineReply === true) || hasReplyAction
                   readonly property string replyPlaceholder: notif ? (notif.inlineReplyPlaceholder || "Reply…") : "Reply…"
                   readonly property bool hasActionIcons: notif ? notif.hasActionIcons === true : false
                   readonly property string desktopEntry: notif ? (notif.desktopEntry || "") : ""
                   readonly property string categoryStr: notif ? (notif.category || "") : ""
                   readonly property var urlsList: notif ? (notif.urls || []) : []
-                  readonly property string primaryUrl: notifItem.urlsList.length > 0 ? String(notifItem.urlsList[0]) : ""
+                  readonly property string primaryUrl: notifCard.urlsList.length > 0 ? String(notifCard.urlsList[0]) : ""
 
                   readonly property string resolvedEventIcon: root.resolveEventIcon(notifIcon)
                   readonly property bool showEventIcon: resolvedEventIcon.length > 0 && resolvedEventIcon !== groupDelegate.resolvedAppIcon
 
                   readonly property bool isCommunication: {
-                    if (notifItem.hasInlineReply) return true;
-                    if (notifItem.originName.length > 0) return true;
-                    const cat = notifItem.categoryStr.toLowerCase();
+                    if (notifCard.showReplyField) return true;
+                    if (notifCard.originName.length > 0) return true;
+                    const cat = notifCard.categoryStr.toLowerCase();
                     if (cat.startsWith("im") || cat === "email.arrived") return true;
                     const app = groupDelegate.appName.toLowerCase();
-                    const desk = notifItem.desktopEntry.toLowerCase();
+                    const desk = notifCard.desktopEntry.toLowerCase();
                     const known = ["whatsapp", "zapfast", "telegram", "signal", "discord", "slack", "element", "matrix", "messages", "skype", "kdeconnect"];
                     for (let i = 0; i < known.length; i++) {
                       if (app.includes(known[i]) || desk.includes(known[i])) return true;
@@ -691,7 +897,7 @@ Item {
                   Image {
                     id: ccMediaProbe
                     visible: false
-                    source: notifItem.imageSrc
+                    source: notifCard.imageSrc
                     asynchronous: true
                   }
 
@@ -700,543 +906,632 @@ Item {
                     (ccMediaProbe.implicitHeight > 0) &&
                     ((ccMediaProbe.implicitWidth / ccMediaProbe.implicitHeight) >= 1.35)
 
-                  readonly property bool hasRawImage: notifItem.imageSrc.length > 0 &&
-                    (notifItem.urlsList.length === 0 || !root.isImageUrl(notifItem.primaryUrl))
+                  readonly property bool hasRawImage: notifCard.imageSrc.length > 0 &&
+                    (notifCard.urlsList.length === 0 || !root.isImageUrl(notifCard.primaryUrl))
 
                   readonly property string avatarSource: {
-                    if (notifItem.notifIcon.length > 0 && notifItem.notifIcon !== groupDelegate.resolvedAppIcon) {
-                      return root.resolveEventIcon(notifItem.notifIcon);
+                    if (notifCard.notifIcon.length > 0 && notifCard.notifIcon !== groupDelegate.resolvedAppIcon) {
+                      return root.resolveEventIcon(notifCard.notifIcon);
                     }
-                    if (notifItem.isCommunication && notifItem.hasRawImage && !notifItem.isWideImage) {
-                      return notifItem.imageSrc;
+                    if (notifCard.isCommunication && notifCard.hasRawImage && !notifCard.isWideImage) {
+                      return notifCard.imageSrc;
                     }
                     return "";
                   }
 
-                  readonly property bool hasAvatar: notifItem.avatarSource.length > 0
+                  readonly property bool hasAvatar: notifCard.avatarSource.length > 0
 
-                  readonly property bool isBannerImage: notifItem.hasRawImage &&
-                    !notifItem.hasAvatar &&
-                    notifItem.isWideImage
+                  readonly property bool isBannerImage: notifCard.hasRawImage &&
+                    !notifCard.hasAvatar &&
+                    notifCard.isWideImage
 
-                  readonly property bool isThumbnailImage: notifItem.hasRawImage &&
-                    !notifItem.hasAvatar &&
-                    !notifItem.isWideImage
+                  readonly property bool isThumbnailImage: notifCard.hasRawImage &&
+                    !notifCard.hasAvatar &&
+                    !notifCard.isWideImage
+
                   readonly property bool isSingleInGroup: groupDelegate.totalGroupCount === 1
-                  readonly property bool summaryDiffersFromApp: notifItem.summaryText.length > 0 &&
-                    notifItem.summaryText.trim().toLowerCase() !== groupDelegate.appName.trim().toLowerCase()
-                  readonly property string displayTitle: {
-                    const orig = (notifItem.originName || "").trim();
-                    const summ = (notifItem.summaryText || "").trim();
+
+                  // Refined title logic: cleanly distinguishes sender from device / app origin
+                  readonly property string senderName: {
+                    const summ = (notifCard.summaryText || "").trim();
                     const app = (groupDelegate.appName || "").trim().toLowerCase();
-
-                    if (!notifItem.isSingleInGroup && summ.toLowerCase() === app) {
-                      if (orig.length > 0 && orig.toLowerCase() !== app) return orig;
-                      return notifItem.bodyText.length > 0 ? notifItem.bodyText.split("\n")[0] : summ;
+                    if (summ.length > 0 && summ.toLowerCase() !== app) {
+                      return summ;
                     }
-
-                    if (orig.length > 0 && orig.toLowerCase() !== app) {
-                      if (summ.length > 0 && summ.toLowerCase() !== orig.toLowerCase()) {
-                        return orig + " · " + summ;
-                      }
-                      return orig;
-                    }
-                    return summ.length > 0 ? summ : groupDelegate.appName;
+                    return "";
                   }
 
-                  width: groupCol.width
-                  spacing: 8
+                  width: parent.width
+                  implicitHeight: notifCardCol.implicitHeight + 18
+                  radius: 8
+                  color: notifMouse.containsMouse ? root.t.hoverFill : root.t.surfaceElevated
+                  border.color: notifCard.isCritical ? root.t.red : (notifMouse.containsMouse ? root.t.cardBorder : root.t.lineMuted)
+                  border.width: 1
 
-                  Item {
-                    width: parent.width
-                    implicitHeight: notifContentCol.implicitHeight
-                    height: implicitHeight
+                  Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+                  Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
 
-                    MouseArea {
-                      anchors.fill: parent
-                      enabled: notifItem.hasDefaultAction
-                      cursorShape: notifItem.hasDefaultAction ? Qt.PointingHandCursor : Qt.ArrowCursor
-                      onClicked: {
-                        if (notifItem.hasDefaultAction && root.service) {
-                          root.service.invokeDefaultAction(notifItem.notif);
+                  MouseArea {
+                    id: notifMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: notifCard.hasDefaultAction ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: {
+                      if (notifCard.hasDefaultAction && root.service) {
+                        root.service.invokeDefaultAction(notifCard.notif);
+                      }
+                    }
+                  }
+
+                  Column {
+                    id: notifCardCol
+                    anchors {
+                      top: parent.top
+                      left: parent.left
+                      right: parent.right
+                      margins: 9
+                    }
+                    spacing: 6
+
+                    // Card Top Row
+                    RowLayout {
+                      width: parent.width
+                      height: 20
+                      spacing: 6
+
+                      // If single in group: show App Icon + App Name
+                      IconImage {
+                        visible: notifCard.isSingleInGroup && groupDelegate.resolvedAppIcon.length > 0
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
+                        Layout.alignment: Qt.AlignVCenter
+                        source: groupDelegate.resolvedAppIcon
+                        asynchronous: true
+                      }
+
+                      Text {
+                        visible: notifCard.isSingleInGroup && !groupDelegate.resolvedAppIcon
+                        text: groupDelegate.appName.charAt(0).toUpperCase()
+                        font.family: Theme.roundedFont
+                        font.pixelSize: Theme.fontSm
+                        font.weight: Font.DemiBold
+                        color: root.t.accent
+                      }
+
+                      Text {
+                        visible: notifCard.isSingleInGroup
+                        Layout.maximumWidth: 140
+                        text: groupDelegate.appName
+                        font.family: Theme.textFont
+                        font.pixelSize: Theme.fontSm
+                        font.weight: Font.SemiBold
+                        color: root.t.ink1
+                        elide: Text.ElideRight
+                      }
+
+                      // Origin Device Tag if single (e.g. "OnePlus 13R")
+                      Rectangle {
+                        visible: notifCard.isSingleInGroup && notifCard.originName.length > 0 && notifCard.originName.toLowerCase() !== groupDelegate.appName.toLowerCase()
+                        implicitWidth: singleOrigTag.implicitWidth + 8
+                        implicitHeight: 16
+                        radius: 4
+                        color: root.t.hoverWash
+                        border.color: root.t.lineMuted
+                        border.width: 1
+
+                        Row {
+                          id: singleOrigTag
+                          anchors.centerIn: parent
+                          spacing: 3
+                          Text {
+                            text: "󰄡"
+                            font.family: root.monoFont
+                            font.pixelSize: 10
+                            color: root.t.ink3
+                          }
+                          Text {
+                            text: notifCard.originName
+                            font.family: Theme.textFont
+                            font.pixelSize: Theme.fontXs
+                            color: root.t.ink2
+                          }
+                        }
+                      }
+
+                      // If part of group: show Sender / Title directly in the top row
+                      Text {
+                        visible: !notifCard.isSingleInGroup
+                        Layout.maximumWidth: 220
+                        text: notifCard.senderName.length > 0 ? notifCard.senderName : notifCard.summaryText
+                        font.family: Theme.textFont
+                        font.pixelSize: Theme.fontSm
+                        font.weight: Font.SemiBold
+                        color: notifCard.isCritical ? root.t.red : root.t.ink1
+                        elide: Text.ElideRight
+                      }
+
+                      // Urgency pill
+                      Rectangle {
+                        visible: notifCard.isCritical
+                        implicitWidth: critTxt.implicitWidth + 8
+                        implicitHeight: 15
+                        radius: 3
+                        color: root.t.errBg
+
+                        Text {
+                          id: critTxt
+                          anchors.centerIn: parent
+                          text: "CRITICAL"
+                          font.family: Theme.textFont
+                          font.pixelSize: 9
+                          font.weight: Font.Bold
+                          color: root.t.red
+                        }
+                      }
+
+                      Item { Layout.fillWidth: true }
+
+                      // Timestamp
+                      Text {
+                        text: notifCard.timeStr
+                        font.family: Theme.textFont
+                        font.pixelSize: Theme.fontXs
+                        color: root.t.ink3
+                      }
+
+                      // Settings / Dismiss action buttons
+                      IconButton {
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                        Layout.alignment: Qt.AlignVCenter
+                        glyph: "󰒓"
+                        fs: 11
+                        btnSize: 20
+                        fg: root.t.ink3
+                        visible: notifCard.notif ? notifCard.notif.hasConfigureAction === true : false
+                        tooltip: (notifCard.notif && notifCard.notif.configureLabel) || "Configure"
+                        onClicked: {
+                          if (root.service && notifCard.notif) {
+                            root.service.invokeAction(notifCard.notif, "settings");
+                          }
+                        }
+                      }
+
+                      IconButton {
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                        Layout.alignment: Qt.AlignVCenter
+                        glyph: "󰅖"
+                        fs: 11
+                        btnSize: 20
+                        fg: root.t.ink3
+                        tooltip: "Dismiss"
+                        onClicked: {
+                          if (root.service && notifCard.notif && notifCard.notif.id !== undefined) {
+                            root.service.dismissNotification(notifCard.notif.id);
+                          }
                         }
                       }
                     }
 
-                    ColumnLayout {
-                      id: notifContentCol
+                    // Content Row: Avatar + Body + Media Thumbnail
+                    RowLayout {
                       width: parent.width
-                      spacing: 4
+                      spacing: 8
 
-                      RowLayout {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 20
-                        spacing: 6
-
-                        IconImage {
-                          visible: notifItem.isSingleInGroup && groupDelegate.resolvedAppIcon.length > 0
-                          Layout.preferredWidth: 16
-                          Layout.preferredHeight: 16
-                          Layout.alignment: Qt.AlignVCenter
-                          source: groupDelegate.resolvedAppIcon
-                          asynchronous: true
-                        }
-                        Text {
-                          visible: notifItem.isSingleInGroup && !groupDelegate.resolvedAppIcon
-                          text: groupDelegate.appName.charAt(0).toUpperCase()
-                          font.family: Theme.roundedFont
-                          font.pixelSize: Theme.fontSm
-                          font.weight: Font.DemiBold
-                          color: root.t.accent
-                        }
-                        Text {
-                          visible: notifItem.isSingleInGroup
-                          Layout.maximumWidth: 180
-                          text: groupDelegate.appName
-                          font.family: Theme.textFont
-                          font.pixelSize: Theme.fontSm
-                          font.weight: Font.DemiBold
-                          color: root.t.ink1
-                          elide: Text.ElideRight
-                        }
-
-                        IconImage {
-                          id: subEventIcon
-                          visible: !notifItem.isSingleInGroup && !notifItem.hasAvatar && notifItem.showEventIcon && subEventIcon.status !== Image.Error
-                          Layout.preferredWidth: 16
-                          Layout.preferredHeight: 16
-                          Layout.alignment: Qt.AlignVCenter
-                          source: notifItem.resolvedEventIcon
-                          asynchronous: true
-                        }
-
-                        Text {
-                          visible: !notifItem.isSingleInGroup
-                          Layout.maximumWidth: 200
-                          text: notifItem.displayTitle
-                          font.family: Theme.textFont
-                          font.pixelSize: Theme.fontSm
-                          font.weight: Font.DemiBold
-                          color: notifItem.isCritical ? root.t.red : root.t.ink1
-                          elide: Text.ElideRight
-                        }
-
-                        Text {
-                          text: "· " + notifItem.timeStr
-                          font.family: Theme.textFont
-                          font.pixelSize: Theme.fontXs
-                          color: root.t.ink3
-                        }
-
-                        Text {
-                          visible: notifItem.isCritical
-                          text: "Critical"
-                          font.family: Theme.textFont
-                          font.pixelSize: Theme.fontXs
-                          font.weight: Font.DemiBold
-                          color: root.t.red
-                        }
-
-                        Item {
-                          Layout.fillWidth: true
-                        }
-
-                        IconButton {
-                          Layout.preferredWidth: 20
-                          Layout.preferredHeight: 20
-                          Layout.alignment: Qt.AlignVCenter
-                          glyph: "󰒓"
-                          fs: 11
-                          btnSize: 20
-                          fg: root.t.ink3
-                          visible: notifItem.notif ? notifItem.notif.hasConfigureAction === true : false
-                          tooltip: (notifItem.notif && notifItem.notif.configureLabel) || "Configure"
-                          onClicked: {
-                            if (root.service && notifItem.notif) {
-                              root.service.invokeAction(notifItem.notif, "settings");
-                            }
-                          }
-                        }
-
-                        IconButton {
-                          Layout.preferredWidth: 20
-                          Layout.preferredHeight: 20
-                          Layout.alignment: Qt.AlignVCenter
-                          glyph: "󰅖"
-                          fs: 11
-                          btnSize: 20
-                          fg: root.t.ink3
-                          tooltip: "Dismiss"
-                          onClicked: {
-                            if (root.service && notifItem.notif && notifItem.notif.id !== undefined) {
-                              root.service.dismissNotification(notifItem.notif.id);
-                            }
-                          }
-                        }
-                      }
-
-                      RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        ClippingRectangle {
-                          visible: (notifItem.hasAvatar && ccAvatarImg.status !== Image.Error) || (!notifItem.isSingleInGroup && notifItem.showEventIcon)
-                          Layout.alignment: Qt.AlignTop
-                          Layout.preferredWidth: 32
-                          Layout.preferredHeight: 32
-                          radius: 0
-                          color: root.t.inset
-
-                          Image {
-                            id: ccAvatarImg
-                            visible: notifItem.hasAvatar
-                            anchors.fill: parent
-                            source: notifItem.avatarSource
-                            fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
-                          }
-
-                          IconImage {
-                            visible: (!notifItem.hasAvatar || ccAvatarImg.status === Image.Error) && notifItem.showEventIcon
-                            anchors.centerIn: parent
-                            width: 16
-                            height: 16
-                            source: notifItem.resolvedEventIcon
-                            asynchronous: true
-                          }
-                        }
-
-                        ColumnLayout {
-                          Layout.fillWidth: true
-                          spacing: 2
-
-                          Text {
-                            visible: notifItem.isSingleInGroup && notifItem.summaryDiffersFromApp
-                            Layout.fillWidth: true
-                            text: notifItem.displayTitle
-                            font.family: Theme.textFont
-                            font.pixelSize: Theme.fontSm
-                            font.weight: Font.Medium
-                            color: notifItem.isCritical ? root.t.red : (notifItem.isLow ? root.t.ink2 : root.t.ink1)
-                            elide: Text.ElideRight
-                          }
-
-                          TextEdit {
-                            visible: notifItem.bodyText.length > 0
-                            Layout.fillWidth: true
-                            text: notifItem.bodyText
-                            textFormat: TextEdit.RichText
-                            font.family: Theme.textFont
-                            font.pixelSize: Theme.fontSm
-                            color: root.t.ink2
-                            selectionColor: root.t.accentBg
-                            selectedTextColor: root.t.ink1
-                            readOnly: true
-                            selectByMouse: true
-                            activeFocusOnPress: false
-                            cursorVisible: false
-                            wrapMode: TextEdit.Wrap
-                            onLinkActivated: link => Qt.openUrlExternally(link)
-                          }
-                        }
-
-                        ClippingRectangle {
-                          visible: notifItem.isThumbnailImage && ccThumbImg.status === Image.Ready
-                          Layout.alignment: Qt.AlignTop
-                          Layout.preferredWidth: 44
-                          Layout.preferredHeight: 44
-                          radius: Theme.radiusBase
-                          color: root.t.inset
-
-                          Image {
-                            id: ccThumbImg
-                            anchors.fill: parent
-                            source: notifItem.imageSrc
-                            fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
-                          }
-                        }
-                      }
-
+                      // Circular Avatar or Event Icon
                       ClippingRectangle {
-                        visible: notifItem.isBannerImage && notifImg.status === Image.Ready
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(140, Math.max(64, Math.round(((parent && parent.width > 0) ? parent.width : 300) * (notifImg.implicitHeight > 0 && notifImg.implicitWidth > 0 ? (notifImg.implicitHeight / notifImg.implicitWidth) : 0.5))))
-                        radius: Theme.radiusBase
+                        visible: (notifCard.hasAvatar && ccAvatarImg.status !== Image.Error) || (!notifCard.isSingleInGroup && notifCard.showEventIcon)
+                        Layout.alignment: Qt.AlignTop
+                        Layout.preferredWidth: 36
+                        Layout.preferredHeight: 36
+                        radius: 18
                         color: root.t.inset
+
                         Image {
-                          id: notifImg
+                          id: ccAvatarImg
+                          visible: notifCard.hasAvatar
                           anchors.fill: parent
-                          source: notifItem.imageSrc
+                          source: notifCard.avatarSource
+                          fillMode: Image.PreserveAspectCrop
+                          asynchronous: true
+                        }
+
+                        IconImage {
+                          visible: (!notifCard.hasAvatar || ccAvatarImg.status === Image.Error) && notifCard.showEventIcon
+                          anchors.centerIn: parent
+                          width: 18
+                          height: 18
+                          source: notifCard.resolvedEventIcon
+                          asynchronous: true
+                        }
+                      }
+
+                      Column {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        // For single notification: Sender title if present
+                        Text {
+                          visible: notifCard.isSingleInGroup && notifCard.senderName.length > 0
+                          width: parent.width
+                          text: notifCard.senderName
+                          font.family: Theme.textFont
+                          font.pixelSize: Theme.fontSm
+                          font.weight: Font.SemiBold
+                          color: notifCard.isCritical ? root.t.red : (notifCard.isLow ? root.t.ink2 : root.t.ink1)
+                          elide: Text.ElideRight
+                        }
+
+                        TextEdit {
+                          visible: notifCard.bodyText.length > 0
+                          width: parent.width
+                          text: notifCard.bodyText
+                          textFormat: TextEdit.RichText
+                          font.family: Theme.textFont
+                          font.pixelSize: Theme.fontSm
+                          color: root.t.ink2
+                          selectionColor: root.t.accentBg
+                          selectedTextColor: root.t.ink1
+                          readOnly: true
+                          selectByMouse: true
+                          activeFocusOnPress: false
+                          cursorVisible: false
+                          wrapMode: TextEdit.Wrap
+                          onLinkActivated: link => Qt.openUrlExternally(link)
+                        }
+                      }
+
+                      // Thumbnail Image
+                      ClippingRectangle {
+                        visible: notifCard.isThumbnailImage && ccThumbImg.status === Image.Ready
+                        Layout.alignment: Qt.AlignTop
+                        Layout.preferredWidth: 44
+                        Layout.preferredHeight: 44
+                        radius: 6
+                        color: root.t.inset
+
+                        Image {
+                          id: ccThumbImg
+                          anchors.fill: parent
+                          source: notifCard.imageSrc
                           fillMode: Image.PreserveAspectCrop
                           asynchronous: true
                         }
                       }
+                    }
 
-                      Rectangle {
-                        visible: notifItem.urlsList.length > 0
-                        Layout.fillWidth: true
-                        implicitHeight: ccFileCol.implicitHeight + 12
-                        radius: Theme.radiusBase
-                        color: root.t.inset
-                        border.color: root.t.cardBorder
-                        border.width: 1
+                    // Wide Banner Image
+                    ClippingRectangle {
+                      visible: notifCard.isBannerImage && notifImg.status === Image.Ready
+                      width: parent.width
+                      implicitHeight: Math.min(130, Math.max(64, Math.round(((parent && parent.width > 0) ? parent.width : 300) * (notifImg.implicitHeight > 0 && notifImg.implicitWidth > 0 ? (notifImg.implicitHeight / notifImg.implicitWidth) : 0.5))))
+                      radius: 6
+                      color: root.t.inset
 
-                        Column {
-                          id: ccFileCol
-                          anchors.left: parent.left
-                          anchors.right: parent.right
-                          anchors.top: parent.top
-                          anchors.margins: 6
-                          spacing: 6
+                      Image {
+                        id: notifImg
+                        anchors.fill: parent
+                        source: notifCard.imageSrc
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                      }
+                    }
 
-                          RowLayout {
-                            width: parent.width
-                            spacing: 8
+                    // File / URL Attachment Card
+                    Rectangle {
+                      visible: notifCard.urlsList.length > 0
+                      width: parent.width
+                      implicitHeight: ccFileCol.implicitHeight + 12
+                      radius: 6
+                      color: root.t.inset
+                      border.color: root.t.lineMuted
+                      border.width: 1
 
-                            Rectangle {
-                              Layout.preferredWidth: 32
-                              Layout.preferredHeight: 32
-                              radius: Theme.radiusBase
-                              color: root.t.surface
-                              clip: true
+                      Column {
+                        id: ccFileCol
+                        anchors {
+                          left: parent.left
+                          right: parent.right
+                          top: parent.top
+                          margins: 6
+                        }
+                        spacing: 6
 
-                              Image {
-                                id: fileThumbImg
-                                visible: root.isImageUrl(notifItem.primaryUrl) && fileThumbImg.status === Image.Ready
-                                anchors.centerIn: parent
-                                width: parent.width - 4
-                                height: parent.height - 4
-                                source: notifItem.primaryUrl
-                                fillMode: Image.PreserveAspectFit
-                                asynchronous: true
-                              }
+                        RowLayout {
+                          width: parent.width
+                          spacing: 8
 
-                              Text {
-                                visible: !root.isImageUrl(notifItem.primaryUrl) || fileThumbImg.status !== Image.Ready
-                                anchors.centerIn: parent
-                                text: "󰈔"
-                                font.family: root.monoFont
-                                font.pixelSize: Theme.iconMd
-                                color: root.t.accent
-                              }
+                          Rectangle {
+                            Layout.preferredWidth: 28
+                            Layout.preferredHeight: 28
+                            radius: 4
+                            color: root.t.surface
+                            clip: true
+
+                            Image {
+                              id: fileThumbImg
+                              visible: root.isImageUrl(notifCard.primaryUrl) && fileThumbImg.status === Image.Ready
+                              anchors.centerIn: parent
+                              width: parent.width - 4
+                              height: parent.height - 4
+                              source: notifCard.primaryUrl
+                              fillMode: Image.PreserveAspectFit
+                              asynchronous: true
                             }
 
-                            Column {
-                              Layout.fillWidth: true
-                              spacing: 2
-                              Text {
-                                width: parent.width
-                                text: root.fileNameOf(notifItem.primaryUrl)
-                                font.family: Theme.textFont
-                                font.pixelSize: Theme.fontSm
-                                font.weight: Font.Medium
-                                color: root.t.ink1
-                                elide: Text.ElideMiddle
-                              }
-                              Text {
-                                width: parent.width
-                                text: root.fileDirOf(notifItem.primaryUrl)
-                                font.family: Theme.textFont
-                                font.pixelSize: Theme.fontXs
-                                color: root.t.ink3
-                                elide: Text.ElideMiddle
-                              }
+                            Text {
+                              visible: !root.isImageUrl(notifCard.primaryUrl) || fileThumbImg.status !== Image.Ready
+                              anchors.centerIn: parent
+                              text: "󰈔"
+                              font.family: root.monoFont
+                              font.pixelSize: Theme.iconSm
+                              color: root.t.accent
                             }
                           }
 
-                          Row {
-                            spacing: 6
-                            Rectangle {
-                              implicitWidth: openTxt.implicitWidth + 14
-                              implicitHeight: 22
-                              radius: Theme.radiusChip
-                              color: openMouse.containsMouse ? root.t.accentBg : root.t.surface
-                              border.color: openMouse.containsMouse ? root.t.accent : root.t.cardBorder
-                              border.width: 1
-                              Text {
-                                id: openTxt
-                                anchors.centerIn: parent
-                                text: "Open"
-                                font.family: Theme.textFont
-                                font.pixelSize: Theme.fontXs
-                                font.weight: Font.Medium
-                                color: openMouse.containsMouse ? root.t.accent : root.t.ink1
-                              }
-                              MouseArea {
-                                id: openMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: Qt.openUrlExternally(notifItem.primaryUrl)
-                              }
+                          Column {
+                            Layout.fillWidth: true
+                            spacing: 1
+
+                            Text {
+                              width: parent.width
+                              text: root.fileNameOf(notifCard.primaryUrl)
+                              font.family: Theme.textFont
+                              font.pixelSize: Theme.fontXs
+                              font.weight: Font.Medium
+                              color: root.t.ink1
+                              elide: Text.ElideMiddle
                             }
-                            Rectangle {
-                              implicitWidth: folderTxt.implicitWidth + 14
-                              implicitHeight: 22
-                              radius: Theme.radiusChip
-                              color: folderMouse.containsMouse ? root.t.accentBg : root.t.surface
-                              border.color: folderMouse.containsMouse ? root.t.accent : root.t.cardBorder
-                              border.width: 1
-                              Text {
-                                id: folderTxt
-                                anchors.centerIn: parent
-                                text: "Folder"
-                                font.family: Theme.textFont
-                                font.pixelSize: Theme.fontXs
-                                font.weight: Font.Medium
-                                color: folderMouse.containsMouse ? root.t.accent : root.t.ink1
-                              }
-                              MouseArea {
-                                id: folderMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                  const dir = root.fileDirOf(notifItem.primaryUrl);
-                                  if (dir.length > 0) Qt.openUrlExternally("file://" + dir);
-                                }
-                              }
-                            }
-                            Rectangle {
-                              implicitWidth: copyTxt.implicitWidth + 14
-                              implicitHeight: 22
-                              radius: Theme.radiusChip
-                              color: copyMouse.containsMouse ? root.t.accentBg : root.t.surface
-                              border.color: copyMouse.containsMouse ? root.t.accent : root.t.cardBorder
-                              border.width: 1
-                              Text {
-                                id: copyTxt
-                                anchors.centerIn: parent
-                                text: "Copy Path"
-                                font.family: Theme.textFont
-                                font.pixelSize: Theme.fontXs
-                                font.weight: Font.Medium
-                                color: copyMouse.containsMouse ? root.t.accent : root.t.ink1
-                              }
-                              MouseArea {
-                                id: copyMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                  if (root.service) {
-                                    root.service.copyToClipboard(root.cleanFilePath(notifItem.primaryUrl));
-                                  }
-                                }
-                              }
+
+                            Text {
+                              width: parent.width
+                              text: root.fileDirOf(notifCard.primaryUrl)
+                              font.family: Theme.textFont
+                              font.pixelSize: 10
+                              color: root.t.ink3
+                              elide: Text.ElideMiddle
                             }
                           }
                         }
-                      }
 
-                      Row {
-                        visible: notifItem.actionsList.length > 0
-                        Layout.fillWidth: true
-                        spacing: 6
-                        Repeater {
-                          model: notifItem.actionsList
-                          delegate: Rectangle {
-                            id: ccActPill
-                            required property var modelData
-                            implicitWidth: ccActRow.implicitWidth + 16
-                            implicitHeight: 24
-                            radius: Theme.radiusChip
-                            color: ccActMouse.containsMouse ? root.t.accentBg : root.t.surface
-                            border.color: ccActMouse.containsMouse ? root.t.accent : root.t.cardBorder
+                        Row {
+                          spacing: 6
+
+                          Rectangle {
+                            implicitWidth: openTxt.implicitWidth + 12
+                            implicitHeight: 20
+                            radius: 4
+                            color: openMouse.containsMouse ? root.t.accentBg : root.t.surface
+                            border.color: openMouse.containsMouse ? root.t.accent : root.t.lineMuted
                             border.width: 1
 
-                            Row {
-                              id: ccActRow
+                            Text {
+                              id: openTxt
                               anchors.centerIn: parent
-                              spacing: 4
-                              IconImage {
-                                visible: notifItem.hasActionIcons
-                                width: 12
-                                height: 12
-                                anchors.verticalCenter: parent.verticalCenter
-                                source: root.resolveActionIcon(ccActPill.modelData.identifier)
-                                asynchronous: true
-                              }
-                              Text {
-                                text: ccActPill.modelData.text || "Action"
-                                font.family: Theme.textFont
-                                font.pixelSize: Theme.fontXs
-                                font.weight: Font.Medium
-                                color: ccActMouse.containsMouse ? root.t.accent : root.t.ink1
-                              }
+                              text: "Open"
+                              font.family: Theme.textFont
+                              font.pixelSize: 10
+                              font.weight: Font.Medium
+                              color: openMouse.containsMouse ? root.t.accent : root.t.ink1
                             }
 
                             MouseArea {
-                              id: ccActMouse
+                              id: openMouse
+                              anchors.fill: parent
+                              hoverEnabled: true
+                              cursorShape: Qt.PointingHandCursor
+                              onClicked: Qt.openUrlExternally(notifCard.primaryUrl)
+                            }
+                          }
+
+                          Rectangle {
+                            implicitWidth: folderTxt.implicitWidth + 12
+                            implicitHeight: 20
+                            radius: 4
+                            color: folderMouse.containsMouse ? root.t.accentBg : root.t.surface
+                            border.color: folderMouse.containsMouse ? root.t.accent : root.t.lineMuted
+                            border.width: 1
+
+                            Text {
+                              id: folderTxt
+                              anchors.centerIn: parent
+                              text: "Folder"
+                              font.family: Theme.textFont
+                              font.pixelSize: 10
+                              font.weight: Font.Medium
+                              color: folderMouse.containsMouse ? root.t.accent : root.t.ink1
+                            }
+
+                            MouseArea {
+                              id: folderMouse
                               anchors.fill: parent
                               hoverEnabled: true
                               cursorShape: Qt.PointingHandCursor
                               onClicked: {
-                                if (root.service) root.service.invokeAction(notifItem.notif, ccActPill.modelData.identifier);
+                                const dir = root.fileDirOf(notifCard.primaryUrl);
+                                if (dir.length > 0) Qt.openUrlExternally("file://" + dir);
                               }
                             }
                           }
-                        }
-                      }
 
-                      RowLayout {
-                        visible: notifItem.hasInlineReply
-                        Layout.fillWidth: true
-                        spacing: 6
-                        Rectangle {
-                          Layout.fillWidth: true
-                          Layout.preferredHeight: 28
-                          radius: Theme.radiusBase
-                          color: root.t.inset
-                          border.color: ccReplyInput.activeFocus ? root.t.accent : root.t.line
-                          border.width: 1
-                          Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
-                          TextInput {
-                            id: ccReplyInput
-                            anchors.fill: parent
-                            anchors.leftMargin: 8
-                            anchors.rightMargin: 8
-                            verticalAlignment: TextInput.AlignVCenter
-                            font.family: Theme.textFont
-                            font.pixelSize: Theme.fontBase
-                            color: root.t.ink1
-                            clip: true
-                            onAccepted: {
-                              if (root.service && text.trim().length > 0) {
-                                root.service.sendInlineReply(notifItem.notif, text);
-                                text = "";
-                              }
-                            }
+                          Rectangle {
+                            implicitWidth: copyTxt.implicitWidth + 12
+                            implicitHeight: 20
+                            radius: 4
+                            color: copyMouse.containsMouse ? root.t.accentBg : root.t.surface
+                            border.color: copyMouse.containsMouse ? root.t.accent : root.t.lineMuted
+                            border.width: 1
+
                             Text {
-                              visible: parent.text.length === 0
-                              anchors.verticalCenter: parent.verticalCenter
-                              text: notifItem.replyPlaceholder
+                              id: copyTxt
+                              anchors.centerIn: parent
+                              text: "Copy Path"
                               font.family: Theme.textFont
-                              font.pixelSize: Theme.fontBase
-                              color: root.t.ink3
+                              font.pixelSize: 10
+                              font.weight: Font.Medium
+                              color: copyMouse.containsMouse ? root.t.accent : root.t.ink1
                             }
-                          }
-                        }
-                        TextButton {
-                          text: (notifItem.notif && notifItem.notif.replySubmitButtonText) ? notifItem.notif.replySubmitButtonText : "Send"
-                          fs: 11
-                          fg: root.t.accent
-                          onClicked: {
-                            if (root.service && ccReplyInput.text.trim().length > 0) {
-                              root.service.sendInlineReply(notifItem.notif, ccReplyInput.text);
-                              ccReplyInput.text = "";
+
+                            MouseArea {
+                              id: copyMouse
+                              anchors.fill: parent
+                              hoverEnabled: true
+                              cursorShape: Qt.PointingHandCursor
+                              onClicked: {
+                                if (root.service) {
+                                  root.service.copyToClipboard(root.cleanFilePath(notifCard.primaryUrl));
+                                }
+                              }
                             }
                           }
                         }
                       }
                     }
-                  }
 
-                  Hairline {
-                    visible: notifItem.index < groupDelegate.visibleItems.length - 1
-                    width: parent.width
-                    color: root.t.lineMuted
+                    // Actions and Reply Row
+                    RowLayout {
+                      visible: notifCard.actionsList.length > 0 || notifCard.showReplyField
+                      width: parent.width
+                      spacing: 6
+
+                      Repeater {
+                        model: notifCard.actionsList
+
+                        delegate: Rectangle {
+                          id: ccActPill
+                          required property var modelData
+                          implicitWidth: ccActRow.implicitWidth + 14
+                          implicitHeight: 30
+                          radius: 5
+                          color: ccActMouse.containsMouse ? root.t.accentBg : root.t.hoverWash
+                          border.color: ccActMouse.containsMouse ? root.t.accent : root.t.lineMuted
+                          border.width: 1
+
+                          Row {
+                            id: ccActRow
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            IconImage {
+                              visible: notifCard.hasActionIcons
+                              width: 12
+                              height: 12
+                              anchors.verticalCenter: parent.verticalCenter
+                              source: root.resolveActionIcon(ccActPill.modelData.identifier)
+                              asynchronous: true
+                            }
+
+                            Text {
+                              text: ccActPill.modelData.text || "Action"
+                              font.family: Theme.textFont
+                              font.pixelSize: Theme.fontXs
+                              font.weight: Font.Medium
+                              color: ccActMouse.containsMouse ? root.t.accent : root.t.ink1
+                            }
+                          }
+
+                          MouseArea {
+                            id: ccActMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                              if (root.service) root.service.invokeAction(notifCard.notif, ccActPill.modelData.identifier);
+                            }
+                          }
+                        }
+                      }
+
+                      // Sleek Integrated Inline Reply Capsule
+                      Rectangle {
+                        visible: notifCard.showReplyField
+                        Layout.fillWidth: true
+                        implicitHeight: 30
+                        radius: 15
+                        color: root.t.inset
+                        border.color: ccReplyInput.activeFocus ? root.t.accent : root.t.lineMuted
+                        border.width: 1
+
+                        Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
+
+                        RowLayout {
+                          anchors.fill: parent
+                          anchors.leftMargin: 10
+                          anchors.rightMargin: 4
+                          spacing: 6
+
+                          Text {
+                            text: "󰅒"
+                            font.family: root.monoFont
+                            font.pixelSize: 12
+                            color: ccReplyInput.activeFocus ? root.t.accent : root.t.ink3
+                          }
+
+                          TextInput {
+                            id: ccReplyInput
+                            Layout.fillWidth: true
+                            verticalAlignment: TextInput.AlignVCenter
+                            font.family: Theme.textFont
+                            font.pixelSize: Theme.fontSm
+                            color: root.t.ink1
+                            clip: true
+                            onAccepted: {
+                              if (root.service && text.trim().length > 0) {
+                                if (notifCard.notif && notifCard.notif.hasInlineReply === true) {
+                                  root.service.sendInlineReply(notifCard.notif, text);
+                                } else {
+                                  root.service.invokeAction(notifCard.notif, notifCard.replyActionIdentifier);
+                                }
+                                text = "";
+                              }
+                            }
+
+                            Text {
+                              visible: parent.text.length === 0
+                              anchors.verticalCenter: parent.verticalCenter
+                              text: notifCard.replyPlaceholder
+                              font.family: Theme.textFont
+                              font.pixelSize: Theme.fontSm
+                              color: root.t.ink3
+                            }
+                          }
+
+                          // Send Action Icon
+                          Rectangle {
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            radius: 11
+                            color: ccReplyInput.text.trim().length > 0 ? root.t.accent : "transparent"
+
+                            Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+
+                            Text {
+                              anchors.centerIn: parent
+                              text: "󰏲"
+                              font.family: root.monoFont
+                              font.pixelSize: 11
+                              color: ccReplyInput.text.trim().length > 0 ? root.t.darkInk : root.t.ink3
+                            }
+
+                            MouseArea {
+                              anchors.fill: parent
+                              cursorShape: ccReplyInput.text.trim().length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                              onClicked: {
+                                if (root.service && ccReplyInput.text.trim().length > 0) {
+                                  if (notifCard.notif && notifCard.notif.hasInlineReply === true) {
+                                    root.service.sendInlineReply(notifCard.notif, ccReplyInput.text);
+                                  } else {
+                                    root.service.invokeAction(notifCard.notif, notifCard.replyActionIdentifier);
+                                  }
+                                  ccReplyInput.text = "";
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -1247,5 +1542,3 @@ Item {
     }
   }
 }
-}
-
