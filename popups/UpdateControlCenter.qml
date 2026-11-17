@@ -137,12 +137,12 @@ Item {
 
       Item {
         width: parent.width
-        height: 64
+        height: 72
 
         RowLayout {
           anchors.fill: parent
-          anchors.leftMargin: Theme.spaceLg
-          anchors.rightMargin: Theme.spaceLg
+          anchors.leftMargin: 14
+          anchors.rightMargin: 10
           spacing: Theme.spaceMd
 
           Column {
@@ -154,7 +154,7 @@ Item {
               Text {
                 text: "System Updates"
                 font.family: Theme.displayFont
-                font.pixelSize: Theme.fontBase
+                font.pixelSize: Theme.fontXl
                 font.weight: Font.DemiBold
                 color: Theme.ink1
               }
@@ -169,7 +169,9 @@ Item {
             }
 
             Text {
-              text: root.service ? root.service.headerStatusText : "System up to date"
+              text: root.hasUpdates && !root.isBusy
+                    ? `${root.updateCount} package${root.updateCount === 1 ? "" : "s"}, ${root.formattedSize} to download`
+                    : (root.service ? root.service.headerStatusText : "System up to date")
               font.family: Theme.textFont
               font.pixelSize: Theme.fontSm
               color: root.offlineReady ? Theme.green : (root.isBusy ? Theme.accent : Theme.ink2)
@@ -224,7 +226,7 @@ Item {
 
       Item {
         width: parent.width
-        height: visible ? 44 : 0
+        height: visible ? 38 : 0
         visible: root.hasUpdates && !root.isChecking
 
         SegmentedControl {
@@ -574,10 +576,10 @@ Item {
 
           Column {
             id: listContentCol
-            width: parent.width - 16
-            x: 8
-            y: 8
-            spacing: 6
+            width: parent.width - 28
+            x: 14
+            y: 10
+            spacing: 10
 
             Repeater {
               model: {
@@ -594,9 +596,32 @@ Item {
                 width: listContentCol.width
                 spacing: 4
 
-                SectionHeader {
+                RowLayout {
                   width: parent.width
-                  label: `${groupCol.modelData.label} · ${groupCol.modelData.count}`
+                  height: 26
+                  spacing: 8
+
+                  Rectangle {
+                    Layout.preferredWidth: 3
+                    Layout.preferredHeight: 16
+                    color: Theme.accent
+                  }
+
+                  Text {
+                    Layout.fillWidth: true
+                    text: groupCol.modelData.label
+                    font.family: Theme.displayFont
+                    font.pixelSize: Theme.fontSm
+                    font.weight: Font.DemiBold
+                    color: Theme.ink2
+                  }
+
+                  Text {
+                    text: `${groupCol.modelData.count} ${groupCol.modelData.count === 1 ? "package" : "packages"}`
+                    font.family: root.monoFont
+                    font.pixelSize: Theme.fontXs
+                    color: Theme.ink3
+                  }
                 }
 
                 Repeater {
@@ -607,7 +632,7 @@ Item {
                     return root.service.model.getItemsInGroup(groupBy, groupCol.modelData.key);
                   }
 
-                  Rectangle {
+                  Item {
                     id: itemCard
                     required property var modelData
                     readonly property bool changelogIsLoaded: {
@@ -625,23 +650,29 @@ Item {
                       return itemCard.modelData.changelogList || [];
                     }
                     width: groupCol.width
-                    implicitHeight: cardContent.implicitHeight + 16
+                    implicitHeight: cardContent.implicitHeight + 12
                     height: implicitHeight
-                    radius: Theme.radiusBase
-                    color: (root.expandedPkg === itemCard.modelData.name) ? Theme.selected : Theme.surface
-                    border.width: 0
+                    Rectangle {
+                      anchors.left: parent.left
+                      anchors.top: parent.top
+                      anchors.bottom: parent.bottom
+                      width: 2
+                      color: root.expandedPkg === itemCard.modelData.name ? Theme.accent : Theme.line
+                    }
 
                 Column {
                   id: cardContent
                   anchors.left: parent.left
                   anchors.right: parent.right
                   anchors.top: parent.top
-                  anchors.margins: 8
-                  spacing: 6
+                  anchors.leftMargin: 12
+                  anchors.rightMargin: 2
+                  anchors.topMargin: 4
+                  spacing: 4
 
                   RowLayout {
                     width: parent.width
-                    spacing: 6
+                    spacing: 7
 
                     Text {
                       text: (itemCard.modelData.categoryKey === "kernel") ? "󰌢" :
@@ -654,25 +685,18 @@ Item {
                     }
 
                     Text {
+                      Layout.fillWidth: true
                       text: itemCard.modelData.name
                       font.family: Theme.displayFont
                       font.pixelSize: Theme.fontMd
                       font.weight: Font.DemiBold
                       color: Theme.ink1
-                    }
-
-                    Text {
-                      Layout.fillWidth: true
-                      text: `${itemCard.modelData.oldEvr} 󰁔 ${itemCard.modelData.newEvr}`
-                      font.family: root.monoFont
-                      font.pixelSize: Theme.fontSm
-                      color: Theme.ink3
                       elide: Text.ElideRight
                     }
 
                     Text {
                       text: itemCard.modelData.formattedSize
-                      font.family: root.monoFont
+                      font.family: Theme.textFont
                       font.pixelSize: Theme.fontSm
                       color: Theme.ink2
                     }
@@ -725,12 +749,22 @@ Item {
 
                   Text {
                     width: parent.width
+                    text: `${itemCard.modelData.oldEvr} 󰁔 ${itemCard.modelData.newEvr}`
+                    font.family: root.monoFont
+                    font.pixelSize: Theme.fontXs
+                    color: Theme.ink3
+                    elide: Text.ElideMiddle
+                  }
+
+                  Text {
+                    width: parent.width
                     text: itemCard.modelData.summary
                     font.family: Theme.textFont
                     font.pixelSize: Theme.fontSm
                     color: Theme.ink2
-                    elide: (root.expandedPkg === itemCard.modelData.name) ? Text.NoWrap : Text.ElideRight
-                    wrapMode: (root.expandedPkg === itemCard.modelData.name) ? Text.Wrap : Text.NoWrap
+                    maximumLineCount: root.expandedPkg === itemCard.modelData.name ? 999 : 2
+                    elide: Text.ElideRight
+                    wrapMode: Text.Wrap
                   }
 
                   Column {
@@ -827,7 +861,8 @@ Item {
                           width: changelogCol.width
                           spacing: 2
 
-                          Row {
+                          RowLayout {
+                            width: changelogCol.width
                             spacing: 6
                             Text {
                               text: changelogEntry.modelData.date || ""
@@ -836,12 +871,12 @@ Item {
                               color: Theme.accent
                             }
                             Text {
+                              Layout.fillWidth: true
                               text: changelogEntry.modelData.author || ""
                               font.family: Theme.textFont
                               font.pixelSize: Theme.fontXs
                               color: Theme.ink3
                               elide: Text.ElideRight
-                              width: 320
                             }
                           }
 
@@ -895,7 +930,7 @@ Item {
 
             Rectangle {
               Layout.fillWidth: true
-              Layout.preferredHeight: 50
+              Layout.preferredHeight: 54
               radius: Theme.radiusBase
               color: root.selectedMethod === "offline" ? Theme.selected : Theme.surface
               border.width: 0
@@ -903,9 +938,9 @@ Item {
 
               RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 8
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                spacing: 6
 
                 Text {
                   text: root.selectedMethod === "offline" ? "󰄲" : "󰄱"
@@ -921,7 +956,7 @@ Item {
                   Row {
                     spacing: 4
                     Text {
-                      text: "Safe Offline Upgrade"
+                      text: "Offline"
                       font.family: Theme.textFont
                       font.pixelSize: Theme.fontSm
                       font.weight: Font.DemiBold
@@ -929,7 +964,7 @@ Item {
                     }
                     Text {
                       visible: root.recommendedMethod === "offline"
-                      text: "(Recommended)"
+                      text: "Recommended"
                       font.family: Theme.textFont
                       font.pixelSize: Theme.fontXs
                       color: Theme.accent
@@ -938,7 +973,7 @@ Item {
 
                   Text {
                     width: parent.width
-                    text: root.offlineReady ? "Downloaded & ready for reboot" : "Downloads now, applies on restart"
+                    text: root.offlineReady ? "Ready for restart" : "Apply after restart"
                     font.family: Theme.textFont
                     font.pixelSize: Theme.fontSm
                     color: root.offlineReady ? Theme.green : Theme.ink3
@@ -959,7 +994,7 @@ Item {
 
             Rectangle {
               Layout.fillWidth: true
-              Layout.preferredHeight: 50
+              Layout.preferredHeight: 54
               radius: Theme.radiusBase
               color: root.selectedMethod === "inplace" ? Theme.selected : Theme.surface
               border.width: 0
@@ -967,9 +1002,9 @@ Item {
 
               RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 8
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                spacing: 6
 
                 Text {
                   text: root.selectedMethod === "inplace" ? "󰄲" : "󰄱"
@@ -983,7 +1018,7 @@ Item {
                   spacing: 2
 
                   Text {
-                    text: "Live In-Place Upgrade"
+                    text: "Install now"
                     font.family: Theme.textFont
                     font.pixelSize: Theme.fontSm
                     font.weight: Font.DemiBold
@@ -992,7 +1027,7 @@ Item {
 
                   Text {
                     width: parent.width
-                    text: "Installs immediately in active session"
+                    text: "Apply in this session"
                     font.family: Theme.textFont
                     font.pixelSize: Theme.fontSm
                     color: Theme.ink3
