@@ -14,6 +14,7 @@ PopupWindow {
   property string currentPopup: ""
   property bool pinned: false
   property bool reconfiguringGrabFocus: false
+  property bool reconfiguringSurface: false
 
   // Debounce/race prevention for Wayland grabFocus dismissal
   property var lastClosedItem: null
@@ -93,7 +94,9 @@ PopupWindow {
   }
 
   function close(): void {
-    if (!visible && !pendingOpen) return;
+    const wasReconfiguring = reconfiguringSurface;
+    reconfiguringSurface = false;
+    if (!visible && !pendingOpen && !wasReconfiguring) return;
     pendingOpen = false;
     reconfiguringGrabFocus = false;
     pinned = false;
@@ -120,6 +123,25 @@ PopupWindow {
       if (!reconfiguringGrabFocus) return;
       reconfiguringGrabFocus = false;
       visible = true;
+    });
+  }
+
+  function reconfigureSurface(update: var): void {
+    if (typeof update !== "function") return;
+    if (!visible) {
+      update();
+      return;
+    }
+
+    reconfiguringSurface = true;
+    visible = false;
+    update();
+    Qt.callLater(() => {
+      if (!reconfiguringSurface) return;
+      reconfiguringSurface = false;
+      if (!currentPopup || !targetItem) return;
+      visible = true;
+      anchor.updateAnchor();
     });
   }
 
@@ -152,6 +174,8 @@ PopupWindow {
 
   function open(item: Item, target: var, nameHint = ""): void {
     if (!item || !target) return;
+
+    reconfiguringSurface = false;
 
     if (visible) {
       close();
@@ -228,7 +252,7 @@ PopupWindow {
   onVisibleChanged: {
     if (!visible) {
       pendingOpen = false;
-      if (reconfiguringGrabFocus) return;
+      if (reconfiguringGrabFocus || reconfiguringSurface) return;
       pinned = false;
       if (targetItem !== null || currentPopup !== "") {
         cleanupCurrent();
@@ -392,6 +416,7 @@ PopupWindow {
     DockerControlCenter {
       anchors.fill: parent
       docker: host.services ? host.services.docker : null
+      popupWindow: host
       onTriggerRefresh: {
         if (host.services && host.services.docker) host.services.docker.refresh();
       }

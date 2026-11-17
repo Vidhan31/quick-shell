@@ -9,14 +9,19 @@ Item {
   id: root
 
   property var docker: null
+  property var popupWindow: null
   property DockerMonitor monitor: (docker && docker.monitor) ? docker.monitor : docker
   readonly property DockerMonitor activeMonitor: monitor
 
   signal triggerRefresh()
-  implicitWidth: Theme.popupWidthLg
-  implicitHeight: 600
+  implicitWidth: Theme.popupWidthLg - 40
+  property int popupHeight: 208
+  readonly property int preferredHeight: root.connected ? 600 : 208
+  implicitHeight: root.popupHeight
 
-  function syncHeight(): void {}
+  function syncHeight(): void {
+    root.popupHeight = root.preferredHeight;
+  }
 
   readonly property bool connected: activeMonitor ? activeMonitor.connected : false
   readonly property bool busy: activeMonitor ? activeMonitor.isBusy : false
@@ -39,9 +44,19 @@ Item {
   property bool confirmStopPrompt: false
   property int currentTab: 0
 
+  function updatePopupHeight(): void {
+    const nextHeight = root.preferredHeight;
+    if (root.popupWindow && typeof root.popupWindow.reconfigureSurface === "function") {
+      root.popupWindow.reconfigureSurface(() => root.popupHeight = nextHeight);
+    } else {
+      root.popupHeight = nextHeight;
+    }
+  }
+
   onConnectedChanged: {
     if (!root.connected)
       root.confirmStopPrompt = false;
+    root.updatePopupHeight();
   }
 
   function startService(): void {

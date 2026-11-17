@@ -13,7 +13,7 @@ Item {
   readonly property TailscaleMonitor activeMonitor: monitor
 
   implicitWidth: Theme.popupWidthMd
-  implicitHeight: 620
+  implicitHeight: 430
 
   readonly property var t: Theme
 
@@ -57,9 +57,9 @@ Item {
   readonly property string pingTargetIp: root.activeMonitor ? root.activeMonitor.pingTargetIp : ""
 
   readonly property var segItems: [
-    { icon: "󰖟", label: "Sharing", count: root.serveItems.length, alert: false },
-    { icon: "󰀲", label: "Devices", count: root.peers.length, alert: false },
-    { icon: "󰒢", label: "Settings", count: root.health.length, alert: root.health.length > 0 }
+    { icon: "", label: "Sharing", count: root.serveItems.length, alert: false },
+    { icon: "", label: "Devices", count: root.peers.length, alert: false },
+    { icon: "", label: "Settings", count: root.health.length, alert: root.health.length > 0 }
   ]
 
   readonly property var suggestions: [
@@ -390,20 +390,37 @@ Item {
             anchors.fill: parent
             spacing: 10
 
-            SectionHeader {
+            RowLayout {
               visible: root.serveItems.length > 0
               Layout.fillWidth: true
-              label: "Active shares"
-              actionGlyph: root.serveItems.length > 0 ? "󰃢" : ""
-              actionColor: root.t.err
-              onActionClicked: root.runAction(["serve-reset"], "Reset all serve endpoints")
+              Layout.preferredHeight: root.serveItems.length > 0 ? 28 : 0
+              Layout.minimumHeight: 0
+              Text {
+                Layout.fillWidth: true
+                text: "Active shares"
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontMd
+                font.weight: Font.Medium
+                color: root.t.ink1
+              }
+              IconButton {
+                glyph: "󰃢"
+                fs: 14
+                btnSize: 28
+                fg: root.t.err
+                tooltip: "Reset all shares"
+                onClicked: root.runAction(["serve-reset"], "Reset all serve endpoints")
+              }
             }
 
             SectionCard {
               visible: root.serveItems.length > 0
               Layout.fillWidth: true
-              Layout.fillHeight: true
-              Layout.minimumHeight: 56
+              Layout.fillHeight: root.serveItems.length > 0
+              Layout.preferredHeight: root.serveItems.length > 0 ? 56 : 0
+              Layout.minimumHeight: root.serveItems.length > 0 ? 56 : 0
+              Layout.maximumHeight: root.serveItems.length > 0 ? 260 : 0
+              color: "transparent"
 
               Flickable {
                 anchors.fill: parent
@@ -425,7 +442,7 @@ Item {
 
                       ActionRow {
                         width: parent.width
-                        height: 48
+                        height: 58
                         rad: (serveRow.index === 0 && root.serveItems.length === 1) ? 10 : 0
                         onClicked: {
                           targetField.setText(serveRow.modelData.target || serveRow.modelData.url);
@@ -433,28 +450,29 @@ Item {
                         }
                         RowLayout {
                           anchors.fill: parent
-                          anchors.leftMargin: 12
-                          anchors.rightMargin: 8
-                          spacing: 8
+                          anchors.leftMargin: 4
+                          anchors.rightMargin: 2
+                          spacing: 6
                           Column {
                             Layout.fillWidth: true
-                            spacing: 2
+                            spacing: 4
                             Text {
                               width: parent.width
                               text: serveRow.modelData.url
                               font.family: root.t.mono
-                              font.pixelSize: Theme.fontBase
+                              font.pixelSize: Theme.fontMd
                               font.weight: Font.Medium
                               color: root.t.ink1
                               elide: Text.ElideRight
+                              maximumLineCount: 1
                             }
                             Row {
                               width: parent.width
-                              spacing: 5
+                              spacing: 6
                               Text {
                                 text: serveRow.modelData.is_funnel ? "Public" : "Tailnet"
                                 font.family: Theme.textFont
-                                font.pixelSize: Theme.fontXs
+                                font.pixelSize: Theme.fontSm
                                 font.weight: Font.DemiBold
                                 color: serveRow.modelData.is_funnel ? root.t.violet : root.t.accent
                               }
@@ -465,55 +483,60 @@ Item {
                                 color: root.t.ink3
                               }
                               Text {
-                                width: parent.width - 90
+                                width: Math.max(0, parent.width - 82)
                                 text: ":" + serveRow.modelData.port + " → " + serveRow.modelData.target
                                 font.family: root.t.mono
-                                font.pixelSize: Theme.fontXs
+                                font.pixelSize: Theme.fontSm
                                 color: root.t.ink3
-                                elide: Text.ElideRight
+                                elide: Text.ElideMiddle
+                                maximumLineCount: 1
                               }
                             }
                           }
 
                           Row {
-                            spacing: 2
+                            spacing: 3
                             IconButton {
                               glyph: "󰆏"
-                              fs: 12
-                              btnSize: 26
+                              fs: 14
+                              btnSize: 28
                               fg: root.t.ink2
+                              tooltip: "Copy share URL"
                               onClicked: root.copyText(serveRow.modelData.url, "URL")
                             }
                             IconButton {
                               glyph: "󰖟"
-                              fs: 12
-                              btnSize: 26
+                              fs: 14
+                              btnSize: 28
                               fg: root.t.ink2
+                              tooltip: "Open share URL"
                               onClicked: root.openUrl(serveRow.modelData.url)
                             }
                             IconButton {
                               glyph: serveRow.modelData.is_funnel ? "󰌾" : "󰌿"
-                              fs: 12
-                              btnSize: 26
+                              fs: 14
+                              btnSize: 28
                               fg: serveRow.modelData.is_funnel ? root.t.violet : root.t.accent
+                              tooltip: serveRow.modelData.is_funnel ? "Switch to tailnet only" : "Make public"
                               onClicked: root.flipScope(serveRow.modelData)
                             }
                             IconButton {
                               glyph: "󰅙"
-                              fs: 12
-                              btnSize: 26
+                              fs: 14
+                              btnSize: 28
                               fg: root.t.err
+                              tooltip: "Stop sharing"
                               onClicked: root.stopEndpoint(serveRow.modelData.port)
                             }
                           }
                         }
                       }
 
-                      Item { width: 1; height: 6 }
+                      Item { width: 1; height: 2 }
 
                       Hairline {
                         visible: serveRow.index < root.serveItems.length - 1
-                        width: parent.width - 24
+                        width: parent.width - 8
                         anchors.horizontalCenter: parent.horizontalCenter
                       }
                     }
@@ -555,7 +578,7 @@ Item {
                       property var ep: root.findActiveEndpoint(suggestionBtn.modelData.addr, "")
                       property bool selected: root.targetsMatch(root.launchTarget, suggestionBtn.modelData.addr)
                       text: suggestionBtn.modelData.name + " · " + root.extractPort(suggestionBtn.modelData.addr)
-                      fs: 11
+                      fs: 12
                       bold: selected
                       fg: {
                         if (selected) return root.t.ink1;
