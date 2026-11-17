@@ -883,7 +883,7 @@ Item {
           Layout.preferredWidth: 8
           Layout.preferredHeight: 8
           Layout.alignment: Qt.AlignVCenter
-          radius: 4
+          radius: 0
           color: root.stateColor(row.info.state)
         }
         Text {

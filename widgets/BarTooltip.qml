@@ -66,9 +66,9 @@ PopupWindow {
     implicitHeight: tipCol.implicitHeight + 10
     width: implicitWidth
     height: implicitHeight
-    radius: Theme.radiusSm
-    color: Theme.popupGlass
-    border.color: Theme.cardBorder
+    radius: 0
+    color: Theme.inset
+    border.color: Qt.rgba(1.0, 1.0, 1.0, 0.22)
     border.width: 1
 
     Column {
@@ -82,7 +82,7 @@ PopupWindow {
         color: Theme.ink1
         font.pixelSize: Theme.fontSm
         font.weight: Font.Medium
-        font.family: Theme.textFont
+        font.family: Theme.mono
       }
 
       Text {
@@ -91,7 +91,7 @@ PopupWindow {
         text: root.subtext
         color: Theme.ink2
         font.pixelSize: Theme.fontXs
-        font.family: Theme.textFont
+        font.family: Theme.mono
       }
     }
   }

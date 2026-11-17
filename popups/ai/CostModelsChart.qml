@@ -232,7 +232,7 @@ Rectangle {
                 Layout.preferredWidth: 6
                 Layout.preferredHeight: 6
                 Layout.alignment: Qt.AlignVCenter
-                radius: 3
+                radius: 0
                 color: rowBox.modelData.src === "oc" ? Theme.teal : Theme.violet
               }
 
@@ -279,7 +279,7 @@ Rectangle {
                   visible: !rowBox.priced || (rowBox.modelData.isOverride === true) || (rowBox.modelData.viaFallback === true)
                   Layout.preferredHeight: 14
                   Layout.preferredWidth: tagText.implicitWidth + 8
-                  radius: 7
+                  radius: 0
                   color: {
                     if (!rowBox.priced) return Theme.surfaceElevated;
                     if (rowBox.modelData.isOverride) return Theme.accentBg;
@@ -343,12 +343,12 @@ Rectangle {
               Rectangle {
                 id: barTrack
                 anchors.fill: parent
-                radius: 2.5
+                radius: 0
                 color: Theme.lineMuted
 
                 Rectangle {
                   height: parent.height
-                  radius: parent.radius
+                  radius: 0
                   width: rowBox.priced
                     ? Math.max(3, Math.round(barTrack.width * Math.min(1.0, rowBox.modelData.hypo / root.maxHypo)))
                     : 0

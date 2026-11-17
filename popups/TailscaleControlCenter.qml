@@ -361,6 +361,8 @@ Item {
         }
       }
 
+      Hairline { Layout.fillWidth: true }
+
       Item { Layout.preferredHeight: 12; Layout.fillWidth: true }
 
       SegmentedControl {

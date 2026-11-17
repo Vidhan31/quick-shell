@@ -5,25 +5,40 @@ import "../theme"
 Item {
   id: root
   property string label: ""
+  property string valueText: ""
   property string actionText: ""
   property string actionGlyph: ""
   property color actionColor: Theme.ink2
   property string actionTooltip: ""
   signal actionClicked()
 
-  implicitHeight: 22
+  implicitHeight: 24
 
   Text {
     anchors.left: parent.left
     anchors.verticalCenter: parent.verticalCenter
-    text: root.label
-    font.family: Theme.textFont
-    font.pixelSize: Theme.fontSm
+    text: root.label.toUpperCase()
+    font.family: Theme.mono
+    font.pixelSize: Theme.fontXs
+    font.letterSpacing: 1.5
     font.weight: Font.DemiBold
-    color: Theme.ink2
+    color: Theme.ink3
+  }
+
+  Text {
+    anchors.right: (actionIcon.visible || actionTxt.visible) ? (actionIcon.visible ? actionIcon.left : actionTxt.left) : parent.right
+    anchors.rightMargin: (actionIcon.visible || actionTxt.visible) ? 6 : 0
+    anchors.verticalCenter: parent.verticalCenter
+    visible: root.valueText.length > 0
+    text: root.valueText
+    font.family: Theme.mono
+    font.pixelSize: Theme.fontSm
+    font.weight: Font.SemiBold
+    color: Theme.ink3
   }
 
   IconButton {
+    id: actionIcon
     anchors.right: parent.right
     anchors.verticalCenter: parent.verticalCenter
     visible: root.actionGlyph.length > 0
@@ -36,6 +51,7 @@ Item {
   }
 
   TextButton {
+    id: actionTxt
     anchors.right: parent.right
     anchors.verticalCenter: parent.verticalCenter
     visible: root.actionGlyph.length === 0 && root.actionText.length > 0

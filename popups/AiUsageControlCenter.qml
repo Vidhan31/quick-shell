@@ -743,7 +743,7 @@ Item {
                           Rectangle {
                             width: parent.width
                             height: 3
-                            radius: 1.5
+                            radius: 0
                             color: root.t.cardBorder
                             Rectangle {
                               height: parent.height
@@ -928,7 +928,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         height: 16
                         width: savingsBadgeText.implicitWidth + 8
-                        radius: 8
+                        radius: 0
                         color: Theme.accentBg
                         Text {
                           id: savingsBadgeText

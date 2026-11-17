@@ -11,9 +11,9 @@ Rectangle {
   property color ink: Theme.darkInk
   property bool enabledBtn: true
 
-  implicitHeight: 34
-  implicitWidth: contentRow.implicitWidth + 24
-  radius: 9
+  implicitHeight: 32
+  implicitWidth: contentRow.implicitWidth + 20
+  radius: Theme.radiusBase
   activeFocusOnTab: root.enabledBtn
 
   scale: (ma.pressed && root.enabledBtn) ? 0.985 : 1.0

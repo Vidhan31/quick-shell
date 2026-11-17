@@ -284,6 +284,8 @@ Item {
         }
       }
 
+      Hairline { Layout.fillWidth: true }
+
       Item { Layout.preferredHeight: 12; Layout.fillWidth: true }
 
       Row {
@@ -374,7 +376,7 @@ Item {
                 visible: !!dayCell.modelData.hasEvent
                 width: 4
                 height: 4
-                radius: 2
+                radius: 0
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 3
@@ -448,7 +450,7 @@ Item {
           Rectangle {
             Layout.preferredWidth: 5
             Layout.preferredHeight: 5
-            radius: 2.5
+            radius: 0
             color: root.t.amber
             Layout.alignment: Qt.AlignVCenter
           }

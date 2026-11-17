@@ -86,7 +86,7 @@ Rectangle {
     anchors.verticalCenter: parent.verticalCenter
     width: 20
     height: 20
-    radius: 10
+    radius: 0
     color: clearMa.containsMouse ? Theme.pressWash : "transparent"
 
     Text {

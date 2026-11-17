@@ -92,7 +92,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: windowDelegate.isActivated ? 14 : (mouseArea.containsMouse ? 8 : 0)
         height: 2
-        radius: 1
+        radius: 0
         color: {
           if (windowDelegate.isActivated) return Theme.accent;
           if (mouseArea.containsMouse) return Theme.ink2;
@@ -110,7 +110,7 @@ Item {
         anchors.rightMargin: 2
         width: 4
         height: 4
-        radius: 2
+        radius: 0
         color: windowDelegate.isFullscreen ? Theme.red : (windowDelegate.isMaximized ? Theme.green : "transparent")
         visible: windowDelegate.isFullscreen || windowDelegate.isMaximized
       }

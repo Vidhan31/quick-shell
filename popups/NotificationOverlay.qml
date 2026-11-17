@@ -37,6 +37,9 @@ PanelWindow {
 
   function resolveEventIcon(iconName) {
     if (!iconName) return "";
+    if (iconName.startsWith("image://") || iconName.startsWith("file://") || iconName.startsWith("http://") || iconName.startsWith("https://") || iconName.startsWith("/")) {
+      return iconName;
+    }
     return iconResolver.resolveNamedOrPath(iconName);
   }
 
@@ -277,14 +280,14 @@ PanelWindow {
                 Rectangle {
                   width: parent.width
                   height: 6
-                  radius: 3
+                  radius: 0
                   color: root.t.inset
                   clip: true
 
                   Rectangle {
                     width: parent.width * Math.max(0, Math.min(100, jobItem.percentVal)) / 100
                     height: parent.height
-                    radius: 3
+                    radius: 0
                     color: jobItem.isSuspended ? root.t.amber : root.t.accent
                     Behavior on width { NumberAnimation { duration: 150 } }
                   }
@@ -349,12 +352,62 @@ PanelWindow {
         readonly property string replyPlaceholder: toast ? (toast.inlineReplyPlaceholder || "Reply…") : "Reply…"
         readonly property bool hasActionIcons: toast ? toast.hasActionIcons === true : false
         readonly property string desktopEntry: toast ? (toast.desktopEntry || "") : ""
+        readonly property string categoryStr: toast ? (toast.category || "") : ""
         readonly property var urlsList: toast ? (toast.urls || []) : []
         readonly property string primaryUrl: toastItem.urlsList.length > 0 ? String(toastItem.urlsList[0]) : ""
 
         readonly property string resolvedAppIcon: root.resolveAppIcon(desktopEntry, appName, appIcon)
         readonly property string resolvedEventIcon: root.resolveEventIcon(notifIcon)
         readonly property bool showEventIcon: resolvedEventIcon.length > 0 && resolvedEventIcon !== resolvedAppIcon
+
+        readonly property bool isCommunication: {
+          if (toastItem.hasInlineReply) return true;
+          if (toastItem.originName.length > 0) return true;
+          const cat = toastItem.categoryStr.toLowerCase();
+          if (cat.startsWith("im") || cat === "email.arrived") return true;
+          const app = toastItem.appName.toLowerCase();
+          const desk = toastItem.desktopEntry.toLowerCase();
+          const known = ["whatsapp", "zapfast", "telegram", "signal", "discord", "slack", "element", "matrix", "messages", "skype", "kdeconnect"];
+          for (let i = 0; i < known.length; i++) {
+            if (app.includes(known[i]) || desk.includes(known[i])) return true;
+          }
+          return false;
+        }
+
+        Image {
+          id: toastMediaProbe
+          visible: false
+          source: toastItem.imageSrc
+          asynchronous: true
+        }
+
+        readonly property bool isWideImage: toastMediaProbe.status === Image.Ready &&
+          (toastMediaProbe.implicitWidth >= 160) &&
+          (toastMediaProbe.implicitHeight > 0) &&
+          ((toastMediaProbe.implicitWidth / toastMediaProbe.implicitHeight) >= 1.35)
+
+        readonly property bool hasRawImage: toastItem.imageSrc.length > 0 &&
+          (toastItem.urlsList.length === 0 || !root.isImageUrl(toastItem.primaryUrl))
+
+        readonly property string avatarSource: {
+          if (toastItem.notifIcon.length > 0 && toastItem.notifIcon !== toastItem.appIcon) {
+            return root.resolveEventIcon(toastItem.notifIcon);
+          }
+          if (toastItem.isCommunication && toastItem.hasRawImage && !toastItem.isWideImage) {
+            return toastItem.imageSrc;
+          }
+          return "";
+        }
+
+        readonly property bool hasAvatar: toastItem.avatarSource.length > 0
+
+        readonly property bool isBannerImage: toastItem.hasRawImage &&
+          !toastItem.hasAvatar &&
+          toastItem.isWideImage
+
+        readonly property bool isThumbnailImage: toastItem.hasRawImage &&
+          !toastItem.hasAvatar &&
+          !toastItem.isWideImage
 
         property bool isHovered: false
         property bool replyActive: false
@@ -471,7 +524,7 @@ PanelWindow {
             anchors.leftMargin: 10
             anchors.rightMargin: 10
             height: 2
-            radius: 1
+            radius: 0
             color: root.t.lineMuted
             clip: true
 
@@ -481,7 +534,7 @@ PanelWindow {
               anchors.top: parent.top
               anchors.bottom: parent.bottom
               width: parent.width * Math.max(0, Math.min(1.0, toastItem.progress))
-              radius: 1
+              radius: 0
               color: toastItem.isCritical ? root.t.red : root.t.accent
               opacity: 0.85
             }
@@ -641,14 +694,25 @@ PanelWindow {
                   width: parent.width
                   spacing: 8
 
-                  Rectangle {
-                    visible: toastItem.showEventIcon
+                  ClippingRectangle {
+                    visible: (toastItem.hasAvatar && toastAvatarImg.status !== Image.Error) || toastItem.showEventIcon
                     Layout.alignment: Qt.AlignTop
-                    Layout.preferredWidth: 32
-                    Layout.preferredHeight: 32
-                    radius: Theme.radiusBase
+                    Layout.preferredWidth: 36
+                    Layout.preferredHeight: 36
+                    radius: 0
                     color: root.t.inset
+
+                    Image {
+                      id: toastAvatarImg
+                      visible: toastItem.hasAvatar
+                      anchors.fill: parent
+                      source: toastItem.avatarSource
+                      fillMode: Image.PreserveAspectCrop
+                      asynchronous: true
+                    }
+
                     IconImage {
+                      visible: (!toastItem.hasAvatar || toastAvatarImg.status === Image.Error) && toastItem.showEventIcon
                       anchors.centerIn: parent
                       width: 20
                       height: 20
@@ -692,22 +756,37 @@ PanelWindow {
                       onLinkActivated: link => Qt.openUrlExternally(link)
                     }
                   }
+
+                  ClippingRectangle {
+                    visible: toastItem.isThumbnailImage && toastThumbImg.status === Image.Ready
+                    Layout.alignment: Qt.AlignTop
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    radius: Theme.radiusBase
+                    color: root.t.inset
+
+                    Image {
+                      id: toastThumbImg
+                      anchors.fill: parent
+                      source: toastItem.imageSrc
+                      fillMode: Image.PreserveAspectCrop
+                      asynchronous: true
+                    }
+                  }
                 }
 
                 ClippingRectangle {
-                  visible: toastItem.imageSrc.length > 0 && toastImg.status === Image.Ready && (toastItem.urlsList.length === 0 || !root.isImageUrl(toastItem.primaryUrl))
+                  visible: toastItem.isBannerImage && toastBannerImg.status === Image.Ready
                   width: parent.width
-                  height: Math.min(100, Math.max(48, toastImg.implicitHeight > 0 ? toastImg.implicitHeight : 80))
+                  height: Math.min(140, Math.max(72, Math.round(width * (toastBannerImg.implicitHeight > 0 && toastBannerImg.implicitWidth > 0 ? (toastBannerImg.implicitHeight / toastBannerImg.implicitWidth) : 0.5))))
                   radius: Theme.radiusBase
                   color: root.t.inset
 
                   Image {
-                    id: toastImg
-                    anchors.centerIn: parent
-                    width: parent.width - 8
-                    height: parent.height - 8
+                    id: toastBannerImg
+                    anchors.fill: parent
                     source: toastItem.imageSrc
-                    fillMode: Image.PreserveAspectFit
+                    fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                   }
                 }

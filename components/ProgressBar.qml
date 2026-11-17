@@ -13,11 +13,11 @@ Rectangle {
   property bool animated: true
 
   implicitWidth: 120
-  implicitHeight: 6
-  radius: 3
+  implicitHeight: 4
+  radius: 0
   color: trackColor
   border.width: 1
-  border.color: Theme.tint(Theme.cardBorder, 0.6)
+  border.color: Theme.tint(Theme.cardBorder, 0.4)
   clip: true
 
   readonly property real normalized: {

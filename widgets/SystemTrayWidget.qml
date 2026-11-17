@@ -231,7 +231,7 @@ Item {
           anchors.rightMargin: 2
           width: 5
           height: 5
-          radius: 2.5
+          radius: 0
           color: Theme.red
           visible: delegateItem.item ? (delegateItem.item.status === Status.NeedsAttention) : false
         }
@@ -537,7 +537,7 @@ Item {
 
               Rectangle {
                 anchors.fill: parent
-                radius: 7
+                radius: 0
                 visible: !menuItem.isSep
                 color: (menuMouse.containsMouse || root.activeSubmenuItem === menuItem) && menuItem.entry && menuItem.entry.enabled ? Theme.hoverWash : "transparent"
 
@@ -745,7 +745,7 @@ Item {
 
               Rectangle {
                 anchors.fill: parent
-                radius: 7
+                radius: 0
                 visible: !subMenuItem.isSep
                 color: subMenuMouse.containsMouse && subMenuItem.entry && subMenuItem.entry.enabled ? Theme.hoverWash : "transparent"
 

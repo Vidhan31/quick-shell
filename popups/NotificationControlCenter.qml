@@ -44,6 +44,9 @@ Item {
 
   function resolveEventIcon(iconName) {
     if (!iconName) return "";
+    if (iconName.startsWith("image://") || iconName.startsWith("file://") || iconName.startsWith("http://") || iconName.startsWith("https://") || iconName.startsWith("/")) {
+      return iconName;
+    }
     return iconResolver.resolveNamedOrPath(iconName);
   }
 
@@ -326,7 +329,7 @@ Item {
               visible: root.activeJobsList.length > 0
               Layout.preferredHeight: 18
               implicitWidth: activeJobsCountText.implicitWidth + 10
-              radius: 9
+              radius: 0
               color: root.t.accentBg
 
               Text {
@@ -475,14 +478,14 @@ Item {
                   visible: !jobRow.isStopped
                   width: parent.width
                   height: 4
-                  radius: 2
+                  radius: 0
                   color: root.t.inset
                   clip: true
 
                   Rectangle {
                     width: parent.width * Math.max(0, Math.min(100, jobRow.percentVal)) / 100
                     height: parent.height
-                    radius: 2
+                    radius: 0
                     color: jobRow.isSuspended ? root.t.amber : root.t.accent
                     Behavior on width { NumberAnimation { duration: 150 } }
                   }
@@ -670,11 +673,61 @@ Item {
                   readonly property string replyPlaceholder: notif ? (notif.inlineReplyPlaceholder || "Reply…") : "Reply…"
                   readonly property bool hasActionIcons: notif ? notif.hasActionIcons === true : false
                   readonly property string desktopEntry: notif ? (notif.desktopEntry || "") : ""
+                  readonly property string categoryStr: notif ? (notif.category || "") : ""
                   readonly property var urlsList: notif ? (notif.urls || []) : []
                   readonly property string primaryUrl: notifItem.urlsList.length > 0 ? String(notifItem.urlsList[0]) : ""
 
                   readonly property string resolvedEventIcon: root.resolveEventIcon(notifIcon)
                   readonly property bool showEventIcon: resolvedEventIcon.length > 0 && resolvedEventIcon !== groupDelegate.resolvedAppIcon
+
+                  readonly property bool isCommunication: {
+                    if (notifItem.hasInlineReply) return true;
+                    if (notifItem.originName.length > 0) return true;
+                    const cat = notifItem.categoryStr.toLowerCase();
+                    if (cat.startsWith("im") || cat === "email.arrived") return true;
+                    const app = groupDelegate.appName.toLowerCase();
+                    const desk = notifItem.desktopEntry.toLowerCase();
+                    const known = ["whatsapp", "zapfast", "telegram", "signal", "discord", "slack", "element", "matrix", "messages", "skype", "kdeconnect"];
+                    for (let i = 0; i < known.length; i++) {
+                      if (app.includes(known[i]) || desk.includes(known[i])) return true;
+                    }
+                    return false;
+                  }
+
+                  Image {
+                    id: ccMediaProbe
+                    visible: false
+                    source: notifItem.imageSrc
+                    asynchronous: true
+                  }
+
+                  readonly property bool isWideImage: ccMediaProbe.status === Image.Ready &&
+                    (ccMediaProbe.implicitWidth >= 160) &&
+                    (ccMediaProbe.implicitHeight > 0) &&
+                    ((ccMediaProbe.implicitWidth / ccMediaProbe.implicitHeight) >= 1.35)
+
+                  readonly property bool hasRawImage: notifItem.imageSrc.length > 0 &&
+                    (notifItem.urlsList.length === 0 || !root.isImageUrl(notifItem.primaryUrl))
+
+                  readonly property string avatarSource: {
+                    if (notifItem.notifIcon.length > 0 && notifItem.notifIcon !== groupDelegate.resolvedAppIcon) {
+                      return root.resolveEventIcon(notifItem.notifIcon);
+                    }
+                    if (notifItem.isCommunication && notifItem.hasRawImage && !notifItem.isWideImage) {
+                      return notifItem.imageSrc;
+                    }
+                    return "";
+                  }
+
+                  readonly property bool hasAvatar: notifItem.avatarSource.length > 0
+
+                  readonly property bool isBannerImage: notifItem.hasRawImage &&
+                    !notifItem.hasAvatar &&
+                    notifItem.isWideImage
+
+                  readonly property bool isThumbnailImage: notifItem.hasRawImage &&
+                    !notifItem.hasAvatar &&
+                    !notifItem.isWideImage
                   readonly property bool isSingleInGroup: groupDelegate.totalGroupCount === 1
                   readonly property bool summaryDiffersFromApp: notifItem.summaryText.length > 0 &&
                     notifItem.summaryText.trim().toLowerCase() !== groupDelegate.appName.trim().toLowerCase()
@@ -755,7 +808,7 @@ Item {
 
                         IconImage {
                           id: subEventIcon
-                          visible: !notifItem.isSingleInGroup && notifItem.showEventIcon && subEventIcon.status !== Image.Error
+                          visible: !notifItem.isSingleInGroup && !notifItem.hasAvatar && notifItem.showEventIcon && subEventIcon.status !== Image.Error
                           Layout.preferredWidth: 16
                           Layout.preferredHeight: 16
                           Layout.alignment: Qt.AlignVCenter
@@ -828,48 +881,100 @@ Item {
                         }
                       }
 
-                      Text {
-                        visible: notifItem.isSingleInGroup && notifItem.summaryDiffersFromApp
+                      RowLayout {
                         Layout.fillWidth: true
-                        text: notifItem.displayTitle
-                        font.family: Theme.textFont
-                        font.pixelSize: Theme.fontSm
-                        font.weight: Font.Medium
-                        color: notifItem.isCritical ? root.t.red : (notifItem.isLow ? root.t.ink2 : root.t.ink1)
-                        elide: Text.ElideRight
-                      }
+                        spacing: 8
 
-                      TextEdit {
-                        visible: notifItem.bodyText.length > 0
-                        Layout.fillWidth: true
-                        text: notifItem.bodyText
-                        textFormat: TextEdit.RichText
-                        font.family: Theme.textFont
-                        font.pixelSize: Theme.fontSm
-                        color: root.t.ink2
-                        selectionColor: root.t.accentBg
-                        selectedTextColor: root.t.ink1
-                        readOnly: true
-                        selectByMouse: true
-                        activeFocusOnPress: false
-                        cursorVisible: false
-                        wrapMode: TextEdit.Wrap
-                        onLinkActivated: link => Qt.openUrlExternally(link)
+                        ClippingRectangle {
+                          visible: (notifItem.hasAvatar && ccAvatarImg.status !== Image.Error) || (!notifItem.isSingleInGroup && notifItem.showEventIcon)
+                          Layout.alignment: Qt.AlignTop
+                          Layout.preferredWidth: 32
+                          Layout.preferredHeight: 32
+                          radius: 0
+                          color: root.t.inset
+
+                          Image {
+                            id: ccAvatarImg
+                            visible: notifItem.hasAvatar
+                            anchors.fill: parent
+                            source: notifItem.avatarSource
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                          }
+
+                          IconImage {
+                            visible: (!notifItem.hasAvatar || ccAvatarImg.status === Image.Error) && notifItem.showEventIcon
+                            anchors.centerIn: parent
+                            width: 16
+                            height: 16
+                            source: notifItem.resolvedEventIcon
+                            asynchronous: true
+                          }
+                        }
+
+                        ColumnLayout {
+                          Layout.fillWidth: true
+                          spacing: 2
+
+                          Text {
+                            visible: notifItem.isSingleInGroup && notifItem.summaryDiffersFromApp
+                            Layout.fillWidth: true
+                            text: notifItem.displayTitle
+                            font.family: Theme.textFont
+                            font.pixelSize: Theme.fontSm
+                            font.weight: Font.Medium
+                            color: notifItem.isCritical ? root.t.red : (notifItem.isLow ? root.t.ink2 : root.t.ink1)
+                            elide: Text.ElideRight
+                          }
+
+                          TextEdit {
+                            visible: notifItem.bodyText.length > 0
+                            Layout.fillWidth: true
+                            text: notifItem.bodyText
+                            textFormat: TextEdit.RichText
+                            font.family: Theme.textFont
+                            font.pixelSize: Theme.fontSm
+                            color: root.t.ink2
+                            selectionColor: root.t.accentBg
+                            selectedTextColor: root.t.ink1
+                            readOnly: true
+                            selectByMouse: true
+                            activeFocusOnPress: false
+                            cursorVisible: false
+                            wrapMode: TextEdit.Wrap
+                            onLinkActivated: link => Qt.openUrlExternally(link)
+                          }
+                        }
+
+                        ClippingRectangle {
+                          visible: notifItem.isThumbnailImage && ccThumbImg.status === Image.Ready
+                          Layout.alignment: Qt.AlignTop
+                          Layout.preferredWidth: 44
+                          Layout.preferredHeight: 44
+                          radius: Theme.radiusBase
+                          color: root.t.inset
+
+                          Image {
+                            id: ccThumbImg
+                            anchors.fill: parent
+                            source: notifItem.imageSrc
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                          }
+                        }
                       }
 
                       ClippingRectangle {
-                        visible: notifItem.imageSrc.length > 0 && notifImg.status === Image.Ready && (notifItem.urlsList.length === 0 || !root.isImageUrl(notifItem.primaryUrl))
+                        visible: notifItem.isBannerImage && notifImg.status === Image.Ready
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(100, Math.max(48, notifImg.implicitHeight > 0 ? notifImg.implicitHeight : 80))
+                        Layout.preferredHeight: Math.min(140, Math.max(64, Math.round(((parent && parent.width > 0) ? parent.width : 300) * (notifImg.implicitHeight > 0 && notifImg.implicitWidth > 0 ? (notifImg.implicitHeight / notifImg.implicitWidth) : 0.5))))
                         radius: Theme.radiusBase
                         color: root.t.inset
                         Image {
                           id: notifImg
-                          anchors.centerIn: parent
-                          width: parent.width - 8
-                          height: parent.height - 8
+                          anchors.fill: parent
                           source: notifItem.imageSrc
-                          fillMode: Image.PreserveAspectFit
+                          fillMode: Image.PreserveAspectCrop
                           asynchronous: true
                         }
                       }

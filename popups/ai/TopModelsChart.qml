@@ -192,7 +192,7 @@ Rectangle {
         visible: root.hasExcess
         Layout.preferredHeight: 22
         Layout.preferredWidth: toggleRow.implicitWidth + 4
-        radius: 11
+        radius: 0
         color: Theme.inset
         border.color: Theme.cardBorder
         border.width: 1
@@ -205,7 +205,7 @@ Rectangle {
           Rectangle {
             height: 18
             width: topBtnText.implicitWidth + 12
-            radius: 9
+            radius: 0
             color: !root.showAll ? Theme.selected : "transparent"
             Behavior on color { ColorAnimation { duration: Theme.durationFast } }
 
@@ -229,7 +229,7 @@ Rectangle {
           Rectangle {
             height: 18
             width: allBtnText.implicitWidth + 12
-            radius: 9
+            radius: 0
             color: root.showAll ? Theme.selected : "transparent"
             Behavior on color { ColorAnimation { duration: Theme.durationFast } }
 
@@ -362,7 +362,7 @@ Rectangle {
                 Layout.preferredWidth: 6
                 Layout.preferredHeight: 6
                 Layout.alignment: Qt.AlignVCenter
-                radius: 3
+                radius: 0
                 color: {
                   if (rowBox.modelData.isOther) return Theme.ink3;
                   return rowBox.modelData.src === "oc" ? Theme.teal : Theme.violet;
@@ -411,13 +411,13 @@ Rectangle {
               Rectangle {
                 id: barTrack
                 anchors.fill: parent
-                radius: 2.5
+                radius: 0
                 color: Theme.lineMuted
 
                 Rectangle {
                   id: barFill
                   height: parent.height
-                  radius: parent.radius
+                  radius: 0
                   width: Math.max(3, Math.round(barTrack.width * Math.min(1.0, rowBox.modelData.raw / root.maxDisplayTokens)))
                   color: {
                     if (rowBox.modelData.isOther) return Theme.ink3;
@@ -508,7 +508,7 @@ Rectangle {
         anchors.centerIn: parent
         width: footerText.implicitWidth + 16
         height: 18
-        radius: 9
+        radius: 0
         color: (footerMouse.containsMouse || footerPill.activeFocus) ? Theme.hoverWash : "transparent"
         border.width: footerPill.activeFocus ? Theme.focusRingWidth : 0
         border.color: Theme.focusRing

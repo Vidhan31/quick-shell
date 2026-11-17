@@ -18,7 +18,7 @@ Item {
   readonly property var t: Theme
   property bool isDragging: false
 
-  implicitHeight: 24
+  implicitHeight: 22
   implicitWidth: 200
   activeFocusOnTab: true
 
@@ -74,13 +74,12 @@ Item {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.verticalCenter: parent.verticalCenter
-    height: (sliderArea.containsMouse || root.isDragging || root.activeFocus) ? 8 : 6
-    radius: height / 2
+    height: 4
+    radius: 0
     color: Theme.inset
-    border.color: root.activeFocus ? Theme.focusRing : "transparent"
-    border.width: root.activeFocus ? Theme.focusRingWidth : 0
+    border.color: root.activeFocus ? Theme.focusRing : Theme.tint(Theme.cardBorder, 0.5)
+    border.width: root.activeFocus ? Theme.focusRingWidth : 1
 
-    Behavior on height { NumberAnimation { duration: Theme.durationFast } }
     Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
 
     Rectangle {
@@ -88,7 +87,7 @@ Item {
       anchors.left: parent.left
       anchors.top: parent.top
       anchors.bottom: parent.bottom
-      radius: parent.radius
+      radius: 0
       width: {
         const range = root.to - root.from;
         if (range <= 0) return 0;
@@ -104,14 +103,17 @@ Item {
       id: thumb
       width: 12
       height: 12
-      radius: 6
-      color: Theme.ink1
+      radius: 0
+      color: root.muted ? root.mutedColor : (sliderArea.containsMouse || root.isDragging ? Theme.ink1 : "#cbd5e1")
+      border.color: Qt.rgba(0, 0, 0, 0.3)
+      border.width: 1
       anchors.verticalCenter: parent.verticalCenter
       x: Math.max(0, Math.min(track.width - width, fill.width - (width / 2)))
-      visible: sliderArea.containsMouse || root.isDragging || root.activeFocus
-      opacity: visible ? 1.0 : 0.0
+      visible: true
+      scale: (sliderArea.containsMouse || root.isDragging) ? 1.15 : 1.0
 
-      Behavior on opacity { OpacityAnimator { duration: Theme.durationFast } }
+      Behavior on scale { NumberAnimation { duration: Theme.durationFast } }
+      Behavior on color { ColorAnimation { duration: Theme.durationFast } }
     }
   }
 

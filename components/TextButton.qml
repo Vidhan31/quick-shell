@@ -13,7 +13,7 @@ Rectangle {
 
   implicitWidth: lbl.implicitWidth + 18
   implicitHeight: 26
-  radius: 7
+  radius: 0
   activeFocusOnTab: root.enabledBtn
 
   color: !root.enabledBtn ? "transparent" : (ma.pressed ? Theme.pressWash : (ma.containsMouse || root.activeFocus) ? Theme.hoverWash : "transparent")

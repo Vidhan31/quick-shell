@@ -172,6 +172,8 @@ Item {
           }
         }
 
+        Hairline { width: parent.width }
+
         Text {
           visible: root.adapter && root.adapter.state === BluetoothAdapterState.Blocked
           width: parent.width
@@ -185,6 +187,7 @@ Item {
         SectionHeader {
           width: parent.width
           label: "Devices"
+          valueText: root.devices ? (root.devices.filter(d => d.connected).length > 0 ? (root.devices.filter(d => d.connected).length + " CONNECTED") : "NONE") : ""
         }
 
         Repeater {

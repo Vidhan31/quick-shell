@@ -26,18 +26,21 @@ Rectangle {
     return Theme.accentBg;
   }
 
-  implicitWidth: pillLabel.implicitWidth + 10
+  implicitWidth: pillLabel.implicitWidth + 12
   implicitHeight: 18
   radius: Theme.radiusPill
   color: root.solid ? root.toneColor : root.washColor
+  border.color: root.solid ? "transparent" : Theme.tint(toneColor, 0.25)
+  border.width: root.solid ? 0 : 1
 
   Text {
     id: pillLabel
     anchors.centerIn: parent
     text: root.text
-    font.family: Theme.roundedFont
+    font.family: Theme.mono
     font.pixelSize: root.fs
-    font.weight: Font.Bold
+    font.letterSpacing: 0.5
+    font.weight: Font.SemiBold
     color: (root.solid && (root.tone === "warn" || root.tone === "err")) ? Theme.darkInk : root.toneColor
   }
 }

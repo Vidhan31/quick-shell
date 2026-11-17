@@ -238,12 +238,11 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                height: seekMouse.containsMouse || root.isSeeking || seekHit.activeFocus ? 6 : 4
-                radius: height / 2
+                height: 4
+                radius: 0
                 color: root.t.inset
-                border.color: seekHit.activeFocus ? root.t.focusRing : "transparent"
-                border.width: seekHit.activeFocus ? 1.5 : 0
-                Behavior on height { NumberAnimation { duration: 100 } }
+                border.color: seekHit.activeFocus ? root.t.focusRing : root.t.tint(root.t.cardBorder, 0.5)
+                border.width: seekHit.activeFocus ? root.t.focusRingWidth : 1
                 Behavior on border.color { ColorAnimation { duration: 100 } }
 
                 Rectangle {
@@ -252,21 +251,25 @@ Item {
                   anchors.top: parent.top
                   anchors.bottom: parent.bottom
                   width: root.trackLength > 0 ? Math.min(parent.width, Math.max(0, parent.width * (root.trackPos / root.trackLength))) : 0
-                  radius: parent.radius
+                  radius: 0
                   color: root.t.accent
                 }
 
                 Rectangle {
                   id: seekThumb
-                  width: 10
-                  height: 10
-                  radius: 5
-                  color: root.t.ink1
+                  width: 12
+                  height: 12
+                  radius: 0
+                  color: (seekMouse.containsMouse || root.isSeeking) ? root.t.ink1 : "#cbd5e1"
+                  border.color: Qt.rgba(0, 0, 0, 0.3)
+                  border.width: 1
                   anchors.verticalCenter: parent.verticalCenter
                   x: Math.max(0, Math.min(parent.width - width, seekFill.width - width / 2))
-                  visible: seekMouse.containsMouse || root.isSeeking || seekHit.activeFocus
-                  opacity: visible ? 1 : 0
-                  Behavior on opacity { OpacityAnimator { duration: 100 } }
+                  visible: true
+                  scale: (seekMouse.containsMouse || root.isSeeking) ? 1.15 : 1.0
+
+                  Behavior on scale { NumberAnimation { duration: root.t.durationFast } }
+                  Behavior on color { ColorAnimation { duration: root.t.durationFast } }
                 }
               }
 

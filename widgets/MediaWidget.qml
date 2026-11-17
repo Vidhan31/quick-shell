@@ -47,7 +47,7 @@ Item {
 
           width: 3
           height: modelData.minH
-          radius: 1.5
+          radius: 0
           color: Theme.ok
 
           SequentialAnimation on height {

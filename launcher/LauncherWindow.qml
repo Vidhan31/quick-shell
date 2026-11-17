@@ -638,7 +638,7 @@ PanelWindow {
                   anchors.horizontalCenter: parent.horizontalCenter
                   width: pinTile.modelData.isActive ? 14 : 4
                   height: pinTile.modelData.isActive ? 3 : 4
-                  radius: pinTile.modelData.isActive ? 1.5 : 2
+                  radius: 0
                   color: pinTile.modelData.isActive ? Theme.accent : Theme.ink2
                   visible: !!pinTile.modelData.isRunning
 
@@ -653,7 +653,7 @@ PanelWindow {
                   z: 10
                   width: 14
                   height: 14
-                  radius: 7
+                  radius: 0
                   anchors.top: parent.top
                   anchors.topMargin: 1
                   anchors.right: parent.right

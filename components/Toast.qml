@@ -12,8 +12,10 @@ Rectangle {
   anchors.bottomMargin: 14
   width: Math.min(toastLabel.implicitWidth + 30, parent ? (parent.width - 32) : 200)
   height: 30
-  radius: 15
+  radius: 0
   color: Theme.surfaceElevated
+  border.color: Theme.cardBorder
+  border.width: 1
   opacity: message.length > 0 ? 1 : 0
   scale: message.length > 0 ? 1 : 0.92
   transformOrigin: Item.Bottom

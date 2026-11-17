@@ -74,7 +74,7 @@ Item {
       Rectangle {
         width: 7
         height: 7
-        radius: 3.5
+        radius: 0
         anchors.verticalCenter: parent.verticalCenter
         color: Theme.warn
       }

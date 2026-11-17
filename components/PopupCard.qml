@@ -12,7 +12,8 @@ Rectangle {
   radius: Theme.radiusCard
   color: Theme.popupGlass
   border.color: Theme.popupBorder
-  border.width: 1
+  border.width: 1.5
+  antialiasing: true
 
   Item {
     id: inner

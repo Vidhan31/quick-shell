@@ -520,7 +520,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             width: 52
             height: 52
-            radius: 26
+            radius: 0
             color: Theme.tint(Theme.green, 0.12)
 
             Text {
@@ -694,7 +694,7 @@ Item {
                     Rectangle {
                       Layout.preferredWidth: 22
                       Layout.preferredHeight: 22
-                      radius: 4
+                      radius: 0
                       color: expMa.containsMouse ? Theme.hoverFill : "transparent"
 
                       Text {

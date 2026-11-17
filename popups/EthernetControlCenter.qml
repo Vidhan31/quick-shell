@@ -198,6 +198,8 @@ Item {
           }
         }
 
+        Hairline { width: parent.width }
+
         Item { width: 1; height: 12 }
 
         SectionCard {

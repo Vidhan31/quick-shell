@@ -100,7 +100,7 @@ Rectangle {
 
       Rectangle {
         visible: root.cacheReadTokens > 0
-        radius: 4
+        radius: 0
         color: Qt.rgba(Theme.violet.r, Theme.violet.g, Theme.violet.b, 0.12)
         border.color: Qt.rgba(Theme.violet.r, Theme.violet.g, Theme.violet.b, 0.28)
         border.width: 1
@@ -216,7 +216,7 @@ Rectangle {
             Layout.preferredWidth: 7
             Layout.preferredHeight: 7
             Layout.alignment: Qt.AlignVCenter
-            radius: 3.5
+            radius: 0
             color: li.dotColor
           }
 
@@ -343,7 +343,7 @@ Rectangle {
 
         Rectangle {
           anchors.fill: parent
-          radius: 3
+          radius: 0
           color: Theme.cardBorder
           visible: root.providerSum <= 0
         }
@@ -356,13 +356,13 @@ Rectangle {
           Rectangle {
             width: Math.max(3, Math.round((parent.width - 2) * root.ocRatio))
             height: parent.height
-            radius: 3
+            radius: 0
             color: Theme.teal
           }
           Rectangle {
             width: Math.max(3, (parent.width - 2) - Math.max(3, Math.round((parent.width - 2) * root.ocRatio)))
             height: parent.height
-            radius: 3
+            radius: 0
             color: Theme.violet
           }
         }

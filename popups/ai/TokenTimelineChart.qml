@@ -153,7 +153,7 @@ Rectangle {
 
       Rectangle {
         visible: root.rangeTotalSum > 0
-        radius: 4
+        radius: 0
         color: Qt.rgba(Theme.ink1.r, Theme.ink1.g, Theme.ink1.b, 0.06)
         border.color: Theme.line
         border.width: 1
@@ -276,7 +276,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: 7
             height: 7
-            radius: 3.5
+            radius: 0
             color: Theme.teal
           }
           Text {
@@ -294,7 +294,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: 7
             height: 7
-            radius: 3.5
+            radius: 0
             color: Theme.violet
           }
           Text {
@@ -314,7 +314,7 @@ Rectangle {
           anchors.verticalCenter: parent.verticalCenter
           width: 7
           height: 7
-          radius: 3.5
+          radius: 0
           color: root.mode === "opencode" ? Theme.teal : Theme.violet
         }
         Text {
@@ -714,7 +714,7 @@ Rectangle {
               Rectangle {
                 Layout.preferredWidth: 6
                 Layout.preferredHeight: 6
-                radius: 3
+                radius: 0
                 color: Theme.teal
               }
               Text {
@@ -745,7 +745,7 @@ Rectangle {
               Rectangle {
                 Layout.preferredWidth: 6
                 Layout.preferredHeight: 6
-                radius: 3
+                radius: 0
                 color: Theme.violet
               }
               Text {
@@ -781,7 +781,7 @@ Rectangle {
               Rectangle {
                 Layout.preferredWidth: 6
                 Layout.preferredHeight: 6
-                radius: 3
+                radius: 0
                 color: tmr.dotColor
               }
               Text {

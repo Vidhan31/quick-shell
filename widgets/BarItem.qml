@@ -11,7 +11,7 @@ Item {
   property bool active: false
   property bool hoverable: true
   property real horizontalPadding: root.noBackground ? 4 : (root.flat ? 6 : 8)
-  property real radius: root.segment ? (Theme.radiusSm - 2) : Theme.radiusSm
+  property real radius: 0
   property var acceptedButtons: Qt.LeftButton
 
   signal clicked(var mouse)
@@ -90,6 +90,21 @@ Item {
 
     Behavior on color { ColorAnimation { duration: Theme.durationNormal } }
     Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
+  }
+
+  Rectangle {
+    id: activeIndicator
+    anchors.bottom: parent.bottom
+    anchors.horizontalCenter: parent.horizontalCenter
+    width: root.active ? Math.min(parent.width - 4, Math.max(14, innerContainer.width + 4)) : 0
+    height: 2
+    radius: 0
+    color: Theme.accent
+    visible: width > 0
+    opacity: root.active ? 1.0 : 0.0
+
+    Behavior on width { NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.OutCubic } }
+    Behavior on opacity { NumberAnimation { duration: Theme.durationFast } }
   }
 
   Item {

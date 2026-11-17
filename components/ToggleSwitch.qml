@@ -80,21 +80,21 @@ Item {
 
   Rectangle {
     anchors.fill: parent
-    radius: height / 2
+    radius: 0
     color: root.on ? root.onColor : (ma.containsMouse ? Theme.hoverFill : Theme.switchOff)
-    border.color: root.activeFocus ? Theme.focusRing : (root.on ? Qt.rgba(0, 0, 0, 0.15) : Theme.cardBorder)
+    border.color: root.activeFocus ? Theme.focusRing : Theme.cardBorder
     border.width: root.activeFocus ? Theme.focusRingWidth : 1
     Behavior on color { ColorAnimation { duration: Theme.durationNormal } }
     Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
 
     Rectangle {
       id: knob
-      width: 16
-      height: 16
-      radius: width / 2
+      width: 14
+      height: 14
+      radius: 0
       anchors.verticalCenter: parent.verticalCenter
       x: root.on ? parent.width - width - 3 : 3
-      color: root.on ? "#ffffff" : Theme.ink2
+      color: root.on ? "#ffffff" : Theme.ink3
       scale: ma.pressed && root.enabledSwitch ? 0.92 : 1.0
 
       Behavior on x { NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.OutCubic } }
