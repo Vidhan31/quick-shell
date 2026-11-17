@@ -18,6 +18,7 @@ Rectangle {
   property var models: []
   property int selectedMonths: 1
   property string emptyText: "No model activity recorded in this period"
+  property bool showTotal: true
 
   property var compactFn: function(v) {
     if (v >= 1e9) return (v / 1e9).toFixed(1) + "B";
@@ -97,7 +98,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             text: "· " + (root.selectedMonths === 1 ? "1 month" : (root.selectedMonths + " months"))
             font.pixelSize: 11
-            font.family: Theme.mono
+            font.family: Theme.textFont
             color: Theme.ink3
           }
         }
@@ -110,7 +111,7 @@ Rectangle {
             return root.pricedCount + " of " + total + " models priced";
           }
           font.pixelSize: 10
-          font.family: Theme.mono
+          font.family: Theme.textFont
           color: Theme.ink3
         }
       }
@@ -119,6 +120,7 @@ Rectangle {
 
       Text {
         Layout.alignment: Qt.AlignVCenter
+        visible: root.showTotal
         text: root.moneyFn(root.totalHypoSum)
         font.pixelSize: 14
         font.weight: Font.DemiBold
@@ -381,80 +383,80 @@ Rectangle {
 
                 Row {
                   spacing: 4
-                  Text { text: "Tokens:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
+                  Text { text: "Tokens:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
                   Text { text: rowBox.modelData.tokensText; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink2 }
                 }
 
                 Row {
                   spacing: 4
-                  Text { text: "Provider:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
-                  Text { text: rowBox.priced ? rowBox.modelData.provider : "unknown"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink2 }
+                  Text { text: "Provider:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
+                  Text { text: rowBox.priced ? rowBox.modelData.provider : "unknown"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink2 }
                 }
 
                 Row {
                   visible: rowBox.priced
                   spacing: 4
-                  Text { text: "Rate:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
+                  Text { text: "Rate:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
                   Text { text: "$" + rowBox.modelData.rateIn + " / $" + rowBox.modelData.rateOut + " per 1M"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink2 }
                 }
 
                 Row {
                   spacing: 4
-                  Text { text: "Input:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
+                  Text { text: "Input:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
                   Text { text: root.compactFn(rowBox.modelData.input); font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink2 }
                 }
 
                 Row {
                   spacing: 4
-                  Text { text: "Output:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
+                  Text { text: "Output:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
                   Text { text: root.compactFn(rowBox.modelData.output); font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink2 }
                 }
 
                 Row {
                   visible: Boolean(rowBox.modelData.reasoning > 0)
                   spacing: 4
-                  Text { text: "Reasoning:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
+                  Text { text: "Reasoning:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
                   Text { text: root.compactFn(rowBox.modelData.reasoning); font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink2 }
                 }
 
                 Row {
                   spacing: 4
-                  Text { text: "Cache:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
+                  Text { text: "Cache:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
                   Text { text: root.compactFn(rowBox.modelData.cacheRead); font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink2 }
                 }
 
                 Row {
                   visible: Boolean(rowBox.modelData.cacheWrite > 0)
                   spacing: 4
-                  Text { text: "Cache write:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
+                  Text { text: "Cache write:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
                   Text { text: root.compactFn(rowBox.modelData.cacheWrite); font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink2 }
                 }
 
                 Row {
                   visible: rowBox.priced && rowBox.modelData.viaFallback
                   spacing: 4
-                  Text { text: "Mapped from:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
+                  Text { text: "Mapped from:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
                   Text { text: rowBox.modelData.matchedId; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink2 }
                 }
 
                 Row {
                   visible: Boolean(rowBox.modelData.savings > 0)
                   spacing: 4
-                  Text { text: "Cache saved:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
+                  Text { text: "Cache saved:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
                   Text { text: root.moneyFn(rowBox.modelData.savings); font.pixelSize: 10; font.family: Theme.mono; color: Theme.teal }
                 }
 
                 Row {
                   visible: Boolean(rowBox.modelData.isOverride)
                   spacing: 4
-                  Text { text: "Source:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
+                  Text { text: "Source:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
                   Text { text: "custom override"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.accent }
                 }
 
                 Row {
                   visible: !rowBox.priced
                   spacing: 4
-                  Text { text: "Status:"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
+                  Text { text: "Status:"; font.pixelSize: 10; font.family: Theme.textFont; color: Theme.ink3 }
                   Text { text: "unpriced"; font.pixelSize: 10; font.family: Theme.mono; color: Theme.ink3 }
                 }
               }

@@ -339,7 +339,7 @@ Item {
 
           Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: "· " + (root.selectedMonths === 1 ? "30 days" : (root.selectedMonths * 30 + " days"))
+            text: "· " + (root.selectedMonths === 1 ? "30 days" : (root.selectedMonths + " months"))
             font.pixelSize: Theme.fontSm
             font.family: root.t.mono
             color: Theme.ink2
@@ -823,34 +823,63 @@ Item {
             Column {
               id: costCol
               width: parent.width
-              spacing: 12
+              spacing: 9
 
               SectionHeader {
                 width: parent.width
-                label: "Hypothetical cost"
+                label: "Estimated cost"
               }
 
-              SectionCard {
+              Rectangle {
                 width: parent.width
-                height: costSummaryCol.height + 8
+                height: costSummaryCol.implicitHeight + 18
+                color: Theme.surface
+                border.color: Theme.cardBorder
+                border.width: 1
+
                 Column {
                   id: costSummaryCol
                   anchors.left: parent.left
                   anchors.right: parent.right
                   anchors.top: parent.top
-                  anchors.topMargin: 4
+                  anchors.topMargin: 8
                   anchors.leftMargin: 12
                   anchors.rightMargin: 12
-                  spacing: 2
+                  spacing: 3
 
                   RowLayout {
                     width: parent.width
-                    height: 30
+                    height: 34
+
+                    Text {
+                      Layout.fillWidth: true
+                      text: "Combined estimate"
+                      font.pixelSize: Theme.fontMd
+                      font.weight: Font.DemiBold
+                      font.family: root.t.displayFont
+                      color: root.t.ink1
+                    }
+                    Text {
+                      text: root.money(root.totalHypo)
+                      font.pixelSize: 20
+                      font.weight: Font.DemiBold
+                      font.family: root.t.mono
+                      color: root.t.green
+                    }
+                  }
+
+                  Hairline {
+                    width: parent.width
+                  }
+
+                  RowLayout {
+                    width: parent.width
+                    height: 21
                     Text {
                       Layout.fillWidth: true
                       text: "OpenCode"
                       font.pixelSize: Theme.fontBase
-                      font.family: root.t.mono
+                      font.family: root.t.textFont
                       color: root.t.ink2
                     }
                     Text {
@@ -862,43 +891,19 @@ Item {
                     }
                   }
 
-                  Hairline { width: parent.width }
-
                   RowLayout {
                     width: parent.width
-                    height: 30
+                    height: 21
                     Text {
                       Layout.fillWidth: true
                       text: "Antigravity"
                       font.pixelSize: Theme.fontBase
-                      font.family: root.t.mono
+                      font.family: root.t.textFont
                       color: root.t.ink2
                     }
                     Text {
                       text: root.money(root.agyHypo)
                       font.pixelSize: Theme.fontMd
-                      font.weight: Font.DemiBold
-                      font.family: root.t.mono
-                      color: root.t.green
-                    }
-                  }
-
-                  Hairline { width: parent.width }
-
-                  RowLayout {
-                    width: parent.width
-                    height: 34
-                    Text {
-                      Layout.fillWidth: true
-                      text: "Combined"
-                      font.pixelSize: Theme.fontBase
-                      font.weight: Font.DemiBold
-                      font.family: root.t.textFont
-                      color: root.t.ink1
-                    }
-                    Text {
-                      text: root.money(root.totalHypo)
-                      font.pixelSize: 16
                       font.weight: Font.DemiBold
                       font.family: root.t.mono
                       color: root.t.green
@@ -913,7 +918,7 @@ Item {
                   RowLayout {
                     visible: root.totalSavings > 0
                     width: parent.width
-                    height: 30
+                    height: 21
                     Row {
                       spacing: 6
                       Layout.fillWidth: true
@@ -921,7 +926,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Cache savings"
                         font.pixelSize: Theme.fontBase
-                        font.family: root.t.mono
+                        font.family: root.t.textFont
                         color: root.t.ink2
                       }
                       Rectangle {
@@ -953,7 +958,7 @@ Item {
                     width: parent.width
                     text: root.pricingStatus
                     font.pixelSize: Theme.fontSm
-                    font.family: root.t.mono
+                    font.family: root.t.textFont
                     color: root.t.ink3
                     wrapMode: Text.Wrap
                   }
@@ -972,6 +977,7 @@ Item {
                 title: "Official API rates"
                 selectedMonths: root.selectedMonths
                 models: root.costRows
+                showTotal: false
                 emptyText: root.pricing && !root.pricing.ready ? "Loading official pricing…" : "No model activity recorded in this period"
                 compactFn: v => root.ocMonitor ? root.ocMonitor.compact(v) : (v >= 1e6 ? (v/1e6).toFixed(1) + "M" : v.toString())
                 moneyFn: v => root.money(v)
@@ -982,7 +988,7 @@ Item {
                 width: parent.width
                 text: "What this usage would cost at official provider rates (Gemini → Google, Claude → Anthropic, Muse → Meta). Free-tier variants map to their paid counterpart; models without an official entry show unpriced. Cache savings show cost avoided by prompt caching."
                 font.pixelSize: Theme.fontSm
-                font.family: root.t.mono
+                font.family: root.t.textFont
                 color: root.t.ink3
                 wrapMode: Text.Wrap
               }
