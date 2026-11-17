@@ -14,14 +14,51 @@ Item {
   signal closeRequested()
 
   implicitWidth: Theme.popupWidthSm
-  readonly property int preferredHeight: (root.power && root.power.canRebootToWindows) ? 422 : 376
-  property int popupHeight: (root.power && root.power.canRebootToWindows) ? 422 : 376
+  readonly property int preferredHeight: root.pendingAction !== "" ? 258 : 320
+  property int popupHeight: preferredHeight
+  implicitHeight: popupHeight
 
   function syncHeight(): void {
     popupHeight = preferredHeight;
   }
 
-  implicitHeight: popupHeight
+  onPendingActionChanged: root.syncHeight()
+  onPowerChanged: root.syncHeight()
+  onPreferredHeightChanged: root.syncHeight()
+
+  function actionAvailable(key: string): bool {
+    if (!root.power) return key !== "windows";
+    if (key === "sleep") return root.power.canSuspend;
+    if (key === "reboot") return root.power.canReboot;
+    if (key === "windows") return root.power.canRebootToWindows;
+    if (key === "shutdown") return root.power.canPowerOff;
+    return true;
+  }
+
+  function activateAction(key: string): void {
+    if (key === "lock") {
+      if (root.power) root.power.lock();
+      root.closeRequested();
+    } else if (key === "sleep") {
+      if (root.power) root.power.suspend();
+      root.closeRequested();
+    } else if (key === "quickshell") {
+      root.closeRequested();
+      if (root.power && typeof root.power.restartQuickshell === "function") {
+        root.power.restartQuickshell();
+      } else {
+        Quickshell.execDetached({
+          command: [
+            "sh", "-c",
+            "if systemctl --user is-active --quiet quickshell.service; then systemctl --user restart quickshell.service; else quickshell -p \"" + Quickshell.shellPath(".") + "\" & fi"
+          ],
+          unbindStdout: true
+        });
+      }
+    } else {
+      root.pendingAction = key;
+    }
+  }
 
   Keys.onEscapePressed: event => {
     if (root.pendingAction !== "") {
@@ -40,7 +77,7 @@ Item {
     Column {
       id: bodyCol
       width: parent.width
-      spacing: 10
+      spacing: 8
 
       PopupHeader {
         width: parent.width
@@ -50,325 +87,118 @@ Item {
         subtitle: "Fedora Linux · KDE Plasma"
       }
 
+      Hairline { width: parent.width }
+
+      GridLayout {
+        id: actionsCol
+        visible: root.pendingAction === ""
+        width: parent.width
+        columns: 2
+        rowSpacing: 6
+        columnSpacing: 8
+
+        Repeater {
+          model: [
+            { key: "shutdown", title: "Shut Down", glyph: "󰐥", color: Theme.err },
+            { key: "reboot", title: "Restart", glyph: "󰜉", color: Theme.warn },
+            { key: "windows", title: "Windows 11", glyph: "󰍲", color: Theme.teal },
+            { key: "sleep", title: "Sleep", glyph: "󰒲", color: Theme.accent }
+          ]
+
+          delegate: ActionRow {
+            required property var modelData
+            Layout.fillWidth: true
+            Layout.preferredHeight: 58
+            visible: root.actionAvailable(modelData.key)
+            base: Theme.surface
+            hover: Theme.surfaceElevated
+            press: Theme.hoverFill
+            rad: 10
+            onClicked: root.activateAction(modelData.key)
+
+            RowLayout {
+              anchors.fill: parent
+              anchors.leftMargin: 8
+              anchors.rightMargin: 7
+              spacing: 8
+
+              Rectangle {
+                Layout.preferredWidth: 28
+                Layout.preferredHeight: 28
+                radius: 8
+                color: Theme.tint(modelData.color, 0.13)
+
+                Text {
+                  anchors.centerIn: parent
+                  text: modelData.glyph
+                  font.family: Theme.mono
+                  font.pixelSize: Theme.iconMd
+                  color: modelData.color
+                }
+              }
+
+              Text {
+                Layout.fillWidth: true
+                text: modelData.title
+                font.family: Theme.textFont
+                font.pixelSize: Theme.fontBase
+                font.weight: Font.DemiBold
+                color: Theme.ink1
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+              }
+            }
+          }
+        }
+      }
+
       Hairline {
+        visible: root.pendingAction === ""
         width: parent.width
       }
 
       Column {
-        id: actionsCol
+        id: secondaryActions
         visible: root.pendingAction === ""
         width: parent.width
-        spacing: 4
+        spacing: 2
 
-        ActionRow {
-          id: lockRow
-          width: parent.width
-          height: 42
-          rad: Theme.radiusBase
-          onClicked: {
-            if (root.power) root.power.lock();
-            root.closeRequested();
-          }
+        Repeater {
+          model: [
+            { key: "lock", title: "Lock Screen", glyph: "󰌾", color: Theme.ink2 },
+            { key: "logout", title: "Log Out", glyph: "󰍃", color: Theme.ink2 },
+            { key: "quickshell", title: "Restart Quickshell", glyph: "󰑓", color: Theme.accent }
+          ]
 
-          RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 10
+          delegate: ActionRow {
+            required property var modelData
+            width: secondaryActions.width
+            height: 30
+            rad: 7
+            onClicked: root.activateAction(modelData.key)
 
-            Text {
-              text: "󰌾"
-              font.family: Theme.mono
-              font.pixelSize: Theme.iconMd
-              color: Theme.ink2
-            }
-
-            Column {
-              Layout.fillWidth: true
-              spacing: 1
+            RowLayout {
+              anchors.fill: parent
+              anchors.leftMargin: 9
+              anchors.rightMargin: 9
+              spacing: 10
 
               Text {
-                text: "Lock Screen"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontBase
-                font.weight: Font.DemiBold
-                color: Theme.ink1
+                text: modelData.glyph
+                font.family: Theme.mono
+                font.pixelSize: Theme.iconSm
+                color: modelData.color
+                Layout.alignment: Qt.AlignVCenter
               }
 
               Text {
-                text: "Lock active graphical session"
+                Layout.fillWidth: true
+                text: modelData.title
                 font.family: Theme.textFont
-                font.pixelSize: Theme.fontXs
-                color: Theme.ink3
-              }
-            }
-          }
-        }
-
-        ActionRow {
-          id: sleepRow
-          width: parent.width
-          height: 42
-          rad: Theme.radiusBase
-          visible: root.power ? root.power.canSuspend : true
-          onClicked: {
-            if (root.power) root.power.suspend();
-            root.closeRequested();
-          }
-
-          RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 10
-
-            Text {
-              text: "󰒲"
-              font.family: Theme.mono
-              font.pixelSize: Theme.iconMd
-              color: Theme.ink2
-            }
-
-            Column {
-              Layout.fillWidth: true
-              spacing: 1
-
-              Text {
-                text: "Sleep"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontBase
-                font.weight: Font.DemiBold
-                color: Theme.ink1
-              }
-
-              Text {
-                text: "Suspend computer to RAM"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontXs
-                color: Theme.ink3
-              }
-            }
-          }
-        }
-
-        ActionRow {
-          id: logoutRow
-          width: parent.width
-          height: 42
-          rad: Theme.radiusBase
-          onClicked: {
-            root.pendingAction = "logout";
-          }
-
-          RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 10
-
-            Text {
-              text: "󰍃"
-              font.family: Theme.mono
-              font.pixelSize: Theme.iconMd
-              color: Theme.ink2
-            }
-
-            Column {
-              Layout.fillWidth: true
-              spacing: 1
-
-              Text {
-                text: "Log Out"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontBase
-                font.weight: Font.DemiBold
-                color: Theme.ink1
-              }
-
-              Text {
-                text: "End desktop session"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontXs
-                color: Theme.ink3
-              }
-            }
-          }
-        }
-
-        ActionRow {
-          id: quickshellRow
-          width: parent.width
-          height: 42
-          rad: Theme.radiusBase
-          onClicked: {
-            root.pendingAction = "quickshell";
-          }
-
-          RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 10
-
-            Text {
-              text: "󰑓"
-              font.family: Theme.mono
-              font.pixelSize: Theme.iconMd
-              color: Theme.accent
-            }
-
-            Column {
-              Layout.fillWidth: true
-              spacing: 1
-
-              Text {
-                text: "Restart Quickshell"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontBase
-                font.weight: Font.DemiBold
-                color: Theme.ink1
-              }
-
-              Text {
-                text: "Restart desktop shell interface"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontXs
-                color: Theme.ink3
-              }
-            }
-          }
-        }
-
-        ActionRow {
-          id: rebootRow
-          width: parent.width
-          height: 42
-          rad: Theme.radiusBase
-          visible: root.power ? root.power.canReboot : true
-          onClicked: {
-            root.pendingAction = "reboot";
-          }
-
-          RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 10
-
-            Text {
-              text: "󰜉"
-              font.family: Theme.mono
-              font.pixelSize: Theme.iconMd
-              color: Theme.warn
-            }
-
-            Column {
-              Layout.fillWidth: true
-              spacing: 1
-
-              Text {
-                text: "Restart"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontBase
-                font.weight: Font.DemiBold
-                color: Theme.ink1
-              }
-
-              Text {
-                text: "Reboot operating system"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontXs
-                color: Theme.ink3
-              }
-            }
-          }
-        }
-
-        ActionRow {
-          id: windowsRow
-          width: parent.width
-          height: 42
-          rad: Theme.radiusBase
-          visible: root.power ? root.power.canRebootToWindows : false
-          onClicked: {
-            root.pendingAction = "windows";
-          }
-
-          RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 10
-
-            Text {
-              text: "󰍲"
-              font.family: Theme.mono
-              font.pixelSize: Theme.iconMd
-              color: Theme.teal
-            }
-
-            Column {
-              Layout.fillWidth: true
-              spacing: 1
-
-              Text {
-                text: "Windows 11"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontBase
-                font.weight: Font.DemiBold
-                color: Theme.ink1
-              }
-
-              Text {
-                text: "Reboot directly into Windows"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontXs
-                color: Theme.ink3
-              }
-            }
-          }
-        }
-
-        ActionRow {
-          id: shutdownRow
-          width: parent.width
-          height: 42
-          rad: Theme.radiusBase
-          visible: root.power ? root.power.canPowerOff : true
-          onClicked: {
-            root.pendingAction = "shutdown";
-          }
-
-          RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 10
-
-            Text {
-              text: "󰐥"
-              font.family: Theme.mono
-              font.pixelSize: Theme.iconMd
-              color: Theme.err
-            }
-
-            Column {
-              Layout.fillWidth: true
-              spacing: 1
-
-              Text {
-                text: "Shut Down"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontBase
-                font.weight: Font.DemiBold
-                color: Theme.ink1
-              }
-
-              Text {
-                text: "Power off the computer"
-                font.family: Theme.textFont
-                font.pixelSize: Theme.fontXs
-                color: Theme.ink3
+                font.pixelSize: Theme.fontSm
+                font.weight: Font.Medium
+                color: Theme.ink2
+                verticalAlignment: Text.AlignVCenter
               }
             }
           }
@@ -379,7 +209,7 @@ Item {
         id: confirmCard
         visible: root.pendingAction !== ""
         width: parent.width
-        height: actionsCol.height
+        height: 170
         radius: Theme.radiusCard
         color: Theme.inset
         border.color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : (root.pendingAction === "windows" ? Theme.teal : Theme.accent))
@@ -387,35 +217,29 @@ Item {
 
         ColumnLayout {
           anchors.fill: parent
-          anchors.margins: 14
-          spacing: 10
+          anchors.margins: 12
+          spacing: 8
 
           RowLayout {
             Layout.fillWidth: true
-            spacing: 12
+            spacing: 10
 
-            Rectangle {
-              Layout.preferredWidth: 38
-              Layout.preferredHeight: 38
-              radius: Theme.radiusBase
-              color: Qt.alpha(root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : (root.pendingAction === "windows" ? Theme.teal : Theme.accent)), 0.15)
-
-              Text {
-                anchors.centerIn: parent
-                text: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : (root.pendingAction === "windows" ? "󰍲" : (root.pendingAction === "quickshell" ? "󰑓" : "󰍃")))
-                font.family: Theme.mono
-                font.pixelSize: Theme.fontGlyphLg
-                color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : (root.pendingAction === "windows" ? Theme.teal : Theme.accent))
-              }
+            Text {
+              Layout.preferredWidth: 24
+              Layout.alignment: Qt.AlignTop
+              text: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : (root.pendingAction === "windows" ? "󰍲" : "󰍃"))
+              font.family: Theme.mono
+              font.pixelSize: Theme.iconLg
+              color: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : (root.pendingAction === "windows" ? Theme.teal : Theme.accent))
             }
 
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: 2
+              spacing: 3
 
               Text {
                 Layout.fillWidth: true
-                text: root.pendingAction === "shutdown" ? "Shut down system?" : (root.pendingAction === "reboot" ? "Restart system?" : (root.pendingAction === "windows" ? "Reboot to Windows 11?" : (root.pendingAction === "quickshell" ? "Restart Quickshell?" : "Log out of session?")))
+                text: root.pendingAction === "shutdown" ? "Shut down system?" : (root.pendingAction === "reboot" ? "Restart system?" : (root.pendingAction === "windows" ? "Reboot to Windows 11?" : "Log out of session?"))
                 font.family: Theme.displayFont
                 font.pixelSize: Theme.fontBase
                 font.weight: Font.DemiBold
@@ -425,7 +249,7 @@ Item {
 
               Text {
                 Layout.fillWidth: true
-                text: root.pendingAction === "shutdown" ? "Power off the computer completely." : (root.pendingAction === "reboot" ? "Reboot the operating system." : (root.pendingAction === "windows" ? "Set next boot to Windows 11 and restart." : (root.pendingAction === "quickshell" ? "Restart the desktop shell interface." : "End current user session.")))
+                text: root.pendingAction === "shutdown" ? "Power off the computer." : (root.pendingAction === "reboot" ? "Restart the operating system." : (root.pendingAction === "windows" ? "Boot Windows 11 once." : "End the current session."))
                 font.family: Theme.textFont
                 font.pixelSize: Theme.fontXs
                 color: Theme.ink3
@@ -436,35 +260,28 @@ Item {
 
           Text {
             Layout.fillWidth: true
-            text: root.pendingAction === "windows" ? "Subsequent boots will return to Fedora Linux." : (root.pendingAction === "quickshell" ? "Open applications will not be closed." : "KDE will prompt to save unsaved documents.")
+            text: root.pendingAction === "windows" ? "The next boot will return to Fedora Linux." : "KDE will prompt to save unsaved documents."
             font.family: Theme.textFont
             font.pixelSize: Theme.fontXs
             color: Theme.ink2
             wrapMode: Text.WordWrap
           }
 
-          Item {
-            Layout.fillHeight: true
-          }
+          Item { Layout.fillHeight: true }
 
           RowLayout {
             Layout.fillWidth: true
-            spacing: 8
-
-            Item {
-              Layout.fillWidth: true
-            }
+            spacing: 6
+            Item { Layout.fillWidth: true }
 
             TextButton {
               text: "Cancel"
-              onClicked: {
-                root.pendingAction = "";
-              }
+              onClicked: root.pendingAction = ""
             }
 
             PrimaryButton {
-              text: root.pendingAction === "shutdown" ? "Shut Down" : (root.pendingAction === "reboot" ? "Restart" : (root.pendingAction === "windows" ? "Reboot to Windows" : (root.pendingAction === "quickshell" ? "Restart Quickshell" : "Log Out")))
-              glyph: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : (root.pendingAction === "windows" ? "󰍲" : (root.pendingAction === "quickshell" ? "󰑓" : "󰍃")))
+              text: root.pendingAction === "shutdown" ? "Shut Down" : (root.pendingAction === "reboot" ? "Restart" : (root.pendingAction === "windows" ? "Reboot to Windows" : "Log Out"))
+              glyph: root.pendingAction === "shutdown" ? "󰐥" : (root.pendingAction === "reboot" ? "󰜉" : (root.pendingAction === "windows" ? "󰍲" : "󰍃"))
               fill: root.pendingAction === "shutdown" ? Theme.err : (root.pendingAction === "reboot" ? Theme.warn : (root.pendingAction === "windows" ? Theme.teal : Theme.accent))
               ink: Theme.darkInk
               onClicked: {
@@ -479,18 +296,6 @@ Item {
                   root.power.rebootToWindows();
                 } else if (action === "logout" && root.power) {
                   root.power.logout();
-                } else if (action === "quickshell") {
-                  if (root.power && typeof root.power.restartQuickshell === "function") {
-                    root.power.restartQuickshell();
-                  } else {
-                    Quickshell.execDetached({
-                      command: [
-                        "sh", "-c",
-                        "if systemctl --user is-active --quiet quickshell.service; then systemctl --user restart quickshell.service; else quickshell -p \"" + Quickshell.shellPath(".") + "\" & fi"
-                      ],
-                      unbindStdout: true
-                    });
-                  }
                 }
               }
             }
