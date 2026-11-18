@@ -85,13 +85,12 @@ Item {
     if (root.isDnd) {
       if (root.service && root.service.dndUntil && root.service.dndUntil.isValid && root.service.dndUntil.isValid()) {
         const timeStr = Qt.formatTime(root.service.dndUntil, "hh:mm");
-        return `Muted until ${timeStr} · ${root.totalCount} stored`;
+        return `Muted until ${timeStr}`;
       }
-      return root.totalCount > 0 ? `Muted · ${root.totalCount} stored` : "Do Not Disturb active";
+      return "Do Not Disturb active";
     }
-    if (root.totalCount === 0) return "You're all caught up";
-    if (root.unreadCount > 0) return `${root.totalCount} stored · ${root.unreadCount} new`;
-    return `${root.totalCount} stored`;
+    if (root.totalCount === 0 && (!root.jobService || root.jobsList.length === 0)) return "You're all caught up";
+    return "";
   }
 
   implicitWidth: Theme.popupWidthMd
@@ -204,6 +203,7 @@ Item {
           }
 
           Text {
+            visible: root.subtitleText.length > 0
             text: root.subtitleText
             font.family: Theme.textFont
             font.pixelSize: Theme.fontXs
@@ -218,20 +218,21 @@ Item {
           Layout.alignment: Qt.AlignVCenter
 
           IconButton {
-            visible: root.totalCount > 0
-            glyph: "󰆴"
-            fs: 14
+            visible: root.totalCount > 0 || (root.jobService && (root.jobsList.length > root.activeJobsList.length))
+            glyph: "󰃢"
+            fs: Theme.iconMd
             btnSize: 28
             fg: root.t.ink2
-            tooltip: "Clear all notifications"
+            tooltip: "Clear all"
             onClicked: {
               if (root.service) root.service.clearAll();
+              if (root.jobService) root.jobService.clearFinished();
             }
           }
 
           IconButton {
-            glyph: root.isDnd ? "󰂛" : "󰂚"
-            fs: 14
+            glyph: root.isDnd ? "󰂛" : "󰂞"
+            fs: Theme.iconMd
             btnSize: 28
             fg: root.isDnd ? root.t.amber : root.t.ink2
             tooltip: root.isDnd ? "Do Not Disturb (Active)" : "Do Not Disturb (Off)"
@@ -242,7 +243,7 @@ Item {
 
           IconButton {
             glyph: "󰒓"
-            fs: 14
+            fs: Theme.iconMd
             btnSize: 28
             fg: root.showSettings ? root.t.accent : root.t.ink3
             tooltip: "Notification settings"
@@ -417,84 +418,79 @@ Item {
         spacing: 12
 
         // Tasks & Transfers Section
-        Rectangle {
+        Column {
           visible: root.jobsList.length > 0
-          width: parent.width
-          implicitHeight: jobsCol.implicitHeight + 16
-          radius: 8
-          color: root.t.surfaceElevated
-          border.color: root.t.lineMuted
-          border.width: 1
+          width: scrollCol.width
+          spacing: 6
 
-          Column {
-            id: jobsCol
-            anchors {
-              top: parent.top
-              left: parent.left
-              right: parent.right
-              margins: 10
+          // Group Header Bar
+          RowLayout {
+            width: parent.width
+            height: 24
+            spacing: 6
+
+            IconImage {
+              visible: root.resolveAppIcon("org.kde.dolphin", "system-file-manager", "folder").length > 0
+              Layout.preferredWidth: 16
+              Layout.preferredHeight: 16
+              Layout.alignment: Qt.AlignVCenter
+              source: root.resolveAppIcon("org.kde.dolphin", "system-file-manager", "folder")
+              asynchronous: true
             }
-            spacing: 8
 
-            RowLayout {
-              width: parent.width
-              height: 22
-              spacing: 6
+            Text {
+              text: "Tasks & Transfers"
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontSm
+              font.weight: Font.SemiBold
+              color: root.t.ink1
+            }
+
+            Rectangle {
+              visible: root.jobsList.length > 0
+              implicitWidth: jobCountTxt.implicitWidth + 8
+              implicitHeight: 16
+              radius: 8
+              color: root.activeJobsList.length > 0 ? root.t.accentBg : root.t.hoverWash
+              border.color: root.activeJobsList.length > 0 ? root.t.tint(root.t.accent, 0.35) : root.t.lineMuted
+              border.width: 1
 
               Text {
-                text: "󰇚"
-                font.family: root.monoFont
-                font.pixelSize: 14
-                color: root.t.accent
-              }
-
-              Text {
-                text: "Tasks & Transfers"
+                id: jobCountTxt
+                anchors.centerIn: parent
+                text: root.activeJobsList.length > 0 ? `${root.jobsList.length} · ${root.activeJobsList.length} active` : root.jobsList.length.toString()
                 font.family: Theme.textFont
-                font.pixelSize: Theme.fontSm
-                font.weight: Font.SemiBold
-                color: root.t.ink1
-              }
-
-              Rectangle {
-                visible: root.activeJobsList.length > 0
-                implicitWidth: activeJobsCountTxt.implicitWidth + 8
-                implicitHeight: 16
-                radius: 8
-                color: root.t.accentBg
-
-                Text {
-                  id: activeJobsCountTxt
-                  anchors.centerIn: parent
-                  text: root.activeJobsList.length.toString()
-                  font.family: Theme.textFont
-                  font.pixelSize: Theme.fontXs
-                  font.weight: Font.SemiBold
-                  color: root.t.accent
-                }
-              }
-
-              Item { Layout.fillWidth: true }
-
-              Text {
-                visible: root.jobService && root.activeJobsList.length > 0 && root.jobService.formattedTotalSpeed.length > 0
-                text: root.jobService ? root.jobService.formattedTotalSpeed : ""
-                font.family: Theme.mono
                 font.pixelSize: Theme.fontXs
-                color: root.t.ink3
-              }
-
-              IconButton {
-                visible: root.jobsList.length > root.activeJobsList.length
-                glyph: "󰃢"
-                fs: 12
-                btnSize: 22
-                tooltip: "Clear finished tasks"
-                onClicked: {
-                  if (root.jobService) root.jobService.clearFinished();
-                }
+                font.weight: Font.SemiBold
+                color: root.activeJobsList.length > 0 ? root.t.accent : root.t.ink2
               }
             }
+
+            Item { Layout.fillWidth: true }
+
+            Text {
+              visible: root.jobService && root.activeJobsList.length > 0 && root.jobService.formattedTotalSpeed.length > 0
+              text: root.jobService ? root.jobService.formattedTotalSpeed : ""
+              font.family: Theme.mono
+              font.pixelSize: Theme.fontXs
+              color: root.t.ink3
+            }
+
+            TextButton {
+              visible: root.jobsList.length > root.activeJobsList.length
+              text: "Clear"
+              fs: Theme.fontXs
+              fg: root.t.ink3
+              onClicked: {
+                if (root.jobService) root.jobService.clearFinished();
+              }
+            }
+          }
+
+          // Stack of Task Cards
+          Column {
+            width: parent.width
+            spacing: 6
 
             Repeater {
               model: root.jobsList
@@ -521,11 +517,20 @@ Item {
                 readonly property string resolvedAppIcon: root.resolveAppIcon(desktopEntry, appName, appIcon)
 
                 width: parent.width
-                implicitHeight: jobRowCol.implicitHeight + 14
-                radius: 6
-                color: root.t.inset
-                border.color: root.t.lineMuted
+                implicitHeight: jobRowCol.implicitHeight + 18
+                radius: 8
+                color: jobMouse.containsMouse ? root.t.hoverFill : root.t.surfaceElevated
+                border.color: jobRow.errorCode !== 0 ? root.t.red : (jobMouse.containsMouse ? root.t.cardBorder : root.t.lineMuted)
                 border.width: 1
+
+                Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+                Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
+
+                MouseArea {
+                  id: jobMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                }
 
                 Column {
                   id: jobRowCol
@@ -533,55 +538,51 @@ Item {
                     top: parent.top
                     left: parent.left
                     right: parent.right
-                    margins: 8
+                    margins: 9
                   }
                   spacing: 6
 
                   RowLayout {
                     width: parent.width
-                    spacing: 8
+                    height: 20
+                    spacing: 6
 
-                    Rectangle {
-                      Layout.preferredWidth: 24
-                      Layout.preferredHeight: 24
-                      radius: 4
-                      color: root.t.surface
-                      IconImage {
-                        anchors.centerIn: parent
-                        width: 14
-                        height: 14
-                        source: jobRow.resolvedAppIcon
-                        asynchronous: true
-                      }
+                    IconImage {
+                      Layout.preferredWidth: 16
+                      Layout.preferredHeight: 16
+                      Layout.alignment: Qt.AlignVCenter
+                      source: jobRow.resolvedAppIcon.length > 0 ? jobRow.resolvedAppIcon : root.resolveAppIcon("org.kde.dolphin", "system-file-manager", "folder")
+                      asynchronous: true
                     }
 
-                    Column {
-                      Layout.fillWidth: true
-                      spacing: 1
-                      Text {
-                        width: parent.width
-                        text: jobRow.summaryText
-                        font.family: Theme.textFont
-                        font.pixelSize: Theme.fontSm
-                        font.weight: Font.Medium
-                        color: root.t.ink1
-                        elide: Text.ElideRight
-                      }
-                      Text {
-                        width: parent.width
-                        text: jobRow.isStopped ? (jobRow.errorCode !== 0 ? "Failed" : "Finished") : (jobRow.isSuspended ? "Paused" : (jobRow.speedText.length > 0 ? (jobRow.speedText + (jobRow.bodyText.length > 0 ? " · " + jobRow.bodyText : "")) : (jobRow.bodyText.length > 0 ? jobRow.bodyText : "In progress")))
-                        font.family: Theme.textFont
-                        font.pixelSize: Theme.fontXs
-                        color: jobRow.isStopped ? (jobRow.errorCode !== 0 ? root.t.red : root.t.ink3) : (jobRow.isSuspended ? root.t.amber : root.t.ink3)
-                        elide: Text.ElideMiddle
-                      }
+                    Text {
+                      Layout.maximumWidth: 220
+                      text: jobRow.summaryText
+                      font.family: Theme.textFont
+                      font.pixelSize: Theme.fontSm
+                      font.weight: Font.SemiBold
+                      color: root.t.ink1
+                      elide: Text.ElideRight
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Text {
+                      text: jobRow.isStopped ? (jobRow.errorCode !== 0 ? "Failed" : "Finished") : (jobRow.isSuspended ? "Paused" : (jobRow.speedText.length > 0 ? jobRow.speedText : "In progress"))
+                      font.family: Theme.textFont
+                      font.pixelSize: Theme.fontXs
+                      color: jobRow.isStopped ? (jobRow.errorCode !== 0 ? root.t.red : root.t.ink3) : (jobRow.isSuspended ? root.t.amber : root.t.ink3)
                     }
 
                     IconButton {
                       visible: !jobRow.isStopped && jobRow.canSuspend
+                      Layout.preferredWidth: 20
+                      Layout.preferredHeight: 20
+                      Layout.alignment: Qt.AlignVCenter
                       glyph: jobRow.isSuspended ? "󰐊" : "󰏤"
                       fs: 11
-                      btnSize: 22
+                      btnSize: 20
+                      fg: root.t.ink3
                       tooltip: jobRow.isSuspended ? "Resume" : "Pause"
                       onClicked: {
                         if (root.jobService) {
@@ -592,9 +593,13 @@ Item {
                     }
 
                     IconButton {
+                      Layout.preferredWidth: 20
+                      Layout.preferredHeight: 20
+                      Layout.alignment: Qt.AlignVCenter
                       glyph: "󰅖"
                       fs: 11
-                      btnSize: 22
+                      btnSize: 20
+                      fg: root.t.ink3
                       tooltip: jobRow.isStopped ? "Remove" : "Cancel"
                       onClicked: {
                         if (root.jobService) {
@@ -603,6 +608,16 @@ Item {
                         }
                       }
                     }
+                  }
+
+                  Text {
+                    visible: jobRow.bodyText.length > 0 && !jobRow.isStopped
+                    width: parent.width
+                    text: jobRow.bodyText
+                    font.family: Theme.textFont
+                    font.pixelSize: Theme.fontXs
+                    color: root.t.ink2
+                    elide: Text.ElideMiddle
                   }
 
                   ProgressBar {
@@ -683,9 +698,7 @@ Item {
             readonly property string latestTime: {
               if (!notifsList || notifsList.length === 0) return "";
               void root.service.timeTick;
-              const first = notifsList[0];
-              const last = notifsList[notifsList.length - 1];
-              const newest = (last && last.timestamp > (first ? first.timestamp : 0)) ? last : first;
+              const newest = notifsList[0];
               return root.service ? root.service.timeAgo(newest.timestamp) : (newest ? (newest.timeAgo || "") : "");
             }
 
@@ -1395,52 +1408,9 @@ Item {
                       width: parent.width
                       spacing: 6
 
-                      Repeater {
-                        model: notifCard.actionsList
-
-                        delegate: Rectangle {
-                          id: ccActPill
-                          required property var modelData
-                          implicitWidth: ccActRow.implicitWidth + 14
-                          implicitHeight: 30
-                          radius: 5
-                          color: ccActMouse.containsMouse ? root.t.accentBg : root.t.hoverWash
-                          border.color: ccActMouse.containsMouse ? root.t.accent : root.t.lineMuted
-                          border.width: 1
-
-                          Row {
-                            id: ccActRow
-                            anchors.centerIn: parent
-                            spacing: 4
-
-                            IconImage {
-                              visible: notifCard.hasActionIcons
-                              width: 12
-                              height: 12
-                              anchors.verticalCenter: parent.verticalCenter
-                              source: root.resolveActionIcon(ccActPill.modelData.identifier)
-                              asynchronous: true
-                            }
-
-                            Text {
-                              text: ccActPill.modelData.text || "Action"
-                              font.family: Theme.textFont
-                              font.pixelSize: Theme.fontXs
-                              font.weight: Font.Medium
-                              color: ccActMouse.containsMouse ? root.t.accent : root.t.ink1
-                            }
-                          }
-
-                          MouseArea {
-                            id: ccActMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                              if (root.service) root.service.invokeAction(notifCard.notif, ccActPill.modelData.identifier);
-                            }
-                          }
-                        }
+                      Item {
+                        Layout.fillWidth: true
+                        visible: !notifCard.showReplyField
                       }
 
                       // Sleek Integrated Inline Reply Capsule
@@ -1527,6 +1497,54 @@ Item {
                                   ccReplyInput.text = "";
                                 }
                               }
+                            }
+                          }
+                        }
+                      }
+
+                      Repeater {
+                        model: notifCard.actionsList
+
+                        delegate: Rectangle {
+                          id: ccActPill
+                          required property var modelData
+                          implicitWidth: ccActRow.implicitWidth + 14
+                          implicitHeight: 30
+                          radius: 5
+                          color: ccActMouse.containsMouse ? root.t.accentBg : root.t.hoverWash
+                          border.color: ccActMouse.containsMouse ? root.t.accent : root.t.lineMuted
+                          border.width: 1
+
+                          Row {
+                            id: ccActRow
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            IconImage {
+                              visible: notifCard.hasActionIcons
+                              width: 12
+                              height: 12
+                              anchors.verticalCenter: parent.verticalCenter
+                              source: root.resolveActionIcon(ccActPill.modelData.identifier)
+                              asynchronous: true
+                            }
+
+                            Text {
+                              text: ccActPill.modelData.text || "Action"
+                              font.family: Theme.textFont
+                              font.pixelSize: Theme.fontXs
+                              font.weight: Font.Medium
+                              color: ccActMouse.containsMouse ? root.t.accent : root.t.ink1
+                            }
+                          }
+
+                          MouseArea {
+                            id: ccActMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                              if (root.service) root.service.invokeAction(notifCard.notif, ccActPill.modelData.identifier);
                             }
                           }
                         }

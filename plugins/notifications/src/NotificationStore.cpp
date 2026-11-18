@@ -690,7 +690,7 @@ void NotificationStore::rebuildGrouped() {
     keyToIndex.reserve(m_history.size());
 
     const qsizetype n = m_history.size();
-    for (qsizetype i = 0; i < n; ++i) {
+    for (qsizetype i = n - 1; i >= 0; --i) {
         const auto &h = m_history.at(i);
         const QVariantMap m = (i < m_notifications.size()) ? m_notifications.at(i).toMap() : entryToMap(h);
 
