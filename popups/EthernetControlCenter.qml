@@ -161,6 +161,42 @@ Item {
 
   readonly property var t: Theme
 
+  component DetailTile: Rectangle {
+    property string label: ""
+    property string value: ""
+    property color valueColor: Theme.ink1
+
+    implicitHeight: 48
+    color: Theme.inset
+    border.color: Theme.cardBorder
+    border.width: 1
+
+    Column {
+      anchors.fill: parent
+      anchors.leftMargin: Theme.spaceMd
+      anchors.rightMargin: Theme.spaceMd
+      anchors.topMargin: Theme.spaceXs
+      anchors.bottomMargin: Theme.spaceXs
+      spacing: 2
+
+      Text {
+        text: parent.parent.label
+        font.family: Theme.textFont
+        font.pixelSize: Theme.fontXs
+        color: Theme.ink3
+      }
+
+      Text {
+        width: parent.width
+        text: parent.parent.value
+        font.family: Theme.mono
+        font.pixelSize: Theme.fontBase
+        color: parent.parent.valueColor
+        elide: Text.ElideRight
+      }
+    }
+  }
+
   PopupCard {
     id: card
     anchors.fill: parent
@@ -174,26 +210,31 @@ Item {
       Column {
         id: bodyCol
         width: parent.width
-        spacing: 6
+        spacing: Theme.spaceMd
 
         PopupHeader {
           width: parent.width
-          glyph: root.statusGlyph
-          glyphColor: root.statusColor
           title: "Ethernet"
-          subtitle: (root.ethData && root.ethData.connection_name) ? (root.ethData.connection_name + " · " + root.ifaceName) : root.ifaceName
+          subtitle: {
+            if (!root.ethData) return root.ifaceName;
+            const conn = root.ethData.connection_name;
+            const iface = root.ifaceName;
+            if (conn && iface && conn !== iface) return conn + " · " + iface;
+            return conn || iface || "";
+          }
 
           Text {
             text: root.statusWord
             font.family: Theme.textFont
-            font.pixelSize: Theme.fontBase
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Medium
             color: root.statusColor
           }
 
           IconButton {
             glyph: "󰑓"
-            fs: Theme.iconBase
+            fs: Theme.iconSm
+            btnSize: 24
             tooltip: "Run diagnostics"
             spinning: root.checking || root.isPinging
             onClicked: root.runDiagnostics()
@@ -201,7 +242,8 @@ Item {
 
           IconButton {
             glyph: "󰒓"
-            fs: Theme.iconBase
+            fs: Theme.iconSm
+            btnSize: 24
             tooltip: "Open network settings"
             onClicked: root.openSettings()
           }
@@ -211,13 +253,15 @@ Item {
 
         SectionCard {
           width: parent.width
-          height: connectionRows.height
+          height: connectionDetails.height
           Column {
-            id: connectionRows
+            id: connectionDetails
             width: parent.width
+            spacing: Theme.spaceSm
+
             ActionRow {
               width: parent.width
-              height: 30
+              height: 50
               actionable: Boolean(root.ethData && root.ethData.ip)
               onClicked: {
                 if (root.ethData && root.ethData.ip && root.activeMonitor) {
@@ -225,83 +269,105 @@ Item {
                   root.showToast("Copied IP address");
                 }
               }
+
               RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                Text { text: "IP address"; font.family: Theme.textFont; font.pixelSize: Theme.fontBase; color: root.t.ink2 }
-                Item { Layout.fillWidth: true }
-                Text {
-                  Layout.maximumWidth: 230
-                  text: (root.ethData && root.ethData.ip) ? root.ethData.ip : "Not assigned"
-                  font.family: root.t.mono; font.pixelSize: Theme.fontBase
-                  color: (root.ethData && root.ethData.ip) ? root.t.ink1 : root.t.ink3
-                  elide: Text.ElideRight
+                anchors.leftMargin: Theme.spaceMd
+                anchors.rightMargin: Theme.spaceMd
+                ColumnLayout {
+                  Layout.fillWidth: true
+                  spacing: 2
+                  Text {
+                    text: "IP ADDRESS"
+                    font.family: Theme.textFont
+                    font.pixelSize: Theme.fontXs
+                    font.weight: Font.Medium
+                    color: Theme.ink3
+                  }
+                  Text {
+                    text: (root.ethData && root.ethData.ip) ? root.ethData.ip : "Not assigned"
+                    font.family: root.t.mono
+                    font.pixelSize: Theme.fontXl
+                    font.weight: Font.Medium
+                    color: (root.ethData && root.ethData.ip) ? root.t.ink1 : root.t.ink3
+                    elide: Text.ElideRight
+                  }
                 }
-                Text { visible: Boolean(root.ethData && root.ethData.ip); text: "󰆏"; font.family: root.t.mono; font.pixelSize: Theme.iconSm; color: root.t.ink3 }
-              }
-            }
-            Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
-            ActionRow {
-              width: parent.width; height: 30; actionable: false
-              RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12
-                Text { text: "Link speed"; font.family: Theme.textFont; font.pixelSize: Theme.fontBase; color: root.t.ink2 }
-                Item { Layout.fillWidth: true }
                 Text {
-                  text: root.isCarrier ? ((root.ethData && root.ethData.speed_label) ? root.ethData.speed_label + " · Full duplex" : "Carrier detected") : "No carrier"
-                  font.family: root.t.mono; font.pixelSize: Theme.fontBase
-                  color: root.isCarrier ? root.t.ink1 : root.t.ink3
-                  elide: Text.ElideRight
-                }
-              }
-            }
-            Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
-            ActionRow {
-              width: parent.width; height: 30; actionable: false
-              RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12
-                Text { text: "Gateway"; font.family: Theme.textFont; font.pixelSize: Theme.fontBase; color: root.t.ink2 }
-                Item { Layout.fillWidth: true }
-                Text {
-                  Layout.maximumWidth: 230
-                  text: (root.ethData && root.ethData.gateway) ? root.ethData.gateway : "—"
-                  font.family: root.t.mono; font.pixelSize: Theme.fontBase; color: root.t.ink1; elide: Text.ElideRight
+                  visible: Boolean(root.ethData && root.ethData.ip)
+                  text: "󰆏"
+                  font.family: root.t.mono
+                  font.pixelSize: Theme.iconBase
+                  color: root.t.ink3
                 }
               }
             }
-            Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
-            ActionRow {
-              width: parent.width; height: 30; actionable: false
-              RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12
-                Text { text: "DNS"; font.family: Theme.textFont; font.pixelSize: Theme.fontBase; color: root.t.ink2 }
-                Item { Layout.fillWidth: true }
-                Text {
-                  Layout.maximumWidth: 230
-                  text: (root.ethData && root.ethData.dns && root.ethData.dns.length > 0) ? root.ethData.dns.join(", ") : "Default"
-                  font.family: root.t.mono; font.pixelSize: Theme.fontBase; color: root.t.ink1; elide: Text.ElideRight
-                }
+
+            GridLayout {
+              width: parent.width
+              columns: 2
+              columnSpacing: Theme.spaceSm
+              rowSpacing: Theme.spaceSm
+
+              DetailTile {
+                Layout.fillWidth: true
+                label: "LINK SPEED"
+                value: root.isCarrier ? ((root.ethData && root.ethData.speed_label) ? root.ethData.speed_label + " · Full duplex" : "Carrier detected") : "No carrier"
+                valueColor: root.isCarrier ? root.t.ink1 : root.t.ink3
               }
-            }
-            Hairline { width: parent.width - 24; anchors.horizontalCenter: parent.horizontalCenter }
-            ActionRow {
-              width: parent.width; height: 30
-              actionable: Boolean(root.ethData && root.ethData.hw_address)
-              onClicked: {
-                if (root.ethData && root.ethData.hw_address && root.activeMonitor) {
-                  root.activeMonitor.copy(root.ethData.hw_address);
-                  root.showToast("Copied MAC address");
-                }
+
+              DetailTile {
+                Layout.fillWidth: true
+                label: "GATEWAY"
+                value: (root.ethData && root.ethData.gateway) ? root.ethData.gateway : "—"
               }
-              RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12
-                Text { text: "MAC address"; font.family: Theme.textFont; font.pixelSize: Theme.fontBase; color: root.t.ink2 }
-                Item { Layout.fillWidth: true }
-                Text {
-                  Layout.maximumWidth: 230
-                  text: (root.ethData && root.ethData.hw_address) ? root.ethData.hw_address : "—"
-                  font.family: root.t.mono; font.pixelSize: Theme.fontBase; color: root.t.ink2; elide: Text.ElideMiddle
+
+              DetailTile {
+                Layout.columnSpan: 2
+                Layout.fillWidth: true
+                label: "DNS"
+                value: (root.ethData && root.ethData.dns && root.ethData.dns.length > 0) ? root.ethData.dns.join(", ") : "Default"
+              }
+
+              ActionRow {
+                Layout.columnSpan: 2
+                Layout.fillWidth: true
+                Layout.preferredHeight: 40
+                height: 40
+                actionable: Boolean(root.ethData && root.ethData.hw_address)
+                onClicked: {
+                  if (root.ethData && root.ethData.hw_address && root.activeMonitor) {
+                    root.activeMonitor.copy(root.ethData.hw_address);
+                    root.showToast("Copied MAC address");
+                  }
+                }
+
+                RowLayout {
+                  anchors.fill: parent
+                  anchors.leftMargin: Theme.spaceMd
+                  anchors.rightMargin: Theme.spaceMd
+                  Text {
+                    text: "MAC ADDRESS"
+                    font.family: Theme.textFont
+                    font.pixelSize: Theme.fontXs
+                    color: root.t.ink3
+                  }
+                  Item { Layout.fillWidth: true }
+                  Text {
+                    Layout.maximumWidth: 230
+                    text: (root.ethData && root.ethData.hw_address) ? root.ethData.hw_address : "—"
+                    font.family: root.t.mono
+                    font.pixelSize: Theme.fontBase
+                    color: root.t.ink1
+                    elide: Text.ElideMiddle
+                  }
+                  Text {
+                    visible: Boolean(root.ethData && root.ethData.hw_address)
+                    text: "󰆏"
+                    font.family: root.t.mono
+                    font.pixelSize: Theme.iconSm
+                    color: root.t.ink3
+                  }
                 }
               }
             }
@@ -310,7 +376,7 @@ Item {
 
         SectionCard {
           width: parent.width
-          height: 68
+          height: 72
           Row {
             anchors.fill: parent
             anchors.leftMargin: 8
@@ -404,14 +470,14 @@ Item {
 
         SectionCard {
           width: parent.width
-          height: root.hasVnstat ? 92 : 48
+          height: root.hasVnstat ? 96 : 48
           Column {
             anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            anchors.topMargin: 6
-            anchors.bottomMargin: 6
-            spacing: 6
+            anchors.leftMargin: Theme.spaceLg
+            anchors.rightMargin: Theme.spaceLg
+            anchors.topMargin: Theme.spaceSm
+            anchors.bottomMargin: Theme.spaceSm
+            spacing: Theme.spaceSm
             SegmentedControl {
               visible: root.hasVnstat
               width: parent.width
@@ -422,7 +488,7 @@ Item {
             RowLayout {
               visible: root.hasVnstat
               width: parent.width
-              height: 36
+              height: 44
               ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
@@ -432,13 +498,44 @@ Item {
                 }
                 Text { text: root.usagePeriods[root.usagePeriod].range; font.family: Theme.textFont; font.pixelSize: Theme.fontXs; color: root.t.ink3 }
               }
-              Text {
-                text: "↓ " + (root.usagePeriods[root.usagePeriod].data ? root.usagePeriods[root.usagePeriod].data.rxFormatted : "0 B")
-                font.family: root.t.mono; font.pixelSize: Theme.fontSm; color: root.t.green
+              Rectangle {
+                Layout.fillHeight: true
+                width: 1
+                color: root.t.line
               }
-              Text {
-                text: "↑ " + (root.usagePeriods[root.usagePeriod].data ? root.usagePeriods[root.usagePeriod].data.txFormatted : "0 B")
-                font.family: root.t.mono; font.pixelSize: Theme.fontSm; color: root.t.amber
+
+              ColumnLayout {
+                Layout.preferredWidth: 82
+                spacing: 2
+                Text {
+                  text: "Downloaded"
+                  font.family: Theme.textFont
+                  font.pixelSize: Theme.fontXs
+                  color: root.t.ink3
+                }
+                Text {
+                  text: root.usagePeriods[root.usagePeriod].data ? root.usagePeriods[root.usagePeriod].data.rxFormatted : "0 B"
+                  font.family: root.t.mono
+                  font.pixelSize: Theme.fontSm
+                  color: root.t.green
+                }
+              }
+
+              ColumnLayout {
+                Layout.preferredWidth: 72
+                spacing: 2
+                Text {
+                  text: "Uploaded"
+                  font.family: Theme.textFont
+                  font.pixelSize: Theme.fontXs
+                  color: root.t.ink3
+                }
+                Text {
+                  text: root.usagePeriods[root.usagePeriod].data ? root.usagePeriods[root.usagePeriod].data.txFormatted : "0 B"
+                  font.family: root.t.mono
+                  font.pixelSize: Theme.fontSm
+                  color: root.t.amber
+                }
               }
             }
             Text {

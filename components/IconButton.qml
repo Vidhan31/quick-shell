@@ -16,7 +16,7 @@ Rectangle {
 
   implicitWidth: btnSize
   implicitHeight: btnSize
-  radius: Theme.radiusBase
+  radius: btnSize / 2
   activeFocusOnTab: !root.dimmed
 
   color: ma.pressed ? Theme.pressWash : (ma.containsMouse || root.activeFocus) ? Theme.hoverWash : "transparent"

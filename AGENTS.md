@@ -7,6 +7,8 @@
 - qmllint-qt6 is wired to the `qmllint` build target. Config lives in `.qmllint.ini`.
 - Fine tuning to my system specs is allowed.
 - Do not write useless comments such as decorators, steps, etc. Only important ones such as workarounds, security, limitations, hacks,etc.
+- Do not build C++ plugins if you only modified QML files.
+- Build the target for which files have been modified instead of everything.
 
 ## Build
 

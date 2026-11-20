@@ -13,15 +13,15 @@ RowLayout {
 
   default property alias actions: root.data
 
-  height: 38
-  Layout.preferredHeight: 38
-  spacing: 10
+  height: root.subtitle.length > 0 ? 30 : 24
+  Layout.preferredHeight: root.subtitle.length > 0 ? 30 : 24
+  spacing: 8
 
   Text {
     visible: root.glyph.length > 0
     text: root.glyph
     font.family: Theme.mono
-    font.pixelSize: 20
+    font.pixelSize: 18
     color: root.glyphColor
     Layout.alignment: Qt.AlignVCenter
   }
@@ -29,7 +29,7 @@ RowLayout {
   Column {
     Layout.fillWidth: true
     Layout.alignment: Qt.AlignVCenter
-    spacing: 2
+    spacing: 1
 
     Text {
       text: root.title
@@ -42,10 +42,9 @@ RowLayout {
     Text {
       width: parent.width
       visible: root.subtitle.length > 0
-      text: root.subtitle.toUpperCase()
-      font.family: Theme.mono
+      text: root.subtitle
+      font.family: Theme.textFont
       font.pixelSize: Theme.fontXs
-      font.letterSpacing: 1.3
       font.weight: Font.Medium
       color: Theme.ink3
       elide: Text.ElideRight

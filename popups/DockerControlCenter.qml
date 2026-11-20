@@ -15,8 +15,8 @@ Item {
 
   signal triggerRefresh()
   implicitWidth: Theme.popupWidthLg - 40
-  property int popupHeight: 208
-  readonly property int preferredHeight: root.connected ? 600 : 208
+  property int popupHeight: 600
+  readonly property int preferredHeight: 600
   implicitHeight: root.popupHeight
 
   function syncHeight(): void {
@@ -83,6 +83,30 @@ Item {
   property string logViewId: ""
   property string logViewName: ""
   property int logTail: 200
+
+  function findTipHost(): var {
+    let p = root.parent;
+    while (p) {
+      if (typeof p.showTip === "function") return p;
+      if (p.barWindow && typeof p.barWindow.showTip === "function") return p.barWindow;
+      p = p.parent;
+    }
+    return null;
+  }
+
+  function showCardTip(item: Item, mainText: string, subText: string): void {
+    const host = root.findTipHost();
+    if (host && typeof host.showTip === "function") {
+      host.showTip(item, mainText, subText || "");
+    }
+  }
+
+  function hideCardTip(): void {
+    const host = root.findTipHost();
+    if (host && typeof host.hideTip === "function") {
+      host.hideTip();
+    }
+  }
 
   function showToast(msg: string): void {
     toast.show(msg);
@@ -186,7 +210,7 @@ Item {
       IconButton {
         glyph: "󰑓"
         fs: Theme.iconBase
-        tooltip: "Refresh containers"
+        tooltip: "Refresh Docker state"
         spinning: root.busy && !root.isServiceStopping
         dimmed: root.busy
         onClicked: {
@@ -282,7 +306,12 @@ Item {
         { icon: "󰆧", label: "Storage", count: root.images.length + root.volumes.length }
       ]
       current: root.currentTab
-      onSelected: function(index) { root.currentTab = index; }
+      onSelected: function(index) {
+        root.currentTab = index;
+        if (index === 1 && root.cleanup.length === 0 && root.activeMonitor) {
+          root.activeMonitor.refresh();
+        }
+      }
     }
 
     Rectangle {
@@ -370,81 +399,49 @@ Item {
       visible: root.confirmStopPrompt
     }
 
-    Rectangle {
+    Item {
       Layout.fillWidth: true
       visible: !root.connected
-      radius: Theme.radiusSection
-      color: Theme.surface
-      border.color: Theme.lineMuted
-      border.width: 1
-      Layout.preferredHeight: offlineCol.implicitHeight + 28
+      Layout.fillHeight: true
+      Layout.minimumHeight: 300
 
       ColumnLayout {
         id: offlineCol
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        anchors.margins: 14
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 32, 320)
         spacing: 12
 
-        RowLayout {
+        Text {
           Layout.fillWidth: true
-          spacing: 10
-
-          Text {
-            text: root.isServiceStarting ? "󰑓" : "󰅚"
-            font.family: Theme.mono
-            font.pixelSize: Theme.iconMd
-            color: root.isServiceStarting ? Theme.accent : Theme.red
-            NumberAnimation on rotation {
-              running: root.isServiceStarting
-              from: 0
-              to: 360
-              loops: Animation.Infinite
-              duration: 800
-            }
-          }
-
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 2
-
-            Text {
-              Layout.fillWidth: true
-              text: root.isServiceStarting ? "Starting Docker service…" : "Docker service is inactive"
-              font.family: Theme.textFont
-              font.pixelSize: Theme.fontBase
-              font.weight: Font.DemiBold
-              color: Theme.ink1
-            }
-
-            Text {
-              Layout.fillWidth: true
-              wrapMode: Text.Wrap
-              font.family: Theme.textFont
-              font.pixelSize: Theme.fontXs
-              color: Theme.ink3
-              text: root.isServiceStarting
-                ? "Connecting to daemon via user systemd D-Bus…"
-                : "Daemon unreachable at " + (root.activeMonitor ? root.activeMonitor.socketPath : "socket")
-            }
-          }
+          text: root.isServiceStarting ? "STARTING" : "DOCKER OFFLINE"
+          horizontalAlignment: Text.AlignHCenter
+          font.family: Theme.displayFont
+          font.pixelSize: Theme.fontXs
+          font.weight: Font.DemiBold
+          color: root.isServiceStarting ? Theme.accent : Theme.ink3
         }
 
-        RowLayout {
-          Layout.fillWidth: true
-
-          Item {
-            Layout.fillWidth: true
-          }
-
-          PrimaryButton {
-            text: root.isServiceStarting ? "Starting…" : "Start Docker Service"
-            glyph: "󰐊"
-            enabledBtn: !root.busy
-            onClicked: root.startService()
-          }
+        ToggleSwitch {
+          Layout.alignment: Qt.AlignHCenter
+          implicitWidth: 112
+          implicitHeight: 62
+          on: root.connected || root.isServiceStarting
+          onColor: Theme.accent
+          enabledSwitch: !root.busy
+          accessibleName: root.isServiceStarting ? "Docker starting" : "Start Docker service"
+          tooltip: "Start Docker service"
+          onToggled: root.startService()
         }
+
+        Text {
+          Layout.fillWidth: true
+          text: root.isServiceStarting ? "Connecting to the daemon" : "Tap to start the service"
+          horizontalAlignment: Text.AlignHCenter
+          font.family: Theme.textFont
+          font.pixelSize: Theme.fontSm
+          color: Theme.ink2
+        }
+
       }
     }
 
@@ -459,7 +456,7 @@ Item {
       Column {
         id: contentCol
         width: parent.width
-        spacing: 14
+        spacing: 10
 
         Column {
           id: composeSectionCol
@@ -530,49 +527,70 @@ Item {
           SectionCard {
             width: parent.width
             visible: root.images.length > 0
-            height: imageList.height
-            Column {
-              id: imageList
-              width: parent.width
+            height: imageGrid.height + 8
+            bordered: true
+
+            GridLayout {
+              id: imageGrid
+              width: parent.width - 8
+              x: 4
+              y: 4
+              columns: 2
+              rowSpacing: 2
+              columnSpacing: 6
+
               Repeater {
                 model: root.images
-                delegate: Column {
-                  id: imageRow
+                delegate: Rectangle {
+                  id: imageCard
                   required property var modelData
                   required property int index
-                  width: imageList.width
-                  spacing: 0
-                  Hairline {
-                    visible: imageRow.index > 0
-                    width: imageRow.width
-                  }
-                  RowLayout {
-                    width: imageRow.width
-                    height: 54
-                    spacing: 10
+                  Layout.fillWidth: true
+                  Layout.columnSpan: (imageCard.index === root.images.length - 1 && root.images.length % 2 === 1) ? 2 : 1
+                  Layout.preferredHeight: 36
+                  radius: 3
+                  color: imgMa.containsMouse ? Theme.hoverWash : "transparent"
+                  Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+                  Component.onDestruction: root.hideCardTip()
 
-                    Rectangle {
-                      Layout.preferredWidth: 3
-                      Layout.fillHeight: true
-                      color: Theme.teal
+                  readonly property string imageTag: (imageCard.modelData.repo_tags && imageCard.modelData.repo_tags.length > 0) ? imageCard.modelData.repo_tags[0] : (imageCard.modelData.short_id || "")
+
+                  MouseArea {
+                    id: imgMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                    onContainsMouseChanged: {
+                      const imageId = imageCard.modelData.short_id || "";
+                      if (containsMouse && imageId.length > 0) {
+                        root.showCardTip(imageCard, "Image ID", imageId);
+                      } else {
+                        root.hideCardTip();
+                      }
                     }
+                  }
+
+                  RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 4
+                    spacing: 6
 
                     ColumnLayout {
                       Layout.fillWidth: true
-                      Layout.leftMargin: 2
-                      spacing: 3
+                      spacing: 1
 
                       Text {
                         Layout.fillWidth: true
-                        text: (imageRow.modelData.repo_tags && imageRow.modelData.repo_tags.length > 0) ? imageRow.modelData.repo_tags[0] : imageRow.modelData.short_id
-                        font.pixelSize: Theme.fontBase
+                        text: imageCard.imageTag
+                        font.pixelSize: Theme.fontSm
                         font.family: Theme.mono
                         color: Theme.ink1
-                        elide: Text.ElideRight
+                        elide: Text.ElideMiddle
                       }
                       Text {
                         Layout.fillWidth: true
-                        text: imageRow.modelData.size_text
+                        text: imageCard.modelData.size_text
                         font.pixelSize: Theme.fontXs
                         font.family: Theme.mono
                         color: Theme.ink3
@@ -580,28 +598,14 @@ Item {
                       }
                     }
 
-                    Rectangle {
-                      Layout.preferredWidth: imageActions.implicitWidth + 4
-                      Layout.preferredHeight: 30
-                      Layout.rightMargin: 8
-                      radius: 3
-                      color: Theme.inset
-                      border.color: Theme.lineMuted
-                      border.width: 1
-
-                      Row {
-                        id: imageActions
-                        anchors.centerIn: parent
-                        IconButton {
-                          glyph: "󰆴"
-                          btnSize: 28
-                          fs: Theme.iconSm
-                          fg: Theme.red
-                          tooltip: "Remove image"
-                          dimmed: root.busy && root.busyContext === "remove-image:" + ((imageRow.modelData.repo_tags && imageRow.modelData.repo_tags.length > 0) ? imageRow.modelData.repo_tags[0] : imageRow.modelData.id)
-                          onClicked: root.activeMonitor.removeImage((imageRow.modelData.repo_tags && imageRow.modelData.repo_tags.length > 0) ? imageRow.modelData.repo_tags[0] : imageRow.modelData.id, false)
-                        }
-                      }
+                    IconButton {
+                      glyph: "󰆴"
+                      btnSize: 24
+                      fs: Theme.iconSm
+                      fg: Theme.ink3
+                      tooltip: "Remove image"
+                      dimmed: root.busy && root.busyContext === "remove-image:" + ((imageCard.modelData.repo_tags && imageCard.modelData.repo_tags.length > 0) ? imageCard.modelData.repo_tags[0] : imageCard.modelData.id)
+                      onClicked: root.activeMonitor.removeImage((imageCard.modelData.repo_tags && imageCard.modelData.repo_tags.length > 0) ? imageCard.modelData.repo_tags[0] : imageCard.modelData.id, false)
                     }
                   }
                 }
@@ -630,78 +634,89 @@ Item {
           SectionCard {
             width: parent.width
             visible: root.volumes.length > 0
-            height: volumeList.height
-            Column {
-              id: volumeList
-              width: parent.width
+            height: volumeGrid.height + 8
+            bordered: true
+
+            GridLayout {
+              id: volumeGrid
+              width: parent.width - 8
+              x: 4
+              y: 4
+              columns: 2
+              rowSpacing: 2
+              columnSpacing: 6
+
               Repeater {
                 model: root.volumes
-                delegate: Column {
-                  id: volumeRow
+                delegate: Rectangle {
+                  id: volumeCard
                   required property var modelData
                   required property int index
-                  width: volumeList.width
-                  spacing: 0
-                  Hairline {
-                    visible: volumeRow.index > 0
-                    width: volumeRow.width
-                  }
-                  RowLayout {
-                    width: volumeRow.width
-                    height: 54
-                    spacing: 10
+                  Layout.fillWidth: true
+                  Layout.columnSpan: (volumeCard.index === root.volumes.length - 1 && root.volumes.length % 2 === 1) ? 2 : 1
+                  Layout.preferredHeight: 36
+                  radius: 3
+                  color: volMa.containsMouse ? Theme.hoverWash : "transparent"
+                  Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+                  Component.onDestruction: root.hideCardTip()
 
-                    Rectangle {
-                      Layout.preferredWidth: 3
-                      Layout.fillHeight: true
-                      color: Theme.violet
+                  readonly property string volumeName: volumeCard.modelData.name || ""
+
+                  MouseArea {
+                    id: volMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                    onContainsMouseChanged: {
+                    const mountpoint = volumeCard.modelData.mountpoint || "";
+                    if (containsMouse && mountpoint.length > 0) {
+                      root.showCardTip(volumeCard, "Mount point", mountpoint);
+                      } else {
+                        root.hideCardTip();
+                      }
                     }
+                  }
+
+                  RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 4
+                    spacing: 6
 
                     ColumnLayout {
                       Layout.fillWidth: true
-                      Layout.leftMargin: 2
-                      spacing: 3
+                      spacing: 1
 
                       Text {
                         Layout.fillWidth: true
-                        text: volumeRow.modelData.name
-                        font.pixelSize: Theme.fontBase
+                        text: volumeCard.volumeName
+                        font.pixelSize: Theme.fontSm
                         font.family: Theme.mono
                         color: Theme.ink1
-                        elide: Text.ElideRight
+                        elide: Text.ElideMiddle
                       }
                       Text {
                         Layout.fillWidth: true
-                        visible: (volumeRow.modelData.driver || "").length > 0
-                        text: volumeRow.modelData.driver
+                        text: {
+                          const driver = volumeCard.modelData.driver || "";
+                          const size = volumeCard.modelData.size_text || "Unavailable";
+                          return driver.length > 0 ? driver + " · " + size : size;
+                        }
                         font.family: Theme.textFont
                         font.pixelSize: Theme.fontXs
                         color: Theme.ink3
+                        elide: Text.ElideRight
                       }
                     }
 
-                    Rectangle {
-                      Layout.preferredWidth: volumeActions.implicitWidth + 4
-                      Layout.preferredHeight: 30
-                      Layout.rightMargin: 8
-                      radius: 3
-                      color: Theme.inset
-                      border.color: Theme.lineMuted
-                      border.width: 1
-
-                      Row {
-                        id: volumeActions
-                        anchors.centerIn: parent
-                        IconButton {
-                          glyph: "󰆴"
-                          btnSize: 28
-                          fs: Theme.iconSm
-                          fg: Theme.red
-                          tooltip: "Remove volume"
-                          dimmed: root.busy && root.busyContext === "remove-volume:" + volumeRow.modelData.name
-                          onClicked: root.activeMonitor.removeVolume(volumeRow.modelData.name, false)
-                        }
-                      }
+                    IconButton {
+                      glyph: "󰆴"
+                      btnSize: 24
+                      fs: Theme.iconSm
+                      fg: Theme.ink3
+                      tooltip: "Remove volume"
+                      dimmed: root.busy && root.busyContext === "remove-volume:" + volumeCard.modelData.name
+                      onClicked: root.activeMonitor.removeVolume(volumeCard.modelData.name, false)
                     }
                   }
                 }
@@ -729,86 +744,92 @@ Item {
           }
           SectionCard {
             width: parent.width
-            height: cleanupList.height
-            Column {
-              id: cleanupList
-              width: parent.width
+            visible: root.cleanup.length > 0
+            height: cleanupGrid.height + 8
+            bordered: true
+
+            GridLayout {
+              id: cleanupGrid
+              width: parent.width - 8
+              x: 4
+              y: 4
+              columns: 2
+              rowSpacing: 2
+              columnSpacing: 6
+
               Repeater {
                 model: root.cleanup
-                delegate: Column {
-                  id: cleanupRow
+                delegate: Rectangle {
+                  id: cleanupCard
                   required property var modelData
                   required property int index
-                  width: cleanupList.width
-                  spacing: 0
-                  Hairline {
-                    visible: cleanupRow.index > 0
-                    width: cleanupRow.width
+                  Layout.fillWidth: true
+                  Layout.columnSpan: (cleanupCard.index === root.cleanup.length - 1 && root.cleanup.length % 2 === 1) ? 2 : 1
+                  Layout.preferredHeight: 36
+                  radius: 3
+                  color: cleanMa.containsMouse ? Theme.hoverWash : "transparent"
+                  Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+                  MouseArea {
+                    id: cleanMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
                   }
-                  RowLayout {
-                    width: cleanupRow.width
-                    height: 54
-                    spacing: 10
 
-                    Rectangle {
-                      Layout.preferredWidth: 3
-                      Layout.fillHeight: true
-                      color: Theme.amber
-                    }
+                  RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 4
+                    spacing: 6
 
                     ColumnLayout {
                       Layout.fillWidth: true
-                      Layout.leftMargin: 2
-                      spacing: 3
+                      spacing: 1
 
                       Text {
                         Layout.fillWidth: true
-                        text: cleanupRow.modelData.label
+                        text: cleanupCard.modelData.label
                         font.family: Theme.textFont
-                        font.pixelSize: Theme.fontBase
+                        font.pixelSize: Theme.fontSm
                         color: Theme.ink1
+                        elide: Text.ElideRight
                       }
                       Text {
                         Layout.fillWidth: true
-                        text: cleanupRow.modelData.detail
+                        text: cleanupCard.modelData.detail
                         font.pixelSize: Theme.fontXs
                         font.family: Theme.mono
                         color: Theme.ink3
-                        elide: Text.ElideRight
+                        elide: Text.ElideMiddle
                       }
                     }
 
-                    Rectangle {
-                      Layout.preferredWidth: cleanupActions.implicitWidth + 4
-                      Layout.preferredHeight: 30
-                      Layout.rightMargin: 8
-                      radius: 3
-                      color: Theme.inset
-                      border.color: Theme.lineMuted
-                      border.width: 1
-
-                      Row {
-                        id: cleanupActions
-                        anchors.centerIn: parent
-                        IconButton {
-                          glyph: "󰃢"
-                          btnSize: 28
-                          fs: Theme.iconSm
-                          fg: Theme.amber
-                          tooltip: root.busyContext === "prune:" + cleanupRow.modelData.kind ? "Pruning" : "Prune " + cleanupRow.modelData.label
-                          dimmed: root.busy
-                          spinning: root.busyContext === "prune:" + cleanupRow.modelData.kind
-                          onClicked: {
-                            if (root.activeMonitor)
-                              root.activeMonitor.prune(cleanupRow.modelData.kind);
-                          }
-                        }
+                    IconButton {
+                      glyph: "󰃢"
+                      btnSize: 24
+                      fs: Theme.iconSm
+                      fg: Theme.amber
+                      tooltip: root.busyContext === "prune:" + cleanupCard.modelData.kind ? "Pruning" : "Prune " + cleanupCard.modelData.label
+                      dimmed: root.busy
+                      spinning: root.busyContext === "prune:" + cleanupCard.modelData.kind
+                      onClicked: {
+                        if (root.activeMonitor)
+                          root.activeMonitor.prune(cleanupCard.modelData.kind);
                       }
                     }
                   }
                 }
               }
             }
+          }
+          Text {
+            visible: root.cleanup.length === 0
+            width: parent.width
+            leftPadding: 2
+            font.family: Theme.textFont
+            font.pixelSize: Theme.fontSm
+            color: Theme.ink3
+            text: root.busy ? "Scanning reclaimable space…" : "No cleanup data available"
           }
         }
       }
@@ -916,8 +937,8 @@ Item {
 
       RowLayout {
         width: groupCol.width
-        height: 58
-        spacing: 10
+        height: 44
+        spacing: 8
 
         Rectangle {
           Layout.preferredWidth: 3
@@ -928,11 +949,11 @@ Item {
         ColumnLayout {
           Layout.fillWidth: true
           Layout.leftMargin: 2
-          spacing: 3
+          spacing: 2
 
           RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: 6
 
             Text {
               text: "󰘬"
@@ -948,14 +969,14 @@ Item {
               font.pixelSize: Theme.fontBase
               font.weight: Font.DemiBold
               color: Theme.ink1
-              elide: Text.ElideRight
+              elide: Text.ElideMiddle
             }
 
             Rectangle {
               radius: 3
               color: (group.project.running || 0) > 0 ? Theme.okBg : Theme.surfaceElevated
-              implicitWidth: projectState.implicitWidth + 12
-              implicitHeight: 20
+              implicitWidth: projectState.implicitWidth + 8
+              implicitHeight: 18
 
               Text {
                 id: projectState
@@ -981,7 +1002,7 @@ Item {
 
         Rectangle {
           Layout.preferredWidth: group.groupBusy ? 58 : projectActions.implicitWidth + 4
-          Layout.preferredHeight: 30
+          Layout.preferredHeight: 26
           Layout.rightMargin: 8
           radius: 3
           color: Theme.inset
@@ -997,7 +1018,7 @@ Item {
             IconButton {
               visible: (group.project.working_dir || "").length > 0
               glyph: "󰉋"
-              btnSize: 28
+              btnSize: 24
               fs: Theme.iconSm
               fg: Theme.accent
               tooltip: "Open project folder"
@@ -1011,7 +1032,7 @@ Item {
             IconButton {
               visible: !group.groupBusy
               glyph: "󰐊"
-              btnSize: 28
+              btnSize: 24
               fs: Theme.iconSm
               fg: Theme.green
               tooltip: "Start all containers"
@@ -1025,7 +1046,7 @@ Item {
             IconButton {
               visible: !group.groupBusy
               glyph: "󰏤"
-              btnSize: 28
+              btnSize: 24
               fs: Theme.iconSm
               fg: Theme.amber
               tooltip: "Stop all containers"
@@ -1066,138 +1087,157 @@ Item {
     property bool showTopLine: false
     readonly property bool rowBusy: root.busy && (row.info.id || "").length > 0 && root.busyContext.endsWith(":" + row.info.id)
     spacing: 0
+    Component.onDestruction: root.hideCardTip()
 
     Hairline {
       visible: row.showTopLine
       width: row.width
     }
 
-    RowLayout {
+    Item {
       width: row.width
-      height: 58
-      spacing: 10
+      height: 44
 
-      Rectangle {
-        Layout.preferredWidth: 3
-        Layout.fillHeight: true
-        color: root.stateColor(row.info.state)
+      MouseArea {
+        id: containerMa
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.NoButton
+        onContainsMouseChanged: {
+          if (containsMouse && (row.info.id || "").length > 0) {
+            root.showCardTip(row, "Container ID", row.info.id || "");
+          } else {
+            root.hideCardTip();
+          }
+        }
       }
 
-      ColumnLayout {
-        Layout.fillWidth: true
-        Layout.leftMargin: 2
-        spacing: 4
+      RowLayout {
+        anchors.fill: parent
+        spacing: 8
 
-        RowLayout {
+        Rectangle {
+          Layout.preferredWidth: 3
+          Layout.fillHeight: true
+          color: root.stateColor(row.info.state)
+        }
+
+        ColumnLayout {
           Layout.fillWidth: true
-          spacing: 8
+          Layout.leftMargin: 2
+          spacing: 2
 
-          Text {
+          RowLayout {
             Layout.fillWidth: true
-            text: row.info.name || ""
-            font.family: Theme.textFont
-            font.pixelSize: Theme.fontBase
-            font.weight: Font.DemiBold
-            color: Theme.ink1
-            elide: Text.ElideRight
+            spacing: 6
+
+            Text {
+              Layout.fillWidth: true
+              text: row.info.name || ""
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontSm
+              font.weight: Font.DemiBold
+              color: Theme.ink1
+              elide: Text.ElideMiddle
+            }
+
+            Text {
+              text: root.stateWord(row.info.state)
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontXs
+              color: root.stateColor(row.info.state)
+            }
           }
 
           Text {
-            text: root.stateWord(row.info.state)
-            font.family: Theme.textFont
-            font.pixelSize: Theme.fontSm
-            color: root.stateColor(row.info.state)
+            Layout.fillWidth: true
+            text: (row.info.image || "") + " · " + (row.info.status || "")
+            font.pixelSize: Theme.fontXs
+            font.family: Theme.mono
+            color: Theme.ink3
+            elide: Text.ElideMiddle
+          }
+        }
+
+        Rectangle {
+          visible: !row.rowBusy
+          Layout.preferredWidth: containerActions.implicitWidth + 4
+          Layout.preferredHeight: 26
+          Layout.rightMargin: 8
+          radius: 3
+          color: Theme.inset
+          border.color: Theme.lineMuted
+          border.width: 1
+
+          Row {
+            id: containerActions
+            anchors.centerIn: parent
+            spacing: 0
+
+            IconButton {
+              visible: !(row.info.is_running || false)
+              glyph: "󰐊"
+              btnSize: 24
+              fs: Theme.iconSm
+              fg: Theme.ok
+              tooltip: "Start container"
+              dimmed: root.busy
+              onClicked: root.activeMonitor.startContainer(row.info.id)
+            }
+            IconButton {
+              visible: (row.info.is_running || false)
+              glyph: "󰏤"
+              btnSize: 24
+              fs: Theme.iconSm
+              fg: Theme.warn
+              tooltip: "Stop container"
+              dimmed: root.busy
+              onClicked: root.activeMonitor.stopContainer(row.info.id, 10)
+            }
+            IconButton {
+              glyph: "󰌱"
+              btnSize: 24
+              fs: Theme.iconSm
+              fg: Theme.ink2
+              tooltip: "View logs"
+              dimmed: root.busy
+              onClicked: root.openLogs(row.info.id, row.info.name)
+            }
+            IconButton {
+              glyph: "󰑓"
+              btnSize: 24
+              fs: Theme.iconSm
+              fg: Theme.accent
+              tooltip: "Restart container"
+              dimmed: root.busy
+              onClicked: root.activeMonitor.restartContainer(row.info.id, 10)
+            }
+            Rectangle {
+              width: 1
+              height: 12
+              anchors.verticalCenter: parent.verticalCenter
+              color: Theme.line
+            }
+            IconButton {
+              glyph: "󰆴"
+              btnSize: 24
+              fs: Theme.iconSm
+              fg: Theme.err
+              tooltip: "Remove container"
+              dimmed: root.busy
+              onClicked: root.activeMonitor.removeContainer(row.info.id, false)
+            }
           }
         }
 
         Text {
-          Layout.fillWidth: true
-          text: (row.info.image || "") + " · " + (row.info.status || "")
-          font.pixelSize: Theme.fontXs
-          font.family: Theme.mono
-          color: Theme.ink3
-          elide: Text.ElideRight
+          visible: row.rowBusy
+          Layout.preferredWidth: 48
+          text: "Working…"
+          font.family: Theme.textFont
+          font.pixelSize: Theme.fontSm
+          color: Theme.accent
         }
-      }
-
-      Rectangle {
-        visible: !row.rowBusy
-        Layout.preferredWidth: containerActions.implicitWidth + 4
-        Layout.preferredHeight: 30
-        Layout.rightMargin: 8
-        radius: 3
-        color: Theme.inset
-        border.color: Theme.lineMuted
-        border.width: 1
-
-        Row {
-          id: containerActions
-          anchors.centerIn: parent
-          spacing: 0
-
-          IconButton {
-            visible: !(row.info.is_running || false)
-            glyph: "󰐊"
-            btnSize: 28
-            fs: Theme.iconSm
-            fg: Theme.ok
-            tooltip: "Start container"
-            dimmed: root.busy
-            onClicked: root.activeMonitor.startContainer(row.info.id)
-          }
-          IconButton {
-            visible: (row.info.is_running || false)
-            glyph: "󰏤"
-            btnSize: 28
-            fs: Theme.iconSm
-            fg: Theme.warn
-            tooltip: "Stop container"
-            dimmed: root.busy
-            onClicked: root.activeMonitor.stopContainer(row.info.id, 10)
-          }
-          IconButton {
-            glyph: "󰌱"
-            btnSize: 28
-            fs: Theme.iconSm
-            fg: Theme.ink2
-            tooltip: "View logs"
-            dimmed: root.busy
-            onClicked: root.openLogs(row.info.id, row.info.name)
-          }
-          IconButton {
-            glyph: "󰑓"
-            btnSize: 28
-            fs: Theme.iconSm
-            fg: Theme.accent
-            tooltip: "Restart container"
-            dimmed: root.busy
-            onClicked: root.activeMonitor.restartContainer(row.info.id, 10)
-          }
-          Rectangle {
-            width: 1
-            height: 14
-            anchors.verticalCenter: parent.verticalCenter
-            color: Theme.line
-          }
-          IconButton {
-            glyph: "󰆴"
-            btnSize: 28
-            fs: Theme.iconSm
-            fg: Theme.err
-            tooltip: "Remove container"
-            dimmed: root.busy
-            onClicked: root.activeMonitor.removeContainer(row.info.id, false)
-          }
-        }
-      }
-
-      Text {
-        visible: row.rowBusy
-        Layout.preferredWidth: 48
-        text: "Working…"
-        font.family: Theme.textFont
-        font.pixelSize: Theme.fontSm
-        color: Theme.accent
       }
     }
   }

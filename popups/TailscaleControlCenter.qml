@@ -332,49 +332,98 @@ Item {
       spacing: 0
 
       PopupHeader {
+        visible: root.connected
         Layout.fillWidth: true
-        glyph: "󰖈"
-        glyphColor: root.connected ? root.t.accent : root.t.ink3
         title: "Tailscale"
         subtitle: {
-          if (!root.connected) return (root.tsData && root.tsData.backend_state) ? root.tsData.backend_state : "Not connected";
+          if (!root.connected) {
+            const state = (root.tsData && root.tsData.backend_state) ? root.tsData.backend_state : "";
+            return (state && state !== "Stopped" && state !== "NoState") ? state : "";
+          }
           const self = root.tsData && root.tsData.self;
           const host = self && self.hostname ? self.hostname : "";
           const ip = self && self.ipv4 ? self.ipv4 : "";
           if (host && ip) return host + " · " + ip;
           if (host) return host;
-          return (root.tsData && root.tsData.tailnet) ? root.tsData.tailnet : "Connected";
+          return (root.tsData && root.tsData.tailnet) ? root.tsData.tailnet : "";
         }
 
         IconButton {
           glyph: "󰑓"
-          fs: Theme.iconBase
+          fs: Theme.iconSm
+          btnSize: 24
           tooltip: "Refresh status"
           spinning: root.busy
           onClicked: root.refresh()
         }
 
         ToggleSwitch {
+          visible: root.connected
           on: root.connected
           tooltip: root.connected ? "Connected to Tailscale" : "Disconnected"
           onToggled: root.toggleConnection()
         }
       }
 
-      Hairline { Layout.fillWidth: true }
+      Hairline { visible: root.connected; Layout.fillWidth: true }
 
-      Item { Layout.preferredHeight: 12; Layout.fillWidth: true }
+      Item { visible: root.connected; Layout.preferredHeight: 8; Layout.fillWidth: true }
 
       SegmentedControl {
+        visible: root.connected
         Layout.fillWidth: true
         items: root.segItems
         current: root.currentTab
         onSelected: index => root.currentTab = index
       }
 
-      Item { Layout.preferredHeight: 10; Layout.fillWidth: true }
+      Item { visible: root.connected; Layout.preferredHeight: 10; Layout.fillWidth: true }
+
+      Item {
+        visible: !root.connected
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+
+        ColumnLayout {
+          anchors.centerIn: parent
+          width: Math.min(parent.width - 32, 320)
+          spacing: 12
+
+          Text {
+            Layout.fillWidth: true
+            text: "TAILSCALE DISCONNECTED"
+            horizontalAlignment: Text.AlignHCenter
+            font.family: Theme.displayFont
+            font.pixelSize: Theme.fontXs
+            font.weight: Font.DemiBold
+            color: Theme.ink3
+          }
+
+          ToggleSwitch {
+            Layout.alignment: Qt.AlignHCenter
+            implicitWidth: 112
+            implicitHeight: 62
+            on: root.connected
+            onColor: Theme.accent
+            enabledSwitch: !root.busy
+            accessibleName: "Connect to Tailscale"
+            tooltip: "Connect to Tailscale"
+            onToggled: root.toggleConnection()
+          }
+
+          Text {
+            Layout.fillWidth: true
+            text: root.busy ? "Connecting to your tailnet" : "Tap to connect"
+            horizontalAlignment: Text.AlignHCenter
+            font.family: Theme.textFont
+            font.pixelSize: Theme.fontSm
+            color: Theme.ink2
+          }
+        }
+      }
 
       StackLayout {
+        visible: root.connected
         id: tabStack
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -398,9 +447,10 @@ Item {
               Text {
                 Layout.fillWidth: true
                 text: "Active shares"
-                font.family: Theme.textFont
+                font.family: Theme.displayFont
                 font.pixelSize: Theme.fontMd
-                font.weight: Font.Medium
+                font.weight: Font.SemiBold
+                font.letterSpacing: -0.1
                 color: root.t.ink1
               }
               IconButton {

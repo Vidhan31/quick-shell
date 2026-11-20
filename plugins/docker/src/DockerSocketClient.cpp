@@ -215,13 +215,13 @@ bool DockerSocketClient::fetchFullState(DockerState &outState, bool includeDiskU
         }
     }
 
-    // Disk usage (/system/df) is expensive on large storage pools. Only query it
-    // on demand for the control center popup, keeping background monitoring lean.
+    // Disk usage (/system/df) is expensive on large storage pools. Full samples
+    // include it; routine event-driven samples stay lean.
     qint64 imageReclaim = 0;
     qint64 buildReclaim = 0;
     qint64 volumeTotal = 0;
     if (includeDiskUsage) {
-        const HttpResponse dfResp = request(QStringLiteral("GET"), QByteArray(kApiPrefix) + "/system/df");
+        const HttpResponse dfResp = request(QStringLiteral("GET"), QByteArray(kApiPrefix) + "/system/df?verbose=1");
         if (dfResp.ok) {
             const QJsonDocument doc = dfResp.toJson();
             if (doc.isObject()) {
@@ -229,7 +229,21 @@ bool DockerSocketClient::fetchFullState(DockerState &outState, bool includeDiskU
                 const QJsonObject root = doc.object();
                 imageReclaim = static_cast<qint64>(root.value(QStringLiteral("ImageUsage")).toObject().value(QStringLiteral("Reclaimable")).toDouble(0));
                 buildReclaim = static_cast<qint64>(root.value(QStringLiteral("BuildCacheUsage")).toObject().value(QStringLiteral("Reclaimable")).toDouble(0));
-                volumeTotal = static_cast<qint64>(root.value(QStringLiteral("VolumeUsage")).toObject().value(QStringLiteral("TotalSize")).toDouble(0));
+                const QJsonObject volumeUsage = root.value(QStringLiteral("VolumeUsage")).toObject();
+                volumeTotal = static_cast<qint64>(volumeUsage.value(QStringLiteral("TotalSize")).toDouble(0));
+                const QJsonArray volumeItems = volumeUsage.value(QStringLiteral("Items")).toArray();
+                for (const auto &item : volumeItems) {
+                    const QJsonObject volumeInfo = item.toObject();
+                    const QString name = volumeInfo.value(QStringLiteral("Name")).toString();
+                    const qint64 size = static_cast<qint64>(volumeInfo.value(QStringLiteral("UsageData")).toObject()
+                                                               .value(QStringLiteral("Size")).toDouble(-1));
+                    for (auto &volume : outState.volumes) {
+                        if (volume.name == name) {
+                            volume.size = size;
+                            break;
+                        }
+                    }
+                }
             }
         }
 

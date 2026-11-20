@@ -34,7 +34,7 @@ void DockerWorker::start()
         connect(m_debounceTimer, &QTimer::timeout, this, [this]() { sample(false); });
     }
     setupFsWatcher();
-    sample();
+    sample(true);
     connectEvents();
 }
 
@@ -171,7 +171,7 @@ void DockerWorker::onEventsReadyRead()
         }
         m_eventsBuffer.remove(0, headerEnd + 4);
         m_eventsHeadersParsed = true;
-        sample();
+        sample(m_lastState.df.isEmpty());
     }
 
     // Chunked framing: "<hex size>\r\n<payload>\r\n", payload is one JSON event.
@@ -295,6 +295,14 @@ void DockerWorker::sample(bool includeDiskUsage)
         state.df = m_lastState.df;
         state.cleanup = m_lastState.cleanup;
         state.reclaimSummary = m_lastState.reclaimSummary;
+        for (auto &volume : state.volumes) {
+            for (const auto &previousVolume : m_lastState.volumes) {
+                if (previousVolume.name == volume.name) {
+                    volume.size = previousVolume.size;
+                    break;
+                }
+            }
+        }
     }
 
     // A cancelled fetch leaves `state` reset, so publishing it would wipe the

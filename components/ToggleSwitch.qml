@@ -12,8 +12,8 @@ Item {
   property string tooltipSub: ""
   property string accessibleName: tooltip.length > 0 ? tooltip : "Toggle"
 
-  implicitWidth: 38
-  implicitHeight: 22
+  implicitWidth: 58
+  implicitHeight: 32
   opacity: root.enabledSwitch ? 1.0 : 0.35
   activeFocusOnTab: root.enabledSwitch
 
@@ -80,7 +80,7 @@ Item {
 
   Rectangle {
     anchors.fill: parent
-    radius: 0
+    radius: 5
     color: root.on ? root.onColor : (ma.containsMouse ? Theme.hoverFill : Theme.switchOff)
     border.color: root.activeFocus ? Theme.focusRing : Theme.cardBorder
     border.width: root.activeFocus ? Theme.focusRingWidth : 1
@@ -89,15 +89,17 @@ Item {
 
     Rectangle {
       id: knob
-      width: 14
-      height: 14
-      radius: 0
+      width: parent.height * 0.5
+      height: parent.height * 0.5
       anchors.verticalCenter: parent.verticalCenter
-      x: root.on ? parent.width - width - 3 : 3
+      x: root.on ? parent.width - width - 9 : 9
+      radius: 3
       color: root.on ? Theme.ink1 : Theme.ink3
+      rotation: 45
       scale: ma.pressed && root.enabledSwitch ? 0.92 : 1.0
 
       Behavior on x { NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.OutCubic } }
+      Behavior on rotation { NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.OutCubic } }
       Behavior on color { ColorAnimation { duration: Theme.durationNormal } }
       Behavior on scale { NumberAnimation { duration: Theme.durationFast } }
     }

@@ -123,6 +123,7 @@ struct DockerVolume {
     QString driver;
     QString mountpoint;
     QString scope;
+    qint64 size{-1};
 
     bool operator==(const DockerVolume &) const = default;
 
@@ -132,6 +133,8 @@ struct DockerVolume {
         m[QStringLiteral("driver")] = driver;
         m[QStringLiteral("mountpoint")] = mountpoint;
         m[QStringLiteral("scope")] = scope;
+        m[QStringLiteral("size")] = size;
+        m[QStringLiteral("size_text")] = size >= 0 ? formatBytes(size) : QStringLiteral("Unavailable");
         return m;
     }
 };

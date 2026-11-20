@@ -81,19 +81,17 @@ Item {
       Column {
         id: bodyCol
         width: parent.width
-        spacing: 14
+        spacing: 10
 
         PopupHeader {
           width: parent.width
-          glyph: root.activeAudio ? root.activeAudio.sinkGlyph : "󰕾"
-          glyphColor: (root.activeAudio && root.activeAudio.muted) ? Theme.ink3 : Theme.accent
           title: "Audio"
-          subtitle: "Easy Listening"
 
           IconButton {
             glyph: "󰒓"
             fg: Theme.ink3
-            fs: Theme.iconBase
+            fs: Theme.iconSm
+            btnSize: 24
             tooltip: "Audio settings"
             onClicked: root.openAudioSettings()
           }

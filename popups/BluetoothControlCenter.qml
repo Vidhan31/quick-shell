@@ -130,24 +130,17 @@ Item {
       Column {
         id: bodyCol
         width: parent.width
-        spacing: 12
+        spacing: 10
 
         PopupHeader {
           width: parent.width
-          glyph: {
-            if (!root.adapter || root.adapter.state === BluetoothAdapterState.Blocked) return "󰂲";
-            if (root.adapter.state === BluetoothAdapterState.Enabled) {
-              return (root.devices && root.devices.filter(d => d.connected).length > 0) ? "󰂱" : "󰂯";
-            }
-            return "󰂲";
-          }
-          glyphColor: root.adapterStateColor()
           title: "Bluetooth"
-          subtitle: root.adapter ? (root.adapter.discovering ? "Scanning for devices…" : root.adapter.name) : "BlueZ unavailable"
+          subtitle: root.adapter ? (root.adapter.discovering ? "Scanning…" : root.adapter.name) : ""
 
           IconButton {
             glyph: "󰑓"
-            fs: Theme.iconBase
+            fs: Theme.iconSm
+            btnSize: 24
             spinning: root.adapter ? root.adapter.discovering : false
             tooltip: (root.adapter && root.adapter.discovering) ? "Stop scanning" : "Scan for devices"
             onClicked: {
@@ -157,7 +150,8 @@ Item {
 
           IconButton {
             glyph: "󰒢"
-            fs: Theme.iconBase
+            fs: Theme.iconSm
+            btnSize: 24
             tooltip: "Bluetooth settings"
             onClicked: root.openSettings()
           }
@@ -505,7 +499,8 @@ Item {
               text: "Adapter options"
               font.family: Theme.displayFont
               font.pixelSize: Theme.fontBase
-              font.weight: Font.DemiBold
+              font.weight: Font.SemiBold
+              font.letterSpacing: -0.1
               color: Theme.ink1
             }
 

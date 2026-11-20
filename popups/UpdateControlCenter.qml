@@ -101,7 +101,7 @@ Item {
   }
 
   implicitWidth: 480
-  readonly property int preferredHeight: root.hasPendingKeyPrompt ? 620 : (root.hasUpdates ? 600 : (root.isChecking ? 260 : 280))
+  readonly property int preferredHeight: 600
   property int popupHeight: preferredHeight
 
   function syncHeight() {
@@ -169,6 +169,7 @@ Item {
             }
 
             Text {
+              visible: root.hasUpdates || root.isBusy || root.errorMessage.length > 0
               text: root.hasUpdates && !root.isBusy
                     ? `${root.updateCount} package${root.updateCount === 1 ? "" : "s"}, ${root.formattedSize} to download`
                     : (root.service ? root.service.headerStatusText : "System up to date")
@@ -518,40 +519,22 @@ Item {
           anchors.centerIn: parent
           spacing: 10
 
-          Rectangle {
+          Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            width: 52
-            height: 52
-            radius: 0
-            color: Theme.tint(Theme.green, 0.12)
-
-            Text {
-              anchors.centerIn: parent
-              text: "󰄬"
-              font.family: root.monoFont
-              font.pixelSize: 26
-              color: Theme.green
-            }
+            text: "󰄬"
+            font.family: root.monoFont
+            font.pixelSize: 30
+            color: Theme.green
           }
 
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Your system is up to date"
+            text: "You're up to date"
             font.family: Theme.displayFont
             font.pixelSize: Theme.fontBase
             font.weight: Font.DemiBold
             color: Theme.ink1
           }
-
-          Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: "All packages are synchronized with Fedora 44 repositories."
-            font.family: Theme.textFont
-            font.pixelSize: Theme.fontSm
-            color: Theme.ink3
-          }
-
-          Item { width: 1; height: 4 }
 
           PrimaryButton {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -1052,20 +1035,39 @@ Item {
             width: parent.width
             spacing: 8
 
-            ProgressBar {
+            RowLayout {
               width: parent.width
-              from: 0.0
-              to: 1.0
-              value: {
-                if (root.service && root.service.progressStage.length > 0) {
-                  if (root.service.progressStage === "authenticating") return 0.0;
-                  return Math.min(1.0, Math.max(0.0, root.service.activeProgress));
+              spacing: 8
+
+              ProgressBar {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                from: 0.0
+                to: 1.0
+                value: {
+                  if (root.service && root.service.progressStage.length > 0) {
+                    if (root.service.progressStage === "authenticating") return 0.0;
+                    return Math.min(1.0, Math.max(0.0, root.service.activeProgress));
+                  }
+                  const frac = root.isDownloading ? root.downloadProgress : (root.service ? root.service.transactionProgress : 0.0);
+                  return Math.min(1.0, Math.max(0.0, frac));
                 }
-                const frac = root.isDownloading ? root.downloadProgress : (root.service ? root.service.transactionProgress : 0.0);
-                return Math.min(1.0, Math.max(0.0, frac));
+                fillColor: Theme.accent
+                trackColor: Theme.surfaceElevated
               }
-              fillColor: Theme.accent
-              trackColor: Theme.surfaceElevated
+
+              IconButton {
+                visible: root.isDownloading
+                Layout.alignment: Qt.AlignVCenter
+                glyph: "󰅖"
+                fs: 12
+                btnSize: 20
+                fg: Theme.red
+                tooltip: "Cancel download"
+                onClicked: {
+                  if (root.service) root.service.cancelOperation();
+                }
+              }
             }
 
             RowLayout {
@@ -1114,17 +1116,7 @@ Item {
           RowLayout {
             width: parent.width
             spacing: 8
-
-            PrimaryButton {
-              visible: root.isDownloading
-              text: "Cancel Download"
-              glyph: "󰅖"
-              fill: Theme.surfaceElevated
-              ink: Theme.ink1
-              onClicked: {
-                if (root.service) root.service.cancelOperation();
-              }
-            }
+            visible: !root.isDownloading
 
             PrimaryButton {
               visible: root.isApplying

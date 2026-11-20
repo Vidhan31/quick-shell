@@ -87,47 +87,16 @@ Item {
         const timeStr = Qt.formatTime(root.service.dndUntil, "hh:mm");
         return `Muted until ${timeStr}`;
       }
-      return "Do Not Disturb active";
+      return "Do Not Disturb";
     }
-    if (root.totalCount === 0 && (!root.jobService || root.jobsList.length === 0)) return "You're all caught up";
     return "";
   }
 
   implicitWidth: Theme.popupWidthMd
-
-  /* Wayland / KWin buffer height freeze: height adapts when opening, stays
-     frozen during display to prevent KWin surface grab corruption. */
-  readonly property int preferredHeight: Math.min(640, Math.max(180, headerCol.height + scrollCol.height + 24))
-  property int popupHeight: 180
-  property bool isFrozen: false
-
-  Timer {
-    id: freezeTimer
-    interval: 150
-    repeat: false
-    onTriggered: {
-      root.isFrozen = true;
-    }
-  }
-
-  function syncHeight() {
-    if (!isFrozen && (headerCol.height + scrollCol.height) > 0) {
-      popupHeight = Math.max(popupHeight, preferredHeight);
-    }
-  }
-
-  onPreferredHeightChanged: {
-    if (!isFrozen && (headerCol.height + scrollCol.height) > 0) {
-      popupHeight = Math.max(popupHeight, preferredHeight);
-    }
-  }
-
-  Component.onCompleted: {
-    syncHeight();
-    freezeTimer.start();
-  }
-
+  property int popupHeight: 640
   implicitHeight: popupHeight
+
+  function syncHeight(): void {}
 
   readonly property var t: Theme
 
@@ -141,30 +110,13 @@ Item {
       anchors.top: parent.top
       anchors.left: parent.left
       anchors.right: parent.right
-      spacing: 8
+      spacing: 6
 
       // Main Header Bar
       RowLayout {
         width: parent.width
-        height: 32
+        height: 26
         spacing: 8
-
-        Rectangle {
-          Layout.preferredWidth: 28
-          Layout.preferredHeight: 28
-          radius: 6
-          color: root.isDnd ? root.t.tint(root.t.amber, 0.14) : (root.totalCount > 0 ? root.t.accentBg : root.t.hoverWash)
-          border.color: root.isDnd ? root.t.tint(root.t.amber, 0.3) : (root.totalCount > 0 ? root.t.tint(root.t.accent, 0.3) : root.t.lineMuted)
-          border.width: 1
-
-          Text {
-            anchors.centerIn: parent
-            text: root.isDnd ? "󰂛" : (root.totalCount > 0 ? "󰂚" : "󰂜")
-            font.family: root.monoFont
-            font.pixelSize: 15
-            color: root.isDnd ? root.t.amber : (root.totalCount > 0 ? root.t.accent : root.t.ink3)
-          }
-        }
 
         Column {
           Layout.fillWidth: true
@@ -220,8 +172,8 @@ Item {
           IconButton {
             visible: root.totalCount > 0 || (root.jobService && (root.jobsList.length > root.activeJobsList.length))
             glyph: "󰃢"
-            fs: Theme.iconMd
-            btnSize: 28
+            fs: Theme.iconSm
+            btnSize: 24
             fg: root.t.ink2
             tooltip: "Clear all"
             onClicked: {
@@ -232,8 +184,8 @@ Item {
 
           IconButton {
             glyph: root.isDnd ? "󰂛" : "󰂞"
-            fs: Theme.iconMd
-            btnSize: 28
+            fs: Theme.iconSm
+            btnSize: 24
             fg: root.isDnd ? root.t.amber : root.t.ink2
             tooltip: root.isDnd ? "Do Not Disturb (Active)" : "Do Not Disturb (Off)"
             onClicked: {
@@ -243,8 +195,8 @@ Item {
 
           IconButton {
             glyph: "󰒓"
-            fs: Theme.iconMd
-            btnSize: 28
+            fs: Theme.iconSm
+            btnSize: 24
             fg: root.showSettings ? root.t.accent : root.t.ink3
             tooltip: "Notification settings"
             onClicked: {
@@ -440,9 +392,10 @@ Item {
 
             Text {
               text: "Tasks & Transfers"
-              font.family: Theme.textFont
+              font.family: Theme.displayFont
               font.pixelSize: Theme.fontSm
               font.weight: Font.SemiBold
+              font.letterSpacing: -0.1
               color: root.t.ink1
             }
 
@@ -641,7 +594,7 @@ Item {
         Item {
           visible: root.totalCount === 0 && root.jobsList.length === 0
           width: parent.width
-          height: 140
+          height: Math.max(140, flickable.height - 24)
 
           Column {
             anchors.centerIn: parent
@@ -741,9 +694,10 @@ Item {
 
               Text {
                 text: groupDelegate.appName
-                font.family: Theme.textFont
+                font.family: Theme.displayFont
                 font.pixelSize: Theme.fontSm
                 font.weight: Font.SemiBold
+                font.letterSpacing: -0.1
                 color: root.t.ink1
               }
 

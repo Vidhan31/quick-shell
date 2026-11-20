@@ -18,10 +18,10 @@ Item {
     anchors.left: parent.left
     anchors.verticalCenter: parent.verticalCenter
     text: root.label.toUpperCase()
-    font.family: Theme.mono
+    font.family: Theme.textFont
     font.pixelSize: Theme.fontXs
-    font.letterSpacing: 1.5
-    font.weight: Font.DemiBold
+    font.letterSpacing: 1.1
+    font.weight: Font.SemiBold
     color: Theme.ink3
   }
 

@@ -552,12 +552,15 @@ Item {
       "--unit=" + uniqueUnit
     ];
     if (desc) cmd.push("--description=" + desc);
+    const home = String(Quickshell.env("HOME") || "/home/dev");
+    let targetDir = home;
     if (workingDir) {
       const c = probe.classify(workingDir);
       if (c && c.exists && c.isDir) {
-        cmd.push("--working-directory=" + workingDir);
+        targetDir = c.abs || workingDir;
       }
     }
+    cmd.push("--working-directory=" + targetDir);
     cmd.push("--");
     for (let i = 0; i < rawArgv.length; i++) {
       cmd.push(String(rawArgv[i]));
@@ -586,7 +589,7 @@ Item {
     cmd.push("-c");
     cmd.push(cmdText);
     const scoped = scopedArgv(cmd, "terminal", cmdText, home);
-    Quickshell.execDetached({ command: scoped || cmd, unbindStdout: true });
+    Quickshell.execDetached({ command: scoped || cmd, workingDirectory: home, unbindStdout: true });
   }
 
   function launchCommandBackground(cmdText: string): void {
@@ -606,7 +609,7 @@ Item {
     const argv = terminalShellArgv(dir, r.abs);
     if (argv !== null) {
       const scoped = scopedArgv(argv, "file", r.abs, dir);
-      Quickshell.execDetached({ command: scoped || argv, unbindStdout: true });
+      Quickshell.execDetached({ command: scoped || argv, workingDirectory: dir, unbindStdout: true });
     }
   }
 
@@ -614,9 +617,10 @@ Item {
     if (r.isDir) {
       probe.reveal(r.abs, true);
     } else {
+      const home = String(Quickshell.env("HOME") || "/home/dev");
       const cmd = ["xdg-open", r.abs];
-      const scoped = scopedArgv(cmd, "file", r.abs, "");
-      Quickshell.execDetached({ command: scoped || cmd, unbindStdout: true });
+      const scoped = scopedArgv(cmd, "file", r.abs, home);
+      Quickshell.execDetached({ command: scoped || cmd, workingDirectory: home, unbindStdout: true });
     }
   }
 
@@ -640,20 +644,29 @@ Item {
     if (!entry) return;
     const entryId = entry.id ? String(entry.id) : (entry.name ? String(entry.name) : "app");
     const desc = title || (entry.name ? String(entry.name) : entryId);
+    const home = String(Quickshell.env("HOME") || "/home/dev");
+    let wd = home;
+    if (entry.workingDirectory) {
+      const rawWd = String(entry.workingDirectory);
+      const c = probe.classify(rawWd);
+      if (c && c.exists && c.isDir) {
+        wd = c.abs || rawWd;
+      }
+    }
+
     if (inTerminal || entry.runInTerminal) {
-      const argv = terminalArgv(entry, title);
+      const argv = terminalArgv(entry, title, wd);
       if (argv !== null) {
-        const scopedTerminal = scopedArgv(argv, entryId, desc, "");
-        Quickshell.execDetached({ command: scopedTerminal || argv, unbindStdout: true });
+        const scopedTerminal = scopedArgv(argv, entryId, desc, wd);
+        Quickshell.execDetached({ command: scopedTerminal || argv, workingDirectory: wd, unbindStdout: true });
         return;
       }
     }
     const inner = entry.command;
     if (inner && inner.length > 0) {
-      const wd = entry.workingDirectory ? String(entry.workingDirectory) : "";
       const scoped = scopedArgv(inner, entryId, desc, wd);
       if (scoped !== null) {
-        Quickshell.execDetached({ command: scoped, unbindStdout: true });
+        Quickshell.execDetached({ command: scoped, workingDirectory: wd, unbindStdout: true });
         return;
       }
     }
@@ -663,16 +676,14 @@ Item {
   /* Builds the terminal argv for a hosted run. entry.command is the parsed
      Exec, so -e receives real argv with no shell round-trip. Returns null
      when the entry has nothing runnable and callers should fall back. */
-  function terminalArgv(entry: var, title: string): var {
+  function terminalArgv(entry: var, title: string, wd: string): var {
     const inner = entry.command;
     if (!inner || inner.length === 0) return null;
     const cmd = [root.terminalPath];
     if (root.holdTerminal) cmd.push("--wait-after-command");
     if (title) cmd.push("--title=" + title);
-    // Path= is handed to ghostty, never to ProcessContext.workingDirectory:
-    // a stale Path= must not make the ghostty spawn itself fail silently.
-    const wd = entry.workingDirectory ? String(entry.workingDirectory) : "";
-    if (wd) cmd.push("--working-directory=" + wd);
+    const targetDir = wd || String(Quickshell.env("HOME") || "/home/dev");
+    cmd.push("--working-directory=" + targetDir);
     cmd.push("-e");
     for (let i = 0; i < inner.length; i++) cmd.push(String(inner[i]));
     return cmd;
