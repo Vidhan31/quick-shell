@@ -191,6 +191,7 @@ ShellRoot {
         "ts": tsHit,
         "update": updateHit,
         "eth": ethHit,
+        "speedtest": speedTestHit,
         "bluetooth": bluetoothHit,
         "vol": volHit,
         "notif": notifSeg,
@@ -469,6 +470,24 @@ ShellRoot {
           EthernetWidget {
             id: ethBarWidget
             ethernet: ethernetService
+          }
+        }
+
+        BarItem {
+          id: speedTestHit
+          flat: true
+          active: popupHost.isOpen(speedTestHit)
+          tooltip: "Internet speed test"
+          tooltipSub: "Measure download and upload speeds"
+          Accessible.name: "Internet speed test"
+          onClicked: popupHost.toggle(speedTestHit, "speedtest")
+
+          Text {
+            anchors.centerIn: parent
+            text: "󰓅"
+            font.family: Theme.mono
+            font.pixelSize: Theme.fontGlyphMd
+            color: speedTestHit.active ? Theme.accent : Theme.ink2
           }
         }
 

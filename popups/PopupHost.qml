@@ -153,6 +153,7 @@ PopupWindow {
     "media": mediaComp,
     "vol": volComp,
     "eth": ethComp,
+    "speedtest": speedTestComp,
     "privacy": privacyComp,
     "notif": notifComp,
     "update": updateComp,
@@ -381,6 +382,13 @@ PopupWindow {
       onTriggerRefresh: {
         if (host.services && host.services.ethernet) host.services.ethernet.refresh();
       }
+    }
+  }
+
+  Component {
+    id: speedTestComp
+    SpeedTestControlCenter {
+      anchors.fill: parent
     }
   }
 
