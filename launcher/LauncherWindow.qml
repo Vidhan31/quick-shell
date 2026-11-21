@@ -18,9 +18,26 @@ PanelWindow {
   property real openedAt: 0
   readonly property int focusGraceMs: 250
   property bool isDragging: false
+  readonly property bool isEmojiActive: win.launcher !== null && win.launcher.isEmojiActive
 
   readonly property var shortcuts: {
     const l = win.launcher;
+    if (win.isEmojiActive) {
+      if (emojiPicker && emojiPicker.stagedEmojis && emojiPicker.stagedEmojis.length > 0) {
+        return [
+          { key: "↵", label: "paste all (" + emojiPicker.stagedEmojis.length + ")" },
+          { key: "Space", label: "stage" },
+          { key: "Esc", label: "clear" }
+        ];
+      }
+      return [
+        { key: "↑↓←→", label: "navigate" },
+        { key: "↵", label: "paste" },
+        { key: "Space", label: "stage" },
+        { key: "Ctrl+C", label: "copy" },
+        { key: "Esc", label: "close" }
+      ];
+    }
     if (win.pinnedIndex >= 0 && l && l.dockItems && win.pinnedIndex < l.dockItems.length) {
       const item = l.dockItems[win.pinnedIndex];
       if (item && item.isRunning) {
@@ -152,13 +169,18 @@ PanelWindow {
   onVisibleChanged: {
     if (visible) {
       win.openedAt = Date.now();
-      field.text = "";
+      const initial = (win.launcher && win.launcher.initialQuery) ? win.launcher.initialQuery : "";
+      if (win.launcher) win.launcher.initialQuery = "";
+      field.text = initial;
+      if (field.text.length > 0) {
+        field.cursorPosition = field.text.length;
+        win.pinnedIndex = -1;
+      } else {
+        win.pinnedIndex = (win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0) ? 0 : -1;
+      }
       pinnedSection.resetScroll();
       if (win.launcher) {
-        win.launcher.setQuery("");
-        win.pinnedIndex = (win.launcher.dockItems && win.launcher.dockItems.length > 0) ? 0 : -1;
-      } else {
-        win.pinnedIndex = -1;
+        win.launcher.setQuery(field.text);
       }
       armTimer.restart();
     } else {
@@ -184,6 +206,14 @@ PanelWindow {
 
   Connections {
     target: win.launcher
+    function onInitialQueryChanged(): void {
+      if (win.launcher && win.launcher.initialQuery) {
+        field.text = win.launcher.initialQuery;
+        field.cursorPosition = field.text.length;
+        win.launcher.initialQuery = "";
+        win.launcher.setQuery(field.text);
+      }
+    }
     function onSelectedIndexChanged(): void {
       if (win.launcher && list.count > 0) {
         list.positionViewAtIndex(win.launcher.selectedIndex, ListView.Contain);
@@ -282,6 +312,23 @@ PanelWindow {
 
           Keys.onPressed: event => {
             if (!win.launcher || field.inputMethodComposing) return;
+            if (win.isEmojiActive) {
+              if (event.key === Qt.Key_Escape) {
+                if (emojiPicker.stagedEmojis && emojiPicker.stagedEmojis.length > 0) {
+                  emojiPicker.clearStaged();
+                  event.accepted = true;
+                  return;
+                }
+                win.launcher.close();
+                event.accepted = true;
+                return;
+              }
+              if (emojiPicker.handleKey(event)) {
+                event.accepted = true;
+                return;
+              }
+              return;
+            }
             switch (event.key) {
             case Qt.Key_Right:
               if (field.text.length === 0 && win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0) {
@@ -439,7 +486,7 @@ PanelWindow {
           anchors.fill: field
           verticalAlignment: Text.AlignVCenter
           visible: field.text.length === 0
-          text: "Search apps, k <proc>, s <setting>, f <file>, paths, or > command..."
+          text: "Search apps, e <emoji>, k <proc>, s <setting>, f <file>, paths, or > command..."
           font.family: Theme.displayFont
           font.pixelSize: Theme.fontXl
           color: Theme.ink3
@@ -461,7 +508,7 @@ PanelWindow {
         anchors.leftMargin: Theme.launcherContentInset
         anchors.rightMargin: Theme.launcherContentInset
         height: 44
-        visible: win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0 && field.text.length === 0
+        visible: !win.isEmojiActive && win.launcher && win.launcher.dockItems && win.launcher.dockItems.length > 0 && field.text.length === 0
         clip: true
 
         readonly property bool hasOverflow: pinnedFlickable.contentWidth > pinnedFlickable.width
@@ -823,7 +870,7 @@ PanelWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         height: Math.min(count, Theme.launcherMaxVisible) * Theme.launcherRowHeight
-        visible: count > 0
+        visible: !win.isEmojiActive && count > 0
         clip: true
         reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
@@ -845,13 +892,22 @@ PanelWindow {
         }
       }
 
+      EmojiPickerView {
+        id: emojiPicker
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: Theme.launcherContentInset
+        anchors.rightMargin: Theme.launcherContentInset
+        visible: win.isEmojiActive
+        launcher: win.launcher
+      }
 
       Text {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.leftMargin: Theme.launcherContentInset
         anchors.rightMargin: Theme.launcherContentInset
-        visible: list.count === 0
+        visible: !win.isEmojiActive && list.count === 0
         horizontalAlignment: Text.AlignHCenter
         topPadding: Theme.spaceLg
         bottomPadding: Theme.spaceLg

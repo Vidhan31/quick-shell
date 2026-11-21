@@ -596,6 +596,15 @@ ShellRoot {
     function close(): void {
       launcherService.close();
     }
+    function openEmoji(): void {
+      launcherService.openEmoji();
+    }
+    function toggleEmoji(): void {
+      launcherService.toggleEmoji();
+    }
+    function openWith(query: string): void {
+      launcherService.openWithQuery(query);
+    }
   }
 
   IpcHandler {

@@ -9,6 +9,7 @@ import Quickshell.Plugins.SystemSettings
 import Quickshell.Plugins.ProcessManager
 import Quickshell.Plugins.IconResolver
 import Quickshell.Plugins.AppSearch
+import Quickshell.Plugins.Emoji
 
 /* Domain state for the application launcher.
    Owns the desktop-entry corpus, per-keystroke filtering and ranking,
@@ -27,6 +28,7 @@ Item {
 
   property var pinnedIds: []
   readonly property int maxPins: 15
+  property string initialQuery: ""
 
   readonly property var pinnedApps: {
     const ids = root.pinnedIds;
@@ -350,6 +352,14 @@ Item {
     id: appRanker
   }
 
+  EmojiProvider {
+    id: emojiProvider
+  }
+
+  readonly property bool isEmojiActive: emojiProvider.isEmojiQuery(root.query)
+  readonly property string emojiSearchTerm: emojiProvider.searchTerm(root.query)
+  property alias emojiProvider: emojiProvider
+
   Connections {
     target: processManager
     function onCacheRefreshed(): void {
@@ -407,6 +417,30 @@ Item {
   function toggle(): void {
     if (root.isOpen) close();
     else open();
+  }
+
+  function openEmoji(): void {
+    ensureCorpus();
+    root.initialQuery = "e ";
+    root.query = "e ";
+    refilter();
+    root.isOpen = true;
+  }
+
+  function toggleEmoji(): void {
+    if (root.isOpen && root.isEmojiActive) {
+      close();
+    } else {
+      openEmoji();
+    }
+  }
+
+  function openWithQuery(q: string): void {
+    ensureCorpus();
+    root.initialQuery = q;
+    root.query = q;
+    refilter();
+    root.isOpen = true;
   }
 
   function resetQuery(): void {
@@ -923,6 +957,12 @@ Item {
   }
 
   function refilter(): void {
+    if (root.isEmojiActive) {
+      root.rows = [];
+      root.selectedIndex = 0;
+      return;
+    }
+
     if (processManager.isKillQuery(root.query)) {
       const term = processManager.searchTerm(root.query);
       const sigFlag = processManager.parseSignalFlag(root.query);
