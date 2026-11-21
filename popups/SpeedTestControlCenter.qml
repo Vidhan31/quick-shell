@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import Quickshell.Io
 import "../components"
 import "../theme"
 
@@ -9,16 +10,19 @@ Item {
   id: root
 
   implicitWidth: Theme.popupWidthLg
-  implicitHeight: 520
+  implicitHeight: 440
 
   readonly property string downloadUrl: "https://speed.cloudflare.com/__down"
   readonly property string uploadUrl: "https://speed.cloudflare.com/__up"
   readonly property int phaseDurationMs: 20000
 
+  readonly property color downloadColor: Theme.green
+  readonly property color uploadColor: Theme.amber
+
   property bool running: false
   property bool hasResult: false
   property string phase: "idle"
-  property string statusText: "Ready when you are"
+  property string statusText: ""
   property string downloadText: "—"
   property string uploadText: "—"
   property string latencyText: "—"
@@ -31,12 +35,15 @@ Item {
   property var activeRequest: null
   property var uploadPayload: null
 
-  readonly property color phaseColor: phase === "download" ? Theme.green : (phase === "upload" ? Theme.accent : Theme.ink3)
-  readonly property string phaseLabel: phase === "download" ? "Download" : (phase === "upload" ? "Upload" : (hasResult ? "Test complete" : "Ready"))
-  readonly property string elapsedLabel: Math.min(20, Math.floor(phaseElapsedMs / 1000)) + " / 20 seconds"
+  readonly property color phaseColor: phase === "download" ? downloadColor : (phase === "upload" ? uploadColor : Theme.accent)
+  readonly property string phaseLabel: phase === "download" ? "Download" : (phase === "upload" ? "Upload" : (phase === "latency" ? "Latency" : ""))
+  readonly property string statusSubtitle: (phase === "failed" || phase === "cancelled") ? statusText : ""
 
   function startTest(): void {
     if (root.running) return;
+    if (!root.uploadPayload && !payloadProc.running) {
+      payloadProc.running = true;
+    }
     root.running = true;
     root.hasResult = false;
     root.phase = "latency";
@@ -46,7 +53,7 @@ Item {
     root.downloadText = "—";
     root.uploadText = "—";
     root.latencyText = "—";
-    root.statusText = "Checking latency…";
+    root.statusText = "";
 
     const startedAt = Date.now();
     root.issueRequest("GET", root.downloadUrl + "?bytes=0&nonce=" + startedAt, null, "", function() {
@@ -57,6 +64,7 @@ Item {
 
   function cancelTest(): void {
     if (!root.running) return;
+    payloadProc.running = false;
     requestTimeout.stop();
     phaseClock.stop();
     const request = root.activeRequest;
@@ -64,10 +72,11 @@ Item {
     if (request) request.abort();
     root.running = false;
     root.phase = "cancelled";
-    root.statusText = "Test cancelled";
+    root.statusText = "Cancelled";
   }
 
   function failTest(message: string): void {
+    payloadProc.running = false;
     requestTimeout.stop();
     phaseClock.stop();
     const request = root.activeRequest;
@@ -106,19 +115,6 @@ Item {
   }
 
   function beginPhase(name: string): void {
-    if (name === "upload") {
-      const payload = new Uint8Array(5000000);
-      let seed = (Date.now() ^ 0x5f3759df) >>> 0;
-      if (seed === 0) seed = 1;
-      for (let i = 0; i < payload.length; i++) {
-        seed ^= seed << 13;
-        seed ^= seed >>> 17;
-        seed ^= seed << 5;
-        payload[i] = seed & 0xff;
-      }
-      root.uploadPayload = payload.buffer;
-    }
-
     root.phase = name;
     root.phaseStartedAt = Date.now();
     root.phaseElapsedMs = 0;
@@ -126,7 +122,13 @@ Item {
     root.bytesTransferred = 0;
     root.nextChunkBytes = 16384;
     root.currentSpeedText = "0.0";
-    root.statusText = name === "download" ? "Measuring download…" : "Measuring upload…";
+    root.statusText = "";
+
+    if (name === "upload" && !root.uploadPayload) {
+      if (!payloadProc.running) payloadProc.running = true;
+      return;
+    }
+
     phaseClock.start();
     root.queueSample();
   }
@@ -192,7 +194,7 @@ Item {
     root.running = false;
     root.hasResult = true;
     root.phase = "complete";
-    root.statusText = "Download and upload measured";
+    root.statusText = "";
   }
 
   Timer {
@@ -216,7 +218,38 @@ Item {
     }
   }
 
+  Process {
+    id: payloadProc
+    command: ["head", "-c", "5000000", "/dev/urandom"]
+
+    stdout: StdioCollector {
+      id: payloadCollector
+      onStreamFinished: {
+        const buf = payloadCollector.data;
+        if (buf && buf.byteLength >= 5000000) {
+          root.uploadPayload = buf;
+        } else if (root.running && root.phase === "upload") {
+          root.failTest("Failed to generate upload payload.");
+          return;
+        }
+
+        if (root.running && root.phase === "upload" && !phaseClock.running) {
+          root.phaseStartedAt = Date.now();
+          phaseClock.start();
+          root.queueSample();
+        }
+      }
+    }
+  }
+
+  Component.onCompleted: {
+    if (!root.uploadPayload && !payloadProc.running) {
+      payloadProc.running = true;
+    }
+  }
+
   Component.onDestruction: {
+    payloadProc.running = false;
     requestTimeout.stop();
     phaseClock.stop();
     const request = root.activeRequest;
@@ -227,195 +260,251 @@ Item {
   PopupCard {
     anchors.fill: parent
 
-    Column {
-      id: content
-      anchors.fill: parent
-      spacing: Theme.spaceXl
+    PopupHeader {
+      id: header
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      title: "Speed test"
+      subtitle: root.statusSubtitle
 
-      PopupHeader {
-        width: parent.width
-        title: "Connection speed"
-        subtitle: root.statusText
-
-        Text {
-          text: "󰓅"
-          font.family: Theme.mono
-          font.pixelSize: 22
-          color: root.phaseColor
-          Layout.alignment: Qt.AlignVCenter
-        }
+      TextButton {
+        visible: root.running
+        text: "Cancel"
+        fg: Theme.err
+        bold: true
+        implicitHeight: 22
+        fs: Theme.fontSm
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: root.cancelTest()
       }
+    }
 
-      Hairline { width: parent.width }
+    Hairline {
+      id: sep
+      anchors.top: header.bottom
+      anchors.topMargin: Theme.spaceMd
+      anchors.left: parent.left
+      anchors.right: parent.right
+    }
 
-      Item {
-        width: 250
-        height: 250
-        anchors.horizontalCenter: parent.horizontalCenter
+    Item {
+      id: bodyArea
+      anchors.top: sep.bottom
+      anchors.bottom: parent.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
 
-        Canvas {
-          id: speedRing
-          anchors.fill: parent
-          onPaint: {
-            const ctx = getContext("2d");
-            const center = width / 2;
-            const radius = width / 2 - 12;
-            ctx.clearRect(0, 0, width, height);
-            ctx.beginPath();
-            ctx.lineWidth = 8;
-            ctx.strokeStyle = Theme.cardBorder;
-            ctx.arc(center, center, radius, 0, Math.PI * 2);
-            ctx.stroke();
-            if (root.phaseProgress > 0) {
+      Column {
+        id: contentCol
+        width: parent.width
+        spacing: Theme.spaceLg
+        y: Math.round((parent.height - height) / 2)
+        Behavior on y { NumberAnimation { duration: Theme.durationNormal; easing.type: Easing.OutCubic } }
+
+        Item {
+          id: dialItem
+          width: 230
+          height: 230
+          anchors.horizontalCenter: parent.horizontalCenter
+
+          Canvas {
+            id: speedRing
+            anchors.fill: parent
+            onPaint: {
+              const ctx = getContext("2d");
+              const center = width / 2;
+              const radius = width / 2 - 12;
+              ctx.clearRect(0, 0, width, height);
               ctx.beginPath();
               ctx.lineWidth = 8;
-              ctx.lineCap = "round";
-              ctx.strokeStyle = root.phaseColor;
-              ctx.arc(center, center, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * root.phaseProgress);
+              ctx.strokeStyle = Theme.cardBorder;
+              ctx.arc(center, center, radius, 0, Math.PI * 2);
               ctx.stroke();
+              if (root.running && root.phaseProgress > 0) {
+                ctx.beginPath();
+                ctx.lineWidth = 8;
+                ctx.lineCap = "round";
+                ctx.strokeStyle = root.phaseColor;
+                ctx.arc(center, center, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * root.phaseProgress);
+                ctx.stroke();
+              }
+            }
+          }
+
+          Rectangle {
+            id: playBtn
+            visible: !root.running
+            anchors.centerIn: parent
+            width: 76
+            height: 76
+            radius: width / 2
+            color: playMa.pressed ? Theme.pressWash : ((playMa.containsMouse || playBtn.activeFocus) ? Theme.hoverWash : Theme.inset)
+            border.color: (playMa.containsMouse || playBtn.activeFocus) ? Theme.accent : Theme.cardBorder
+            border.width: 1.5
+            activeFocusOnTab: playBtn.visible
+
+            Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+            Behavior on border.color { ColorAnimation { duration: Theme.durationFast } }
+
+            Text {
+              anchors.centerIn: parent
+              anchors.horizontalCenterOffset: 3
+              text: "󰐊"
+              font.family: Theme.mono
+              font.pixelSize: 32
+              color: (playMa.containsMouse || playBtn.activeFocus) ? Theme.ink1 : Theme.accent
+              Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+            }
+
+            MouseArea {
+              id: playMa
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.startTest()
+            }
+
+            Keys.onReturnPressed: event => {
+              root.startTest();
+              event.accepted = true;
+            }
+            Keys.onSpacePressed: event => {
+              root.startTest();
+              event.accepted = true;
+            }
+          }
+
+          Column {
+            visible: root.running
+            anchors.centerIn: parent
+            spacing: 2
+
+            Text {
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: root.currentSpeedText
+              font.family: Theme.displayFont
+              font.pixelSize: 40
+              font.weight: Font.DemiBold
+              color: Theme.ink1
+            }
+
+            Text {
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: "Mbps"
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontSm
+              color: Theme.ink3
+            }
+
+            Text {
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: root.phaseLabel
+              font.family: Theme.textFont
+              font.pixelSize: Theme.fontMd
+              font.weight: Font.Medium
+              color: root.phaseColor
             }
           }
         }
 
         Column {
-          anchors.centerIn: parent
-          spacing: 2
+          id: resultsCol
+          width: parent.width
+          spacing: Theme.spaceMd
+          visible: root.running || root.hasResult
+          opacity: visible ? 1.0 : 0.0
+          Behavior on opacity { NumberAnimation { duration: Theme.durationNormal } }
 
-          Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: root.currentSpeedText
-            font.family: Theme.displayFont
-            font.pixelSize: 42
-            font.weight: Font.DemiBold
-            color: Theme.ink1
+          RowLayout {
+            width: parent.width
+            spacing: Theme.spaceMd
+
+            Rectangle {
+              Layout.fillWidth: true
+              Layout.preferredHeight: 62
+              color: Theme.inset
+              border.color: Theme.cardBorder
+              border.width: 1
+
+              Column {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: Theme.spaceXl
+                anchors.rightMargin: Theme.spaceXl
+                spacing: 4
+
+                Text {
+                  text: "Download"
+                  font.family: Theme.textFont
+                  font.pixelSize: Theme.fontXs
+                  color: Theme.ink3
+                }
+                Text {
+                  text: root.downloadText
+                  font.family: Theme.mono
+                  font.pixelSize: Theme.fontXl
+                  font.weight: Font.DemiBold
+                  color: root.downloadColor
+                }
+              }
+            }
+
+            Rectangle {
+              Layout.fillWidth: true
+              Layout.preferredHeight: 62
+              color: Theme.inset
+              border.color: Theme.cardBorder
+              border.width: 1
+
+              Column {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: Theme.spaceXl
+                anchors.rightMargin: Theme.spaceXl
+                spacing: 4
+
+                Text {
+                  text: "Upload"
+                  font.family: Theme.textFont
+                  font.pixelSize: Theme.fontXs
+                  color: Theme.ink3
+                }
+                Text {
+                  text: root.uploadText
+                  font.family: Theme.mono
+                  font.pixelSize: Theme.fontXl
+                  font.weight: Font.DemiBold
+                  color: root.uploadColor
+                }
+              }
+            }
           }
 
-          Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: "Mbps"
-            font.family: Theme.textFont
-            font.pixelSize: Theme.fontSm
-            color: Theme.ink3
-          }
-
-          Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: root.phaseLabel
-            font.family: Theme.textFont
-            font.pixelSize: Theme.fontMd
-            font.weight: Font.Medium
-            color: root.phaseColor
-          }
-
-          Text {
-            visible: root.phase === "download" || root.phase === "upload"
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: root.elapsedLabel
-            font.family: Theme.mono
-            font.pixelSize: Theme.fontXs
-            color: Theme.ink3
-          }
-        }
-      }
-
-      RowLayout {
-        width: parent.width
-        spacing: Theme.spaceMd
-
-        Rectangle {
-          Layout.fillWidth: true
-          Layout.preferredHeight: 62
-          color: Theme.inset
-          border.color: Theme.cardBorder
-          border.width: 1
-
-          Column {
-            anchors.fill: parent
-            anchors.leftMargin: Theme.spaceXl
-            anchors.rightMargin: Theme.spaceXl
-            spacing: 4
-
+          RowLayout {
+            width: parent.width
             Text {
-              text: "Download"
+              text: "Latency"
               font.family: Theme.textFont
-              font.pixelSize: Theme.fontXs
+              font.pixelSize: Theme.fontSm
               color: Theme.ink3
             }
+            Item { Layout.fillWidth: true }
             Text {
-              text: root.downloadText
+              text: root.latencyText
               font.family: Theme.mono
-              font.pixelSize: Theme.fontXl
-              font.weight: Font.DemiBold
-              color: Theme.green
+              font.pixelSize: Theme.fontSm
+              color: Theme.ink2
             }
           }
         }
-
-        Rectangle {
-          Layout.fillWidth: true
-          Layout.preferredHeight: 62
-          color: Theme.inset
-          border.color: Theme.cardBorder
-          border.width: 1
-
-          Column {
-            anchors.fill: parent
-            anchors.leftMargin: Theme.spaceXl
-            anchors.rightMargin: Theme.spaceXl
-            spacing: 4
-
-            Text {
-              text: "Upload"
-              font.family: Theme.textFont
-              font.pixelSize: Theme.fontXs
-              color: Theme.ink3
-            }
-            Text {
-              text: root.uploadText
-              font.family: Theme.mono
-              font.pixelSize: Theme.fontXl
-              font.weight: Font.DemiBold
-              color: Theme.accent
-            }
-          }
-        }
-      }
-
-      RowLayout {
-        width: parent.width
-        Text {
-          text: "Latency"
-          font.family: Theme.textFont
-          font.pixelSize: Theme.fontSm
-          color: Theme.ink3
-        }
-        Item { Layout.fillWidth: true }
-        Text {
-          text: root.latencyText
-          font.family: Theme.mono
-          font.pixelSize: Theme.fontSm
-          color: Theme.ink2
-        }
-      }
-
-      Text {
-        width: parent.width
-        text: "20 seconds each way · Cloudflare edge network"
-        font.family: Theme.textFont
-        font.pixelSize: Theme.fontXs
-        color: Theme.ink3
-      }
-
-      PrimaryButton {
-        width: parent.width
-        text: root.running ? "Cancel test" : (root.hasResult ? "Run again" : "Run speed test")
-        glyph: root.running ? "󰜺" : "󰓅"
-        fill: root.running ? Theme.selected : Theme.accent
-        ink: root.running ? Theme.ink1 : Theme.darkInk
-        onClicked: root.running ? root.cancelTest() : root.startTest()
       }
     }
   }
 
   onPhaseProgressChanged: speedRing.requestPaint()
+  onRunningChanged: speedRing.requestPaint()
+  onPhaseChanged: speedRing.requestPaint()
 }
