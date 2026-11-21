@@ -169,8 +169,15 @@ PanelWindow {
   onVisibleChanged: {
     if (visible) {
       win.openedAt = Date.now();
-      const initial = (win.launcher && win.launcher.initialQuery) ? win.launcher.initialQuery : "";
-      if (win.launcher) win.launcher.initialQuery = "";
+      let initial = "";
+      if (win.launcher) {
+        if (win.launcher.initialQuery) {
+          initial = win.launcher.initialQuery;
+          win.launcher.initialQuery = "";
+        } else if (win.launcher.query) {
+          initial = win.launcher.query;
+        }
+      }
       field.text = initial;
       if (field.text.length > 0) {
         field.cursorPosition = field.text.length;
@@ -210,7 +217,9 @@ PanelWindow {
       if (win.launcher && win.launcher.initialQuery) {
         field.text = win.launcher.initialQuery;
         field.cursorPosition = field.text.length;
-        win.launcher.initialQuery = "";
+        if (win.visible) {
+          win.launcher.initialQuery = "";
+        }
         win.launcher.setQuery(field.text);
       }
     }

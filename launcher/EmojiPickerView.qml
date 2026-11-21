@@ -437,6 +437,12 @@ Item {
 
   onSearchTermChanged: refresh()
   onEmojiProviderChanged: refresh()
+  onVisibleChanged: {
+    if (visible) {
+      refresh();
+      listView.contentY = 0;
+    }
+  }
 
   Component.onCompleted: {
     if (emojiPersist.recentJson && emojiPersist.recentJson !== "[]") {
@@ -632,7 +638,7 @@ Item {
                 font.family: Theme.textFont
                 font.pixelSize: Theme.fontXs
                 font.letterSpacing: 1.1
-                font.weight: Font.SemiBold
+                font.weight: Font.DemiBold
                 color: Theme.ink3
                 anchors.verticalCenter: parent.verticalCenter
               }
@@ -755,7 +761,7 @@ Item {
             font.family: Theme.textFont
             font.pixelSize: Theme.fontXs
             font.letterSpacing: 1.1
-            font.weight: Font.SemiBold
+            font.weight: Font.DemiBold
             color: Theme.accent
           }
 
@@ -833,7 +839,7 @@ Item {
               text: "Paste All"
               font.family: Theme.textFont
               font.pixelSize: Theme.fontSm
-              font.weight: Font.SemiBold
+              font.weight: Font.DemiBold
               color: Theme.darkInk
             }
 
