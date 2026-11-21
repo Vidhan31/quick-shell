@@ -610,6 +610,15 @@ void SamplerWorker::sample() {
         if (numComms > 0) {
             int bestIdx = 0;
             for (int i = 1; i < numComms; ++i) {
+                int pI = qs::processcore::commPriority(commStats[i].comm);
+                int pBest = qs::processcore::commPriority(commStats[bestIdx].comm);
+                if (pI != pBest) {
+                    if (pI > pBest) {
+                        bestIdx = i;
+                    }
+                    continue;
+                }
+
                 // Plurality count: In multi-process applications (Electron/Chromium/IDE),
                 // the main application comm overwhelmingly dominates process count
                 // (e.g. 8x antigravity vs 1x language_server, 13x brave vs 1x wrapper).
@@ -667,28 +676,16 @@ void SamplerWorker::sample() {
 
     for (size_t i = 0; i < topN; ++i) {
         auto &item = m_items[i];
-        if (item.name.size() == 15 && item.mpid > 0) {
+        bool needsResolution = (item.name.size() == 15 ||
+                                qs::processcore::isProcessWrapper(item.name) ||
+                                qs::processcore::isGenericComm(item.name));
+        if (needsResolution && item.mpid > 0) {
             auto cachedIt = m_cmdlineNameCache.find(item.mpid);
             if (cachedIt != m_cmdlineNameCache.end()) {
                 item.name = cachedIt->second;
             } else {
-                char cmdBuf[64];
-                snprintf(cmdBuf, sizeof(cmdBuf), "/proc/%d/cmdline", item.mpid);
-                int fdCmd = open(cmdBuf, O_RDONLY | O_CLOEXEC);
-                if (fdCmd >= 0) {
-                    char rawCmd[512];
-                    ssize_t cn = read(fdCmd, rawCmd, sizeof(rawCmd) - 1);
-                    close(fdCmd);
-                    if (cn > 0) {
-                        rawCmd[cn] = '\0';
-                        const char *base = strrchr(rawCmd, '/');
-                        const char *candidate = base ? (base + 1) : rawCmd;
-                        if (strncmp(candidate, item.name.c_str(), 15) == 0) {
-                            item.name = candidate;
-                            m_cmdlineNameCache[item.mpid] = item.name;
-                        }
-                    }
-                }
+                item.name = qs::processcore::resolveProcessName(item.mpid, item.name);
+                m_cmdlineNameCache[item.mpid] = item.name;
             }
         }
         if (i == 0 && item.mem > 0) {
@@ -720,6 +717,16 @@ void SamplerWorker::sample() {
     std::sort(m_prevProcs.begin(), m_prevProcs.end(), [](const RawProc &a, const RawProc &b) {
         return a.pid < b.pid;
     });
+
+    if (m_cmdlineNameCache.size() > 128) {
+        for (auto it = m_cmdlineNameCache.begin(); it != m_cmdlineNameCache.end();) {
+            if (m_pidToIndex.find(it->first) == m_pidToIndex.end()) {
+                it = m_cmdlineNameCache.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
 
     QString updatedAt = QTime::currentTime().toString(QStringLiteral("hh:mm:ss"));
     emit dataReady(outList, maxMem, updatedAt);

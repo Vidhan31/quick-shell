@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <cerrno>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <chrono>
@@ -191,6 +192,105 @@ bool killProcessTree(int rootPid, int signal, bool waitExited) {
     }
 
     return exited;
+}
+
+std::string resolveProcessName(int pid, std::string_view comm) {
+    if (pid <= 0) {
+        return std::string(comm);
+    }
+
+    char exeBuf[512];
+    char exePath[64];
+    snprintf(exePath, sizeof(exePath), "/proc/%d/exe", pid);
+    ssize_t elen = readlink(exePath, exeBuf, sizeof(exeBuf) - 1);
+    std::string exeBase;
+    if (elen > 0) {
+        exeBuf[elen] = '\0';
+        const char *slash = strrchr(exeBuf, '/');
+        exeBase = slash ? (slash + 1) : exeBuf;
+    }
+
+    char cmdPath[64];
+    snprintf(cmdPath, sizeof(cmdPath), "/proc/%d/cmdline", pid);
+    int fd = open(cmdPath, O_RDONLY | O_CLOEXEC);
+    std::vector<std::string> args;
+    if (fd >= 0) {
+        char buf[2048];
+        ssize_t n = read(fd, buf, sizeof(buf) - 1);
+        close(fd);
+        if (n > 0) {
+            ssize_t start = 0;
+            for (ssize_t i = 0; i < n; ++i) {
+                if (buf[i] == '\0') {
+                    if (i > start) {
+                        args.emplace_back(buf + start, i - start);
+                    }
+                    start = i + 1;
+                }
+            }
+            if (start < n) {
+                args.emplace_back(buf + start, n - start);
+            }
+        }
+    }
+
+    if (comm == "AppRun") {
+        if (!args.empty()) {
+            const char *slash = strrchr(args[0].c_str(), '/');
+            std::string base = slash ? (slash + 1) : args[0];
+            if (base.size() > 9) {
+                std::string ext = base.substr(base.size() - 9);
+                for (char &c : ext) c = static_cast<char>(tolower(c));
+                if (ext == ".appimage") {
+                    return base.substr(0, base.size() - 9);
+                }
+            }
+        }
+        if (!exeBase.empty() && exeBase != "AppRun") {
+            return exeBase;
+        }
+    }
+
+    if (isGenericComm(comm)) {
+        if (!args.empty()) {
+            for (size_t i = 1; i < args.size(); ++i) {
+                const auto &arg = args[i];
+                if (arg.empty() || arg[0] == '-') continue;
+                const char *slash = strrchr(arg.c_str(), '/');
+                std::string sbase = slash ? (slash + 1) : arg;
+                if (sbase.find('.') != std::string::npos) {
+                    return sbase;
+                }
+            }
+        }
+        if (!exeBase.empty()) {
+            return exeBase;
+        }
+    }
+
+    if (comm == "bwrap") {
+        bool afterDashDash = false;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (args[i] == "--") {
+                afterDashDash = true;
+                continue;
+            }
+            if (afterDashDash && !args[i].empty() && args[i][0] != '-') {
+                const char *slash = strrchr(args[i].c_str(), '/');
+                return slash ? (slash + 1) : args[i];
+            }
+        }
+    }
+
+    if (comm.size() == 15 && !args.empty()) {
+        const char *slash = strrchr(args[0].c_str(), '/');
+        const char *candidate = slash ? (slash + 1) : args[0].c_str();
+        if (strncmp(candidate, comm.data(), 15) == 0) {
+            return candidate;
+        }
+    }
+
+    return std::string(comm);
 }
 
 } // namespace qs::processcore

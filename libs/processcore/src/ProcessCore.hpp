@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <array>
@@ -13,6 +14,22 @@ QString formatRssKb(unsigned long kb);
 inline bool isShellOrSystemd(std::string_view c) noexcept {
     return c == "systemd" || c == "bash" || c == "zsh" || c == "fish" || c == "sh";
 }
+
+inline bool isProcessWrapper(std::string_view c) noexcept {
+    return c == "bwrap" || c == "flatpak-spawn" || c == "xdg-dbus-proxy" || c == "rootlesskit" || c == "AppRun";
+}
+
+inline bool isGenericComm(std::string_view c) noexcept {
+    return c == "MainThread" || c == "ThreadPoolWorker" || c == "ThreadPoolForeg" || c == "Web Content";
+}
+
+inline int commPriority(std::string_view c) noexcept {
+    if (isProcessWrapper(c)) return 0;
+    if (isGenericComm(c)) return 1;
+    return 2;
+}
+
+std::string resolveProcessName(int pid, std::string_view comm);
 
 template <typename ParentLookup>
 int getRootFast(int pid, int ppid, std::string_view comm, ParentLookup &&getParent, std::unordered_map<int, int> *memo = nullptr) {
